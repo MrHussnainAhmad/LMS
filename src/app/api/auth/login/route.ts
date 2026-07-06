@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { accountLockouts, superAdmins, employees, institutions, staff, students } from '@/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { verify } from '@node-rs/argon2';
 import { createTokens, setAuthCookies, UserRole } from '@/lib/auth';
 import { withRateLimit } from '@/lib/rate-limit';
@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { emailOrUsername, password, securityAnswer, returnTokens } = parsed.data;
+    const loginIdentifier = emailOrUsername.trim().toLowerCase();
     const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';
     const userAgent = req.headers.get('user-agent') ?? 'Unknown';
 
@@ -108,7 +109,7 @@ export async function POST(req: NextRequest) {
     // but the prompt implies a single login flow or at least checking multiple.
     // For performance and correctness, we will check sequentially.
 
-    const [admin] = await db.select().from(superAdmins).where(eq(superAdmins.email, emailOrUsername)).limit(1);
+    const [admin] = await db.select().from(superAdmins).where(sql`lower(${superAdmins.email}) = ${loginIdentifier}`).limit(1);
     if (admin) {
       if (!securityAnswer) {
         return NextResponse.json({ error: 'Security answer required for Super Admin' }, { status: 400 });
@@ -125,7 +126,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!user) {
-      const [emp] = await db.select().from(employees).where(eq(employees.email, emailOrUsername)).limit(1);
+      const [emp] = await db.select().from(employees).where(sql`lower(${employees.email}) = ${loginIdentifier}`).limit(1);
       if (emp) {
         await assertNotLocked('EMPLOYEE', emp.id);
         const isValid = await verify(emp.passwordHash, password);
@@ -140,7 +141,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!user) {
-      const [inst] = await db.select().from(institutions).where(eq(institutions.contactEmail, emailOrUsername)).limit(1);
+      const [inst] = await db.select().from(institutions).where(sql`lower(${institutions.contactEmail}) = ${loginIdentifier}`).limit(1);
       if (inst) {
         if (inst.status !== 'APPROVED') {
           return NextResponse.json({ error: 'Institution account is not APPROVED' }, { status: 403 });
@@ -158,7 +159,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!user) {
-      const [stf] = await db.select().from(staff).where(eq(staff.email, emailOrUsername)).limit(1);
+      const [stf] = await db.select().from(staff).where(sql`lower(${staff.email}) = ${loginIdentifier}`).limit(1);
       if (stf) {
         if (!stf.isActive) {
           return NextResponse.json({ error: 'Account deactivated' }, { status: 403 });
@@ -178,7 +179,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!user) {
-      const [stu] = await db.select().from(students).where(eq(students.loginRollNumber, emailOrUsername)).limit(1);
+      const [stu] = await db.select().from(students).where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`).limit(1);
       if (stu) {
         if (!stu.isActive) {
           return NextResponse.json({ error: 'Account deactivated' }, { status: 403 });
