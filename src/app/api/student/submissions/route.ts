@@ -9,12 +9,26 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    // 1. Get student's class and section
-    const [student] = await db
-      .select({ classId: students.classId, sectionId: students.sectionId })
-      .from(students)
-      .where(eq(students.id, session.userId));
+    // 1. Fetch student info and submissions in parallel
+    const [studentRows, studentSubmissions] = await Promise.all([
+      db.select({ classId: students.classId, sectionId: students.sectionId })
+        .from(students)
+        .where(eq(students.id, session.userId)),
+      db.select({
+        id: submissions.id,
+        assignmentId: submissions.assignmentId,
+        createdAt: submissions.createdAt,
+      })
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.studentId, session.userId),
+          eq(submissions.institutionId, session.institutionId)
+        )
+      )
+    ]);
 
+    const student = studentRows[0];
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
 
     // 2. Fetch assignments for that class/section
@@ -37,21 +51,6 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
         )
       )
       .orderBy(desc(assignments.dueAt));
-
-    // 3. Fetch student's submissions for these assignments
-    const studentSubmissions = await db
-      .select({
-        id: submissions.id,
-        assignmentId: submissions.assignmentId,
-        createdAt: submissions.createdAt,
-      })
-      .from(submissions)
-      .where(
-        and(
-          eq(submissions.studentId, session.userId),
-          eq(submissions.institutionId, session.institutionId)
-        )
-      );
 
     const submissionMap = new Map(studentSubmissions.map(sub => [sub.assignmentId, sub]));
 

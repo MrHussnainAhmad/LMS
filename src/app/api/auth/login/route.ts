@@ -104,12 +104,21 @@ export async function POST(req: NextRequest) {
     let campusId: number | undefined;
     let mustChangePassword = false;
 
-    // We check in order: SuperAdmin -> Employee -> Institution -> Staff -> Student
-    // Realistically, the client should send the 'role' they are trying to log in as to avoid checking all tables,
-    // but the prompt implies a single login flow or at least checking multiple.
-    // For performance and correctness, we will check sequentially.
+    // Run all database lookups concurrently to drastically improve login speed
+    const [adminRes, empRes, instRes, stfRes, stuRes] = await Promise.all([
+      db.select().from(superAdmins).where(sql`lower(${superAdmins.email}) = ${loginIdentifier}`).limit(1),
+      db.select().from(employees).where(sql`lower(${employees.email}) = ${loginIdentifier}`).limit(1),
+      db.select().from(institutions).where(sql`lower(${institutions.contactEmail}) = ${loginIdentifier}`).limit(1),
+      db.select().from(staff).where(sql`lower(${staff.email}) = ${loginIdentifier}`).limit(1),
+      db.select().from(students).where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`).limit(1),
+    ]);
 
-    const [admin] = await db.select().from(superAdmins).where(sql`lower(${superAdmins.email}) = ${loginIdentifier}`).limit(1);
+    const admin = adminRes[0];
+    const emp = empRes[0];
+    const inst = instRes[0];
+    const stf = stfRes[0];
+    const stu = stuRes[0];
+
     if (admin) {
       if (!securityAnswer) {
         return NextResponse.json({ error: 'Security answer required for Super Admin' }, { status: 400 });
@@ -123,77 +132,57 @@ export async function POST(req: NextRequest) {
       } else {
         return await rejectFailedLogin('SUPER_ADMIN', admin.id, undefined, ip);
       }
-    }
-
-    if (!user) {
-      const [emp] = await db.select().from(employees).where(sql`lower(${employees.email}) = ${loginIdentifier}`).limit(1);
-      if (emp) {
-        await assertNotLocked('EMPLOYEE', emp.id);
-        const isValid = await verify(emp.passwordHash, password);
-        if (isValid) {
-          user = emp;
-          role = 'EMPLOYEE';
-          mustChangePassword = emp.mustChangePassword;
-        } else {
-          return await rejectFailedLogin('EMPLOYEE', emp.id, undefined, ip);
-        }
+    } else if (emp) {
+      await assertNotLocked('EMPLOYEE', emp.id);
+      const isValid = await verify(emp.passwordHash, password);
+      if (isValid) {
+        user = emp;
+        role = 'EMPLOYEE';
+        mustChangePassword = emp.mustChangePassword;
+      } else {
+        return await rejectFailedLogin('EMPLOYEE', emp.id, undefined, ip);
       }
-    }
-
-    if (!user) {
-      const [inst] = await db.select().from(institutions).where(sql`lower(${institutions.contactEmail}) = ${loginIdentifier}`).limit(1);
-      if (inst) {
-        if (inst.status !== 'APPROVED') {
-          return NextResponse.json({ error: 'Institution account is not APPROVED' }, { status: 403 });
-        }
-        await assertNotLocked('INSTITUTION', inst.id);
-        const isValid = await verify(inst.adminPasswordHash, password);
-        if (isValid) {
-          user = inst;
-          role = 'INSTITUTION';
-          institutionId = inst.id;
-        } else {
-          return await rejectFailedLogin('INSTITUTION', inst.id, inst.id, ip);
-        }
+    } else if (inst) {
+      if (inst.status !== 'APPROVED') {
+        return NextResponse.json({ error: 'Institution account is not APPROVED' }, { status: 403 });
       }
-    }
-
-    if (!user) {
-      const [stf] = await db.select().from(staff).where(sql`lower(${staff.email}) = ${loginIdentifier}`).limit(1);
-      if (stf) {
-        if (!stf.isActive) {
-          return NextResponse.json({ error: 'Account deactivated' }, { status: 403 });
-        }
-        await assertNotLocked('STAFF', stf.id);
-        const isValid = await verify(stf.passwordHash, password);
-        if (isValid) {
-          user = stf;
-          role = 'STAFF';
-          institutionId = stf.institutionId;
-          campusId = stf.campusId || undefined;
-          mustChangePassword = stf.mustChangePassword;
-        } else {
-          return await rejectFailedLogin('STAFF', stf.id, stf.institutionId, ip);
-        }
+      await assertNotLocked('INSTITUTION', inst.id);
+      const isValid = await verify(inst.adminPasswordHash, password);
+      if (isValid) {
+        user = inst;
+        role = 'INSTITUTION';
+        institutionId = inst.id;
+      } else {
+        return await rejectFailedLogin('INSTITUTION', inst.id, inst.id, ip);
       }
-    }
-
-    if (!user) {
-      const [stu] = await db.select().from(students).where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`).limit(1);
-      if (stu) {
-        if (!stu.isActive) {
-          return NextResponse.json({ error: 'Account deactivated' }, { status: 403 });
-        }
-        await assertNotLocked('STUDENT', stu.id);
-        const isValid = await verify(stu.passwordHash, password);
-        if (isValid) {
-          user = stu;
-          role = 'STUDENT';
-          institutionId = stu.institutionId;
-          mustChangePassword = stu.mustChangePassword;
-        } else {
-          return await rejectFailedLogin('STUDENT', stu.id, stu.institutionId, ip);
-        }
+    } else if (stf) {
+      if (!stf.isActive) {
+        return NextResponse.json({ error: 'Account deactivated' }, { status: 403 });
+      }
+      await assertNotLocked('STAFF', stf.id);
+      const isValid = await verify(stf.passwordHash, password);
+      if (isValid) {
+        user = stf;
+        role = 'STAFF';
+        institutionId = stf.institutionId;
+        campusId = stf.campusId || undefined;
+        mustChangePassword = stf.mustChangePassword;
+      } else {
+        return await rejectFailedLogin('STAFF', stf.id, stf.institutionId, ip);
+      }
+    } else if (stu) {
+      if (!stu.isActive) {
+        return NextResponse.json({ error: 'Account deactivated' }, { status: 403 });
+      }
+      await assertNotLocked('STUDENT', stu.id);
+      const isValid = await verify(stu.passwordHash, password);
+      if (isValid) {
+        user = stu;
+        role = 'STUDENT';
+        institutionId = stu.institutionId;
+        mustChangePassword = stu.mustChangePassword;
+      } else {
+        return await rejectFailedLogin('STUDENT', stu.id, stu.institutionId, ip);
       }
     }
 
