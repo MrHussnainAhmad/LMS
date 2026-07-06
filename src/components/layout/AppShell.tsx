@@ -12,9 +12,12 @@ interface AppShellProps {
   userRole: string;
 }
 
+type NavAvailability = Partial<Record<NonNullable<SidebarItem["availabilityKey"]>, boolean>>;
+
 export function AppShell({ children, sidebarItems, userRole }: AppShellProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [navAvailability, setNavAvailability] = useState<NavAvailability>({});
   const [brand, setBrand] = useState<ShellBrand>({
     name: "LMS Platform",
     logoKey: null,
@@ -39,6 +42,27 @@ export function AppShell({ children, sidebarItems, userRole }: AppShellProps) {
     };
   }, []);
 
+  React.useEffect(() => {
+    let ignore = false;
+
+    fetch("/api/me/nav-availability")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: NavAvailability | null) => {
+        if (!ignore && data) {
+          setNavAvailability(data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const visibleSidebarItems = sidebarItems.filter((item) => (
+    !item.availabilityKey || navAvailability[item.availabilityKey] === true
+  ));
+
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {/* Mobile Sidebar Overlay */}
@@ -57,7 +81,7 @@ export function AppShell({ children, sidebarItems, userRole }: AppShellProps) {
         isSidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <Sidebar
-          items={sidebarItems}
+          items={visibleSidebarItems}
           role={userRole}
           brand={brand}
           onClose={() => setIsSidebarOpen(false)}

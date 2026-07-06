@@ -6,6 +6,7 @@ import { studentProfileChangeRequestSchema } from "@/lib/validators/student";
 import { and, eq } from "drizzle-orm";
 
 export const POST = requireRole(["STUDENT"], async (req: NextRequest, { session }) => {
+  if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
   const parsed = studentProfileChangeRequestSchema.safeParse(body);
 
@@ -13,7 +14,9 @@ export const POST = requireRole(["STUDENT"], async (req: NextRequest, { session 
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const [student] = await db.select().from(students).where(eq(students.id, session.userId)).limit(1);
+  const [student] = await db.select().from(students)
+    .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
+    .limit(1);
   if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
 
   const requestedFields: Record<string, string | number> = {};

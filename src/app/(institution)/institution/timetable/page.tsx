@@ -51,7 +51,7 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
     }).from(staffAssignments)
       .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
       .leftJoin(staff, eq(staffAssignments.staffId, staff.id))
-      .where(eq(staffAssignments.sectionId, selectedSectionId))
+      .where(and(eq(staffAssignments.sectionId, selectedSectionId), eq(staffAssignments.institutionId, institutionId)))
       .orderBy(staffAssignments.startTime);
 
     const selectedSection = allSections.find((row) => row.section.id === selectedSectionId);

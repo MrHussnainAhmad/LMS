@@ -51,6 +51,13 @@ yarn-error.log*
 *.sqlite3
 /drizzle/
 
+# local-only operational database scripts
+/scripts/wipe.ts
+/scripts/clear-assignments.ts
+/scripts/create-super-admin.ts
+/scripts/apply-online-tests-schema.mjs
+/scripts/*.local.*
+
 # vercel
 .vercel
 

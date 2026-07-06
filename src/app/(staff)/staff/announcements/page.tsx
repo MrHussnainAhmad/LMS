@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { announcements, staffAssignments, classes, sections } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Megaphone, Bell } from "lucide-react";
 import { getSession } from "@/lib/auth";
@@ -33,7 +33,7 @@ export default async function StaffAnnouncementsPage() {
     .from(staffAssignments)
     .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
     .innerJoin(classes, eq(sections.classId, classes.id))
-    .where(eq(staffAssignments.staffId, staffId));
+    .where(and(eq(staffAssignments.staffId, staffId), eq(staffAssignments.institutionId, institutionId)));
 
   const uniqueClassesMap = new Map();
   const uniqueSectionsMap = new Map();

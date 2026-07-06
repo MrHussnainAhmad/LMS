@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { students, staffAssignments, subjects, staff } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { WeeklyTimetable, type TimetableEntry } from "@/components/timetable/ScheduleViews";
@@ -11,7 +11,8 @@ export default async function StudentTimetablePage() {
     redirect("/login");
   }
 
-  const [currentStudent] = await db.select().from(students).where(eq(students.id, session.userId));
+  if (!session.institutionId) redirect("/login");
+  const [currentStudent] = await db.select().from(students).where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)));
   if (!currentStudent) redirect("/login");
 
   const assignments = await db.select({
@@ -22,7 +23,7 @@ export default async function StudentTimetablePage() {
     .from(staffAssignments)
     .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
     .leftJoin(staff, eq(staffAssignments.staffId, staff.id))
-    .where(eq(staffAssignments.sectionId, currentStudent.sectionId))
+    .where(and(eq(staffAssignments.sectionId, currentStudent.sectionId), eq(staffAssignments.institutionId, session.institutionId)))
     .orderBy(staffAssignments.startTime);
 
   const timetableEntries: TimetableEntry[] = assignments.map((row) => ({

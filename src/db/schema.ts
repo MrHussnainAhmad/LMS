@@ -22,7 +22,10 @@ export const instStatusEnum = pgEnum('institution_status', ['PENDING', 'APPROVED
 export const attendanceStatusEnum = pgEnum('attendance_status', ['PRESENT', 'ABSENT', 'LATE', 'LEAVE']);
 export const testTypeEnum = pgEnum('test_type', ['DAILY', 'WEEKLY', 'QUIZ', 'MONTHLY', 'MID', 'FINAL']);
 export const testCreatorRoleEnum = pgEnum('test_creator_role', ['INSTITUTION', 'STAFF']);
-export const announcementTargetEnum = pgEnum('announcement_target', ['ALL', 'CAMPUS', 'CLASS', 'SECTION']);
+export const onlineTestModeEnum = pgEnum('online_test_mode', ['MCQ', 'MIX']);
+export const onlineQuestionTypeEnum = pgEnum('online_question_type', ['MCQ', 'SHORT']);
+export const onlineSubmissionStatusEnum = pgEnum('online_submission_status', ['IN_PROGRESS', 'SUBMITTED', 'AUTO_GRADED', 'PENDING_REVIEW', 'GRADED', 'FAILED', 'ABANDONED']);
+export const announcementTargetEnum = pgEnum('announcement_target', ['ALL', 'CAMPUS', 'CLASS', 'SECTION', 'USER']);
 export const profileRequestStatusEnum = pgEnum('profile_request_status', ['PENDING', 'APPROVED', 'REJECTED']);
 
 // --- SUPER ADMIN ---
@@ -77,6 +80,17 @@ export const academicSessions = pgTable('academic_sessions', {
   isCurrent: boolean('is_current').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// --- INSTITUTION HOLIDAYS ---
+export const institutionHolidays = pgTable('institution_holidays', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  date: date('date').notNull(),
+  name: varchar('name', { length: 255 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  institutionHolidayUnique: unique('institution_holiday_unique').on(t.institutionId, t.date),
+}));
 
 // --- CAMPUSES ---
 export const campuses = pgTable('campuses', {
@@ -267,6 +281,47 @@ export const marks = pgTable('marks', {
   studentTestUnique: unique('student_test_unique').on(t.testId, t.studentId),
 }));
 
+// --- ONLINE TESTS ---
+export const onlineTests = pgTable('online_tests', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  testId: integer('test_id').notNull().references(() => tests.id, { onDelete: 'cascade' }).unique(),
+  mode: onlineTestModeEnum('mode').notNull(),
+  durationMinutes: integer('duration_minutes').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const onlineTestQuestions = pgTable('online_test_questions', {
+  id: serial('id').primaryKey(),
+  onlineTestId: integer('online_test_id').notNull().references(() => onlineTests.id, { onDelete: 'cascade' }),
+  questionType: onlineQuestionTypeEnum('question_type').notNull(),
+  prompt: text('prompt').notNull(),
+  options: jsonb('options'),
+  correctOptionIndex: integer('correct_option_index'),
+  marks: real('marks').notNull(),
+  orderIndex: integer('order_index').notNull(),
+});
+
+export const onlineTestSubmissions = pgTable('online_test_submissions', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  onlineTestId: integer('online_test_id').notNull().references(() => onlineTests.id, { onDelete: 'cascade' }),
+  studentId: integer('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+  status: onlineSubmissionStatusEnum('status').notNull(),
+  answers: jsonb('answers').notNull(),
+  mcqScore: real('mcq_score').default(0).notNull(),
+  shortScore: real('short_score'),
+  totalScore: real('total_score').default(0).notNull(),
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  lastHeartbeatAt: timestamp('last_heartbeat_at'),
+  violationReason: varchar('violation_reason', { length: 50 }),
+  submittedAt: timestamp('submitted_at'),
+  gradedAt: timestamp('graded_at'),
+  gradedBy: integer('graded_by').references(() => staff.id, { onDelete: 'set null' }),
+}, (t) => ({
+  studentOnlineTestUnique: unique('student_online_test_unique').on(t.onlineTestId, t.studentId),
+}));
+
 // --- ANNOUNCEMENTS ---
 export const announcements = pgTable('announcements', {
   id: serial('id').primaryKey(),
@@ -277,6 +332,8 @@ export const announcements = pgTable('announcements', {
   targetCampusId: integer('target_campus_id').references(() => campuses.id, { onDelete: 'cascade' }),
   targetClassId: integer('target_class_id').references(() => classes.id, { onDelete: 'cascade' }),
   targetSectionId: integer('target_section_id').references(() => sections.id, { onDelete: 'cascade' }),
+  targetUserRole: roleEnum('target_user_role'),
+  targetUserId: integer('target_user_id'),
   title: varchar('title', { length: 255 }).notNull(),
   content: text('content').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -324,8 +381,24 @@ export const refreshTokens = pgTable('refresh_tokens', {
   userId: integer('user_id').notNull(),
   tokenHash: text('token_hash').notNull().unique(),
   expiresAt: timestamp('expires_at').notNull(),
+  revokedAt: timestamp('revoked_at'),
+  replacedByHash: text('replaced_by_hash'),
+  reuseDetectedAt: timestamp('reuse_detected_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// --- ACCOUNT LOCKOUTS ---
+export const accountLockouts = pgTable('account_lockouts', {
+  id: serial('id').primaryKey(),
+  userRole: roleEnum('user_role').notNull(),
+  userId: integer('user_id').notNull(),
+  failedCount: integer('failed_count').default(0).notNull(),
+  windowStartedAt: timestamp('window_started_at').defaultNow().notNull(),
+  lockedUntil: timestamp('locked_until'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  accountLockoutUserUnique: unique('account_lockout_user_unique').on(t.userRole, t.userId),
+}));
 
 // --- PASSWORD RESETS ---
 export const passwordResets = pgTable('password_resets', {

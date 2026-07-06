@@ -69,12 +69,7 @@ export async function getSession(): Promise<JWTPayload | null> {
 }
 
 export async function revokeAllSessions(role: UserRole, userId: number) {
-  await db.delete(refreshTokens).where(
-    and(
-      eq(refreshTokens.userRole, role),
-      eq(refreshTokens.userId, userId)
-    )
-  );
+  await db.delete(refreshTokens).where(and(eq(refreshTokens.userRole, role), eq(refreshTokens.userId, userId)));
 }
 
 export function timingSafeEqual(a: string, b: string) {

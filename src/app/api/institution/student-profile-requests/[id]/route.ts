@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { classes, sections, studentProfileChangeRequests, students } from "@/db/schema";
+import { announcements, classes, sections, studentProfileChangeRequests, students } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import type { JWTPayload } from "@/lib/auth";
 import { reviewStudentProfileChangeRequestSchema } from "@/lib/validators/student";
@@ -62,6 +62,16 @@ export const PATCH = requireRole(["INSTITUTION"], async (
     await db.update(studentProfileChangeRequests)
       .set(reviewedValues)
       .where(eq(studentProfileChangeRequests.id, requestId));
+    await db.insert(announcements).values({
+      institutionId: session.userId,
+      senderRole: "INSTITUTION",
+      senderId: session.userId,
+      targetType: "USER",
+      targetUserRole: "STUDENT",
+      targetUserId: requestRow.studentId,
+      title: "Profile change request rejected",
+      content: parsed.data.adminNote ? `Your profile change request was rejected. Reason: ${parsed.data.adminNote}` : "Your profile change request was rejected.",
+    });
     return NextResponse.json({ message: "Request rejected" });
   }
 
@@ -106,6 +116,16 @@ export const PATCH = requireRole(["INSTITUTION"], async (
   await db.update(studentProfileChangeRequests)
     .set(reviewedValues)
     .where(eq(studentProfileChangeRequests.id, requestId));
+  await db.insert(announcements).values({
+    institutionId: session.userId,
+    senderRole: "INSTITUTION",
+    senderId: session.userId,
+    targetType: "USER",
+    targetUserRole: "STUDENT",
+    targetUserId: student.id,
+    title: "Profile change request approved",
+    content: parsed.data.adminNote ? `Your profile change request was approved. Note: ${parsed.data.adminNote}` : "Your profile change request was approved and your profile was updated.",
+  });
 
   return NextResponse.json({ message: "Request approved and student profile updated" });
 });

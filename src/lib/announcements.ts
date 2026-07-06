@@ -7,7 +7,7 @@ export type VisibleAnnouncement = {
   id: number;
   title: string;
   content: string;
-  targetType: "ALL" | "CAMPUS" | "CLASS" | "SECTION";
+  targetType: "ALL" | "CAMPUS" | "CLASS" | "SECTION" | "USER";
   senderRole: JWTPayload["role"];
   createdAtLabel: string;
   isRead: boolean;
@@ -63,6 +63,9 @@ function canSeeAnnouncement(
   if (!scope) return false;
   if (session.role === "INSTITUTION") return true;
   if (announcement.senderRole === session.role && announcement.senderId === session.userId) return true;
+  if (announcement.targetType === "USER") {
+    return announcement.targetUserRole === session.role && announcement.targetUserId === session.userId;
+  }
   if (announcement.targetType === "ALL") return true;
   if (announcement.targetType === "CAMPUS") return Boolean(scope.campusId && announcement.targetCampusId === scope.campusId);
   if (announcement.targetType === "CLASS") return Boolean(announcement.targetClassId && scope.classIds.includes(announcement.targetClassId));

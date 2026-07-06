@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { staffAssignments, subjects, classes, sections } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { WeeklyTimetable, type TimetableEntry } from "@/components/timetable/ScheduleViews";
@@ -12,6 +12,7 @@ export default async function StaffTimetablePage() {
   }
 
   const staffId = session.userId;
+  if (!session.institutionId) redirect("/login");
 
   const assignments = await db.select({
     assignment: staffAssignments,
@@ -23,7 +24,7 @@ export default async function StaffTimetablePage() {
     .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
     .leftJoin(sections, eq(staffAssignments.sectionId, sections.id))
     .leftJoin(classes, eq(sections.classId, classes.id))
-    .where(eq(staffAssignments.staffId, staffId))
+    .where(and(eq(staffAssignments.staffId, staffId), eq(staffAssignments.institutionId, session.institutionId)))
     .orderBy(staffAssignments.startTime);
 
   const timetableEntries: TimetableEntry[] = assignments.map((row) => ({

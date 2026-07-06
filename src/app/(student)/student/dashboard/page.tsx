@@ -16,10 +16,11 @@ export default async function StudentDashboard() {
   }
 
   const studentId = session.userId;
+  if (!session.institutionId) redirect('/login');
   const currentDay = new Date().getDay();
 
   // Get student details
-  const [currentStudent] = await db.select().from(students).where(eq(students.id, studentId));
+  const [currentStudent] = await db.select().from(students).where(and(eq(students.id, studentId), eq(students.institutionId, session.institutionId)));
   if (!currentStudent) redirect('/login');
 
   // Get today's classes
@@ -36,6 +37,7 @@ export default async function StudentDashboard() {
   .where(
     and(
       eq(staffAssignments.sectionId, currentStudent.sectionId),
+      eq(staffAssignments.institutionId, session.institutionId),
       eq(staffAssignments.dayOfWeek, currentDay)
     )
   );
@@ -52,7 +54,7 @@ export default async function StudentDashboard() {
   }));
 
   // Get total submissions
-  const studentSubmissions = await db.select().from(submissions).where(eq(submissions.studentId, studentId));
+  const studentSubmissions = await db.select().from(submissions).where(and(eq(submissions.studentId, studentId), eq(submissions.institutionId, session.institutionId)));
 
   const [latestMark] = await db.select({
     mark: marks,

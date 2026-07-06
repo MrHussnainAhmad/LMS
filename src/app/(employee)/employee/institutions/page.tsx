@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { institutions } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Building2, FileSearch } from "lucide-react";
 import { getSession } from "@/lib/auth";
@@ -105,26 +105,35 @@ export default async function EmployeeVerificationQueuePage() {
                             <DialogHeader>
                               <DialogTitle className="text-rose-600">Delete Institution</DialogTitle>
                             </DialogHeader>
-                            <div className="py-4">
-                              <p className="text-sm text-stone-600">
-                                Are you absolutely sure you want to delete <strong>{inst.name}</strong>? This action cannot be undone and will permanently remove this institution and all its associated data from the platform.
-                              </p>
-                            </div>
-                            <div className="flex justify-end gap-3">
-                              <DialogClose asChild>
-                                <button className="bg-white border border-border text-stone-700 hover:bg-stone-50 rounded-md px-4 py-2 text-sm font-medium transition-colors">
-                                  Cancel
-                                </button>
-                              </DialogClose>
-                              <form action={async () => {
+                            <form action={async (formData) => {
                                 "use server";
-                                await deleteInstitutionAction(inst.id);
+                                await deleteInstitutionAction(inst.id, String(formData.get("confirmationName") || ""));
                               }}>
+                              <div className="py-4">
+                                <p className="text-sm text-stone-600">
+                                  Are you absolutely sure you want to delete <strong>{inst.name}</strong>? This action cannot be undone and will permanently remove this institution and all its associated data from the platform.
+                                </p>
+                                <label className="mt-4 block text-sm font-medium text-stone-700">
+                                  Type institution name to confirm
+                                  <input
+                                    name="confirmationName"
+                                    required
+                                    className="mt-2 w-full rounded-md border border-border px-3 py-2 text-sm"
+                                    placeholder={inst.name}
+                                  />
+                                </label>
+                              </div>
+                              <div className="flex justify-end gap-3">
+                                <DialogClose asChild>
+                                  <button type="button" className="bg-white border border-border text-stone-700 hover:bg-stone-50 rounded-md px-4 py-2 text-sm font-medium transition-colors">
+                                    Cancel
+                                  </button>
+                                </DialogClose>
                                 <SubmitButton className="bg-rose-600 hover:bg-rose-700 text-white rounded-md px-4 py-2 text-sm font-medium">
                                   Yes, Delete
                                 </SubmitButton>
-                              </form>
-                            </div>
+                              </div>
+                            </form>
                           </DialogContent>
                         </Dialog>
                       </div>

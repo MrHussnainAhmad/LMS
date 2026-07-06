@@ -6,6 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { File, UploadCloud, X } from "lucide-react";
 import { useToast } from "@/components/ui/toaster";
 
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const ALLOWED_UPLOAD_MIMES = new Set([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
 type AssignmentItem = {
   id: number;
   title: string;
@@ -25,8 +34,12 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
   const selectedAssignment = assignments.find((assignment) => assignment.id === selectedAssignmentId);
 
   const validateAndSetFile = (nextFile: File) => {
-    if (nextFile.size > 5 * 1024 * 1024) {
+    if (nextFile.size > MAX_UPLOAD_BYTES) {
       toast({ title: "File too large", description: "Maximum file size is 5MB.", variant: "destructive" });
+      return;
+    }
+    if (!ALLOWED_UPLOAD_MIMES.has(nextFile.type)) {
+      toast({ title: "Unsupported file", description: "Upload PDF, DOCX, JPG, PNG, or WEBP files only.", variant: "destructive" });
       return;
     }
     setFile(nextFile);
@@ -72,7 +85,7 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           assignmentId: selectedAssignmentId,
-          fileKey: cloudinaryResponse.secure_url || cloudinaryResponse.public_id,
+          fileKey: cloudinaryResponse.public_id,
         }),
       });
 
@@ -155,6 +168,7 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
               <input
                 id="assignment-file-upload"
                 type="file"
+                accept=".pdf,.docx,image/jpeg,image/png,image/webp"
                 className="hidden"
                 onChange={(event) => {
                   const selectedFile = event.target.files?.[0];

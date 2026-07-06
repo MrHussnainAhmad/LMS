@@ -6,6 +6,7 @@ import { staffProfileChangeRequestSchema } from "@/lib/validators/staff";
 import { and, eq } from "drizzle-orm";
 
 export const POST = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
+  if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
   const parsed = staffProfileChangeRequestSchema.safeParse(body);
 
@@ -13,7 +14,9 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const [staffRow] = await db.select().from(staff).where(eq(staff.id, session.userId)).limit(1);
+  const [staffRow] = await db.select().from(staff)
+    .where(and(eq(staff.id, session.userId), eq(staff.institutionId, session.institutionId)))
+    .limit(1);
   if (!staffRow) return NextResponse.json({ error: "Staff not found" }, { status: 404 });
 
   const requestedFields: Record<string, string | number> = {};

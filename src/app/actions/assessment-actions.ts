@@ -5,6 +5,7 @@ import {
   assignments,
   announcements,
   classes,
+  institutionHolidays,
   marks,
   sections,
   staffAssignments,
@@ -16,9 +17,12 @@ import {
 import { getSession } from "@/lib/auth";
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import cloudinary from "@/lib/cloudinary";
 
 const STAFF_TEST_TYPES = new Set(["DAILY", "WEEKLY", "QUIZ"]);
 const INSTITUTION_EXAM_TYPES = new Set(["MONTHLY", "MID", "FINAL"]);
+const MAX_SUBMISSION_BYTES = 5 * 1024 * 1024;
+const ALLOWED_SUBMISSION_FORMATS = new Set(["pdf", "docx", "jpg", "jpeg", "png", "webp"]);
 
 function parseLocalDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
@@ -30,23 +34,27 @@ function formatLocalDate(value: Date) {
   return value.toISOString().slice(0, 10);
 }
 
-function nextExamDate(value: Date) {
+function isExamOffDay(value: Date, holidays: Set<string>) {
+  return value.getUTCDay() === 0 || holidays.has(formatLocalDate(value));
+}
+
+function nextExamDate(value: Date, holidays: Set<string>) {
   const next = new Date(value);
   next.setUTCDate(next.getUTCDate() + 1);
-  while (next.getUTCDay() === 0) {
+  while (isExamOffDay(next, holidays)) {
     next.setUTCDate(next.getUTCDate() + 1);
   }
   return next;
 }
 
-function buildExamDates(startDate: string, count: number) {
+function buildExamDates(startDate: string, count: number, holidays: Set<string>) {
   let current = parseLocalDate(startDate);
-  if (current.getUTCDay() === 0) current = nextExamDate(current);
+  while (isExamOffDay(current, holidays)) current = nextExamDate(current, holidays);
 
   const dates: string[] = [];
   for (let index = 0; index < count; index++) {
     dates.push(formatLocalDate(current));
-    if (index < count - 1) current = nextExamDate(current);
+    if (index < count - 1) current = nextExamDate(current, holidays);
   }
 
   return {
@@ -54,6 +62,13 @@ function buildExamDates(startDate: string, count: number) {
     startDate: dates[0],
     endDate: dates[dates.length - 1],
   };
+}
+
+async function getInstitutionHolidaySet(institutionId: number) {
+  const rows = await db.select({ date: institutionHolidays.date })
+    .from(institutionHolidays)
+    .where(eq(institutionHolidays.institutionId, institutionId));
+  return new Set(rows.map((row) => row.date));
 }
 
 function toNumber(value: FormDataEntryValue | null, field: string) {
@@ -220,7 +235,8 @@ export async function createInstitutionExamAction(formData: FormData) {
 
   await requireInstitutionClass(institutionId, classId);
   const validSubjectIds = await requireInstitutionSubjects(institutionId, subjectIds);
-  const examSchedule = buildExamDates(date, validSubjectIds.length);
+  const holidaySet = await getInstitutionHolidaySet(institutionId);
+  const examSchedule = buildExamDates(date, validSubjectIds.length, holidaySet);
 
   for (const [index, subjectId] of validSubjectIds.entries()) {
     await db.insert(tests).values({
@@ -288,7 +304,8 @@ export async function updateInstitutionExamAction(formData: FormData) {
 
   await requireInstitutionClass(institutionId, classId);
   const validSubjectIds = await requireInstitutionSubjects(institutionId, subjectIds);
-  const examSchedule = buildExamDates(date, validSubjectIds.length);
+  const holidaySet = await getInstitutionHolidaySet(institutionId);
+  const examSchedule = buildExamDates(date, validSubjectIds.length, holidaySet);
   const existingBySubject = new Map(existingRows.map((row) => [row.subjectId, row]));
   const nextSubjectSet = new Set(validSubjectIds);
 
@@ -429,7 +446,8 @@ async function requireMarkableTest(session: { userId: number; institutionId: num
 async function saveMarksForRecords(
   session: { institutionId: number },
   test: typeof tests.$inferSelect,
-  records: { rollNumber: string; marksObtained: number; totalMarks: number }[]
+  records: { rollNumber: string; marksObtained: number; totalMarks: number }[],
+  options: { overwrite?: boolean } = {}
 ) {
   if (records.length === 0) throw new Error("No marks provided");
 
@@ -456,23 +474,51 @@ async function saveMarksForRecords(
   }
 
   const studentByRoll = new Map(studentRows.map((student) => [student.classRollNumber, student]));
+  const studentIds = studentRows.map((student) => student.id);
+  const existingMarks = await db.select({ studentId: marks.studentId })
+    .from(marks)
+    .where(and(
+      eq(marks.institutionId, session.institutionId),
+      eq(marks.testId, test.id),
+      inArray(marks.studentId, studentIds)
+    ));
+
+  if (existingMarks.length > 0 && !options.overwrite) {
+    const existingIds = new Set(existingMarks.map((mark) => mark.studentId));
+    const duplicateRolls = studentRows
+      .filter((student) => existingIds.has(student.id))
+      .map((student) => student.classRollNumber)
+      .join(", ");
+    throw new Error(`Marks already exist for roll number(s): ${duplicateRolls}. Enable overwrite to replace them.`);
+  }
 
   for (const record of records) {
     const student = studentByRoll.get(record.rollNumber);
     if (!student) throw new Error(`Roll number ${record.rollNumber} was not found`);
-    await db.insert(marks).values({
-      institutionId: session.institutionId,
-      testId: test.id,
-      studentId: student.id,
-      marksObtained: record.marksObtained,
-      totalMarks: record.totalMarks,
-    }).onConflictDoUpdate({
-      target: [marks.testId, marks.studentId],
-      set: {
+
+    if (options.overwrite) {
+      await db.insert(marks).values({
+        institutionId: session.institutionId,
+        testId: test.id,
+        studentId: student.id,
         marksObtained: record.marksObtained,
         totalMarks: record.totalMarks,
-      },
-    });
+      }).onConflictDoUpdate({
+        target: [marks.testId, marks.studentId],
+        set: {
+          marksObtained: record.marksObtained,
+          totalMarks: record.totalMarks,
+        },
+      });
+    } else {
+      await db.insert(marks).values({
+        institutionId: session.institutionId,
+        testId: test.id,
+        studentId: student.id,
+        marksObtained: record.marksObtained,
+        totalMarks: record.totalMarks,
+      });
+    }
   }
 
   revalidatePath("/staff/marks");
@@ -490,7 +536,7 @@ export async function uploadMarksCsvAction(formData: FormData) {
 
   const test = await requireMarkableTest(staffSession, testId);
   const records = parseMarksCsv(await file.text());
-  await saveMarksForRecords(staffSession, test, records);
+  await saveMarksForRecords(staffSession, test, records, { overwrite: formData.get("overwrite") === "on" });
 }
 
 export async function enterMarksManuallyAction(formData: FormData) {
@@ -515,7 +561,7 @@ export async function enterMarksManuallyAction(formData: FormData) {
   });
 
   const test = await requireMarkableTest(staffSession, testId);
-  await saveMarksForRecords(staffSession, test, records);
+  await saveMarksForRecords(staffSession, test, records, { overwrite: true });
 }
 
 export async function saveStudentSubmission(assignmentId: number, fileKey: string) {
@@ -529,6 +575,7 @@ export async function saveStudentSubmission(assignmentId: number, fileKey: strin
   if (!assignment) throw new Error("Assignment not found");
   if (assignment.classId !== student.classId) throw new Error("This assignment is not for your class");
   if (assignment.sectionId && assignment.sectionId !== student.sectionId) throw new Error("This assignment is not for your section");
+  await verifyCloudinarySubmission(fileKey);
 
   await db.insert(submissions).values({
     institutionId: session.institutionId,
@@ -541,4 +588,32 @@ export async function saveStudentSubmission(assignmentId: number, fileKey: strin
   });
 
   revalidatePath("/student/submissions");
+}
+
+async function verifyCloudinarySubmission(fileKey: string) {
+  if (!fileKey || fileKey.includes("://") || !fileKey.startsWith("lms-uploads/")) {
+    throw new Error("Invalid uploaded file reference");
+  }
+
+  const resource = await getCloudinaryResource(fileKey);
+  const bytes = Number(resource.bytes || 0);
+  const format = String(resource.format || "").toLowerCase();
+
+  if (bytes <= 0 || bytes > MAX_SUBMISSION_BYTES) {
+    throw new Error("Uploaded file exceeds the allowed size");
+  }
+  if (!ALLOWED_SUBMISSION_FORMATS.has(format)) {
+    throw new Error("Uploaded file type is not allowed");
+  }
+}
+
+async function getCloudinaryResource(publicId: string) {
+  for (const resourceType of ["image", "raw"] as const) {
+    try {
+      return await cloudinary.api.resource(publicId, { resource_type: resourceType });
+    } catch {
+      // Cloudinary separates images and raw documents; try both before rejecting.
+    }
+  }
+  throw new Error("Uploaded file could not be verified");
 }

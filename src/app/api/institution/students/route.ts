@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { students, institutions, classes } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { hash } from '@node-rs/argon2';
 import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStudentSchema } from '@/lib/validators/student';
@@ -19,7 +19,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
   const { firstName, lastName, campusId, classId, sectionId, gender, yearOfJoining, classRollNumber, phone, age } = parsed.data;
 
   const [inst] = await db.select().from(institutions).where(eq(institutions.id, tenantId)).limit(1);
-  const [classObj] = await db.select().from(classes).where(eq(classes.id, classId)).limit(1);
+  const [classObj] = await db.select().from(classes).where(and(eq(classes.id, classId), eq(classes.institutionId, tenantId))).limit(1);
 
   if (!classObj) {
     return NextResponse.json({ error: "Class not found" }, { status: 400 });

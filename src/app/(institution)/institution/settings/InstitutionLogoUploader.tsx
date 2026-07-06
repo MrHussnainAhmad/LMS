@@ -40,6 +40,7 @@ export function InstitutionLogoUploader({
     setIsUploading(true);
     try {
       if (!file.type.startsWith("image/")) throw new Error("Please select an image file");
+      if (file.size > 2 * 1024 * 1024) throw new Error("Logo must be 2MB or smaller");
 
       const sigRes = await fetch("/api/upload/signature", { method: "POST" });
       const signaturePayload = await sigRes.json() as SignaturePayload;
@@ -63,7 +64,7 @@ export function InstitutionLogoUploader({
         throw new Error(uploadPayload.error?.message || "Cloudinary rejected the logo upload");
       }
 
-      await api.patch("/api/institution/logo", { logoKey: uploadPayload.secure_url });
+      await api.patch("/api/institution/logo", { publicId: uploadPayload.public_id });
       setPreviewUrl(uploadPayload.secure_url);
       toast({ title: "Logo updated", description: "Your institution logo has been saved.", variant: "success" });
       router.refresh();

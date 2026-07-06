@@ -11,6 +11,7 @@ export interface SidebarItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  availabilityKey?: "studentTests" | "examTimetable";
 }
 
 interface SidebarProps {

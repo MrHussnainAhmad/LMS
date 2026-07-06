@@ -223,6 +223,10 @@ export default async function StaffMarksPage() {
                           required
                           className="block w-full text-sm text-stone-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-800"
                         />
+                        <label className="flex shrink-0 items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm text-stone-700">
+                          <input name="overwrite" type="checkbox" className="h-4 w-4" />
+                          Overwrite
+                        </label>
                         <SubmitButton className="shrink-0">
                           <Upload className="h-4 w-4 mr-2" />
                           Upload CSV

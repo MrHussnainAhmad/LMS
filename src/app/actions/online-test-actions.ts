@@ -1,0 +1,439 @@
+"use server";
+
+import { db } from "@/db";
+import {
+  announcements,
+  classes,
+  marks,
+  onlineTestQuestions,
+  onlineTestSubmissions,
+  onlineTests,
+  sections,
+  staffAssignments,
+  students,
+  subjects,
+  tests,
+} from "@/db/schema";
+import { getSession } from "@/lib/auth";
+import { and, eq, lt } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+
+type JsonAnswer = Record<string, string | number>;
+type OnlineViolationReason = "tab_switch" | "timeout" | "disconnect";
+
+const HEARTBEAT_STALE_MS = 35_000;
+
+function asNumber(value: FormDataEntryValue | null, label: string) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${label} is required`);
+  return parsed;
+}
+
+function asInteger(value: FormDataEntryValue | null, label: string) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${label} is required`);
+  return parsed;
+}
+
+async function requireStaffAssignment(staffId: number, institutionId: number, sectionId: number, subjectId: number) {
+  const [assignment] = await db.select({
+    classId: sections.classId,
+    sectionName: sections.name,
+    className: classes.name,
+    subjectName: subjects.name,
+  })
+    .from(staffAssignments)
+    .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
+    .innerJoin(classes, eq(sections.classId, classes.id))
+    .innerJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
+    .where(and(
+      eq(staffAssignments.staffId, staffId),
+      eq(staffAssignments.institutionId, institutionId),
+      eq(staffAssignments.sectionId, sectionId),
+      eq(staffAssignments.subjectId, subjectId)
+    ))
+    .limit(1);
+
+  if (!assignment) throw new Error("This class section and subject are not assigned to you");
+  return assignment;
+}
+
+function collectMcqs(formData: FormData, mcqMarks: number) {
+  const prompts = formData.getAll("mcqPrompt").map((value) => String(value).trim());
+  return prompts.map((prompt, index) => {
+    const options = [0, 1, 2, 3].map((optionIndex) => String(formData.get(`mcqOption-${index}-${optionIndex}`) || "").trim());
+    const correctOptionIndex = Number(formData.get(`mcqCorrect-${index}`));
+    if (!prompt) throw new Error(`MCQ ${index + 1} question is required`);
+    if (options.some((option) => !option)) throw new Error(`MCQ ${index + 1} must have four options`);
+    if (!Number.isInteger(correctOptionIndex) || correctOptionIndex < 0 || correctOptionIndex > 3) {
+      throw new Error(`MCQ ${index + 1} correct option is required`);
+    }
+    return { prompt, options, correctOptionIndex, marks: mcqMarks };
+  });
+}
+
+function collectShortQuestions(formData: FormData) {
+  const prompts = formData.getAll("shortPrompt").map((value) => String(value).trim());
+  const marksValues = formData.getAll("shortMarks").map((value) => Number(value));
+  return prompts.map((prompt, index) => {
+    const questionMarks = marksValues[index];
+    if (!prompt) throw new Error(`Short question ${index + 1} is required`);
+    if (!Number.isFinite(questionMarks) || questionMarks <= 0) throw new Error(`Short question ${index + 1} marks are required`);
+    return { prompt, marks: questionMarks };
+  });
+}
+
+export async function createOnlineTestAction(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== "STAFF" || !session.institutionId) throw new Error("Unauthorized");
+
+  const sectionId = asInteger(formData.get("sectionId"), "Class section");
+  const subjectId = asInteger(formData.get("subjectId"), "Subject");
+  const title = String(formData.get("title") || "").trim();
+  const mode = String(formData.get("mode") || "");
+  const durationMinutes = asInteger(formData.get("durationMinutes"), "Timer");
+  const mcqMarks = asNumber(formData.get("mcqMarks"), "MCQ marks");
+  if (!title) throw new Error("Test title is required");
+  if (mode !== "MCQ" && mode !== "MIX") throw new Error("Invalid test mode");
+
+  const assignment = await requireStaffAssignment(session.userId, session.institutionId, sectionId, subjectId);
+  const mcqs = collectMcqs(formData, mcqMarks);
+  if (mcqs.length === 0) throw new Error("Add at least one MCQ");
+  const shortQuestions = mode === "MIX" ? collectShortQuestions(formData) : [];
+  if (mode === "MIX" && shortQuestions.length === 0) throw new Error("Mix tests need at least one short question");
+
+  const totalMarks = mcqs.reduce((sum, question) => sum + question.marks, 0) + shortQuestions.reduce((sum, question) => sum + question.marks, 0);
+  const today = new Date().toISOString().slice(0, 10);
+  const [test] = await db.insert(tests).values({
+    institutionId: session.institutionId,
+    classId: assignment.classId,
+    sectionId,
+    subjectId,
+    staffId: session.userId,
+    createdByRole: "STAFF",
+    type: "QUIZ",
+    title,
+    maxMarks: totalMarks,
+    date: today,
+  }).returning();
+
+  const [onlineTest] = await db.insert(onlineTests).values({
+    institutionId: session.institutionId,
+    testId: test.id,
+    mode: mode as "MCQ" | "MIX",
+    durationMinutes,
+  }).returning();
+
+  let orderIndex = 0;
+  for (const question of mcqs) {
+    await db.insert(onlineTestQuestions).values({
+      onlineTestId: onlineTest.id,
+      questionType: "MCQ",
+      prompt: question.prompt,
+      options: question.options,
+      correctOptionIndex: question.correctOptionIndex,
+      marks: question.marks,
+      orderIndex: orderIndex++,
+    });
+  }
+
+  for (const question of shortQuestions) {
+    await db.insert(onlineTestQuestions).values({
+      onlineTestId: onlineTest.id,
+      questionType: "SHORT",
+      prompt: question.prompt,
+      marks: question.marks,
+      orderIndex: orderIndex++,
+    });
+  }
+
+  await db.insert(announcements).values({
+    institutionId: session.institutionId,
+    senderRole: "STAFF",
+    senderId: session.userId,
+    targetType: "SECTION",
+    targetSectionId: sectionId,
+    title: `Online test hosted: ${title}`,
+    content: `${title} is now available for ${assignment.className} - ${assignment.sectionName} in ${assignment.subjectName}. Timer: ${durationMinutes} minutes. Do not change tabs after starting the test.`,
+  });
+
+  revalidatePath("/staff/tests");
+  revalidatePath("/student/tests");
+  revalidatePath("/staff/dashboard");
+  revalidatePath("/student/dashboard");
+}
+
+async function getStudentOnlineTest(studentId: number, institutionId: number, onlineTestId: number) {
+  const [student] = await db.select().from(students).where(and(eq(students.id, studentId), eq(students.institutionId, institutionId))).limit(1);
+  if (!student) throw new Error("Student not found");
+
+  const [row] = await db.select({
+    onlineTest: onlineTests,
+    test: tests,
+  })
+    .from(onlineTests)
+    .innerJoin(tests, eq(onlineTests.testId, tests.id))
+    .where(and(eq(onlineTests.id, onlineTestId), eq(onlineTests.institutionId, institutionId)))
+    .limit(1);
+  if (!row || row.test.classId !== student.classId || row.test.sectionId !== student.sectionId) throw new Error("Test not found");
+  return row;
+}
+
+async function saveStudentMark(institutionId: number, testId: number, studentId: number, marksObtained: number, totalMarks: number) {
+  await db.insert(marks).values({
+    institutionId,
+    testId,
+    studentId,
+    marksObtained,
+    totalMarks,
+  }).onConflictDoUpdate({
+    target: [marks.testId, marks.studentId],
+    set: { marksObtained, totalMarks },
+  });
+}
+
+function getAttemptExpiresAt(startedAt: Date, durationMinutes: number) {
+  return new Date(startedAt.getTime() + durationMinutes * 60 * 1000);
+}
+
+async function markOnlineTestFailed(
+  row: Awaited<ReturnType<typeof getStudentOnlineTest>>,
+  studentId: number,
+  reason: OnlineViolationReason,
+  submissionId?: number
+) {
+  const now = new Date();
+  const status = reason === "disconnect" ? "ABANDONED" : "FAILED";
+  const updateValues = {
+    status,
+    violationReason: reason,
+    answers: { reason },
+    mcqScore: 0,
+    shortScore: null,
+    totalScore: 0,
+    submittedAt: now,
+    lastHeartbeatAt: now,
+  } as const;
+
+  if (submissionId) {
+    await db.update(onlineTestSubmissions)
+      .set(updateValues)
+      .where(and(
+        eq(onlineTestSubmissions.id, submissionId),
+        eq(onlineTestSubmissions.institutionId, row.onlineTest.institutionId)
+      ));
+  } else {
+    await db.insert(onlineTestSubmissions).values({
+      institutionId: row.onlineTest.institutionId,
+      onlineTestId: row.onlineTest.id,
+      studentId,
+      ...updateValues,
+    }).onConflictDoNothing();
+  }
+
+  await saveStudentMark(row.onlineTest.institutionId, row.test.id, studentId, 0, Number(row.test.maxMarks));
+}
+
+export async function expireStaleOnlineSubmissions(institutionId: number) {
+  const cutoff = new Date(Date.now() - HEARTBEAT_STALE_MS);
+  const rows = await db.select({
+    submission: onlineTestSubmissions,
+    onlineTest: onlineTests,
+    test: tests,
+  })
+    .from(onlineTestSubmissions)
+    .innerJoin(onlineTests, eq(onlineTestSubmissions.onlineTestId, onlineTests.id))
+    .innerJoin(tests, eq(onlineTests.testId, tests.id))
+    .where(and(
+      eq(onlineTestSubmissions.institutionId, institutionId),
+      eq(onlineTestSubmissions.status, "IN_PROGRESS"),
+      lt(onlineTestSubmissions.lastHeartbeatAt, cutoff)
+    ));
+
+  for (const item of rows) {
+    const reason: OnlineViolationReason = getAttemptExpiresAt(item.submission.startedAt, item.onlineTest.durationMinutes) <= new Date()
+      ? "timeout"
+      : "disconnect";
+    await markOnlineTestFailed(
+      { onlineTest: item.onlineTest, test: item.test },
+      item.submission.studentId,
+      reason,
+      item.submission.id
+    );
+  }
+}
+
+export async function startOnlineTestAttemptAction(onlineTestId: number) {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT" || !session.institutionId) throw new Error("Unauthorized");
+
+  await expireStaleOnlineSubmissions(session.institutionId);
+  const row = await getStudentOnlineTest(session.userId, session.institutionId, onlineTestId);
+  const [existing] = await db.select().from(onlineTestSubmissions).where(and(
+    eq(onlineTestSubmissions.institutionId, session.institutionId),
+    eq(onlineTestSubmissions.onlineTestId, onlineTestId),
+    eq(onlineTestSubmissions.studentId, session.userId)
+  )).limit(1);
+
+  if (existing) {
+    if (existing.status !== "IN_PROGRESS") throw new Error("You have already completed or failed this test");
+    const expiresAt = getAttemptExpiresAt(existing.startedAt, row.onlineTest.durationMinutes);
+    if (expiresAt <= new Date()) {
+      await markOnlineTestFailed(row, session.userId, "timeout", existing.id);
+      throw new Error("The test timer expired");
+    }
+    await db.update(onlineTestSubmissions)
+      .set({ lastHeartbeatAt: new Date() })
+      .where(and(eq(onlineTestSubmissions.id, existing.id), eq(onlineTestSubmissions.institutionId, session.institutionId)));
+    return { expiresAt: expiresAt.toISOString() };
+  }
+
+  const now = new Date();
+  await db.insert(onlineTestSubmissions).values({
+    institutionId: session.institutionId,
+    onlineTestId,
+    studentId: session.userId,
+    status: "IN_PROGRESS",
+    answers: {},
+    startedAt: now,
+    lastHeartbeatAt: now,
+  });
+
+  return { expiresAt: getAttemptExpiresAt(now, row.onlineTest.durationMinutes).toISOString() };
+}
+
+export async function heartbeatOnlineTestAction(onlineTestId: number) {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT" || !session.institutionId) throw new Error("Unauthorized");
+
+  const row = await getStudentOnlineTest(session.userId, session.institutionId, onlineTestId);
+  const [submission] = await db.select().from(onlineTestSubmissions).where(and(
+    eq(onlineTestSubmissions.institutionId, session.institutionId),
+    eq(onlineTestSubmissions.onlineTestId, onlineTestId),
+    eq(onlineTestSubmissions.studentId, session.userId)
+  )).limit(1);
+
+  if (!submission || submission.status !== "IN_PROGRESS") return { ok: false };
+  const expiresAt = getAttemptExpiresAt(submission.startedAt, row.onlineTest.durationMinutes);
+  if (expiresAt <= new Date()) {
+    await markOnlineTestFailed(row, session.userId, "timeout", submission.id);
+    return { ok: false, reason: "timeout" };
+  }
+
+  await db.update(onlineTestSubmissions)
+    .set({ lastHeartbeatAt: new Date() })
+    .where(and(eq(onlineTestSubmissions.id, submission.id), eq(onlineTestSubmissions.institutionId, session.institutionId)));
+  return { ok: true, expiresAt: expiresAt.toISOString() };
+}
+
+export async function submitOnlineTestAction(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT" || !session.institutionId) throw new Error("Unauthorized");
+
+  const onlineTestId = asInteger(formData.get("onlineTestId"), "Test");
+  const row = await getStudentOnlineTest(session.userId, session.institutionId, onlineTestId);
+  const [existing] = await db.select().from(onlineTestSubmissions).where(and(
+    eq(onlineTestSubmissions.institutionId, session.institutionId),
+    eq(onlineTestSubmissions.onlineTestId, onlineTestId),
+    eq(onlineTestSubmissions.studentId, session.userId)
+  )).limit(1);
+  if (!existing) throw new Error("Start the test before submitting");
+  if (existing.status !== "IN_PROGRESS") throw new Error("You have already completed or failed this test");
+
+  if (getAttemptExpiresAt(existing.startedAt, row.onlineTest.durationMinutes) < new Date()) {
+    await markOnlineTestFailed(row, session.userId, "timeout", existing.id);
+    throw new Error("The test timer expired. Your submission was recorded as 0.");
+  }
+
+  const questions = await db.select().from(onlineTestQuestions).where(eq(onlineTestQuestions.onlineTestId, onlineTestId));
+  const answers: JsonAnswer = {};
+  let mcqScore = 0;
+
+  for (const question of questions) {
+    if (question.questionType === "MCQ") {
+      const answer = Number(formData.get(`answer-${question.id}`));
+      if (!Number.isInteger(answer)) throw new Error("Answer every MCQ before submitting");
+      answers[String(question.id)] = answer;
+      if (answer === question.correctOptionIndex) mcqScore += Number(question.marks);
+    } else {
+      const answer = String(formData.get(`answer-${question.id}`) || "").trim();
+      if (!answer) throw new Error("Answer every short question before submitting");
+      answers[String(question.id)] = answer;
+    }
+  }
+
+  const status = row.onlineTest.mode === "MCQ" ? "AUTO_GRADED" : "PENDING_REVIEW";
+  const totalScore = row.onlineTest.mode === "MCQ" ? mcqScore : mcqScore;
+  await db.update(onlineTestSubmissions).set({
+    status,
+    answers,
+    mcqScore,
+    totalScore,
+    submittedAt: new Date(),
+    lastHeartbeatAt: new Date(),
+  }).where(and(
+    eq(onlineTestSubmissions.id, existing.id),
+    eq(onlineTestSubmissions.institutionId, session.institutionId)
+  ));
+
+  if (row.onlineTest.mode === "MCQ") {
+    await saveStudentMark(session.institutionId, row.test.id, session.userId, mcqScore, Number(row.test.maxMarks));
+  }
+
+  revalidatePath("/student/tests");
+  revalidatePath("/student/marks");
+  revalidatePath("/staff/tests");
+}
+
+export async function failOnlineTestForViolation(onlineTestId: number, reason: OnlineViolationReason) {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT" || !session.institutionId) throw new Error("Unauthorized");
+
+  const row = await getStudentOnlineTest(session.userId, session.institutionId, onlineTestId);
+  const [existing] = await db.select().from(onlineTestSubmissions).where(and(
+    eq(onlineTestSubmissions.institutionId, session.institutionId),
+    eq(onlineTestSubmissions.onlineTestId, onlineTestId),
+    eq(onlineTestSubmissions.studentId, session.userId)
+  )).limit(1);
+  if (existing && existing.status !== "IN_PROGRESS") return;
+
+  await markOnlineTestFailed(row, session.userId, reason, existing?.id);
+  revalidatePath("/student/tests");
+  revalidatePath("/student/marks");
+  revalidatePath("/staff/tests");
+}
+
+export async function gradeMixedTestAction(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== "STAFF" || !session.institutionId) throw new Error("Unauthorized");
+
+  const submissionId = asInteger(formData.get("submissionId"), "Submission");
+  const [row] = await db.select({
+    submission: onlineTestSubmissions,
+    onlineTest: onlineTests,
+    test: tests,
+  })
+    .from(onlineTestSubmissions)
+    .innerJoin(onlineTests, eq(onlineTestSubmissions.onlineTestId, onlineTests.id))
+    .innerJoin(tests, eq(onlineTests.testId, tests.id))
+    .where(and(eq(onlineTestSubmissions.id, submissionId), eq(onlineTestSubmissions.institutionId, session.institutionId)))
+    .limit(1);
+  if (!row || row.test.staffId !== session.userId) throw new Error("Submission not found");
+
+  const questions = await db.select().from(onlineTestQuestions).where(eq(onlineTestQuestions.onlineTestId, row.onlineTest.id));
+  let shortScore = 0;
+  for (const question of questions.filter((question) => question.questionType === "SHORT")) {
+    const score = Number(formData.get(`score-${question.id}`));
+    if (!Number.isFinite(score) || score < 0 || score > Number(question.marks)) throw new Error("Invalid short-question score");
+    shortScore += score;
+  }
+
+  const totalScore = Number(row.submission.mcqScore) + shortScore;
+  await db.update(onlineTestSubmissions)
+    .set({ status: "GRADED", shortScore, totalScore, gradedAt: new Date(), gradedBy: session.userId })
+    .where(eq(onlineTestSubmissions.id, submissionId));
+  await saveStudentMark(session.institutionId, row.test.id, row.submission.studentId, totalScore, Number(row.test.maxMarks));
+
+  revalidatePath("/staff/tests");
+  revalidatePath("/student/marks");
+}

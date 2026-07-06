@@ -17,10 +17,11 @@ export default async function StaffDashboard() {
   }
 
   const staffId = session.userId;
+  if (!session.institutionId) redirect('/login');
   const currentDay = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
 
   // Get staff name
-  const [currentStaff] = await db.select({ name: staff.name }).from(staff).where(eq(staff.id, staffId));
+  const [currentStaff] = await db.select({ name: staff.name }).from(staff).where(and(eq(staff.id, staffId), eq(staff.institutionId, session.institutionId)));
 
   // Get today's schedule
   const scheduleRows = await db.select({
@@ -38,6 +39,7 @@ export default async function StaffDashboard() {
   .where(
     and(
       eq(staffAssignments.staffId, staffId),
+      eq(staffAssignments.institutionId, session.institutionId),
       eq(staffAssignments.dayOfWeek, currentDay)
     )
   );

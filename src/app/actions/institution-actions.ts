@@ -5,7 +5,7 @@ import { campuses, staff, classes, sections, subjects, announcements } from "@/d
 import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { staffAssignments } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gt, lt } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 
 function generateSlug(name: string) {
@@ -159,6 +159,42 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   const subjectIdRaw = formData.get("subjectId");
   const staffId = staffIdRaw && !isBreak ? parseInt(staffIdRaw as string, 10) : null;
   const subjectId = subjectIdRaw && !isBreak ? parseInt(subjectIdRaw as string, 10) : null;
+
+  if (!Number.isInteger(sectionId) || !Number.isInteger(dayOfWeek) || !startTime || !endTime || startTime >= endTime) {
+    throw new Error("Valid section, day, start time, and end time are required");
+  }
+
+  const [sectionRow] = await db.select()
+    .from(sections)
+    .where(and(eq(sections.id, sectionId), eq(sections.institutionId, institutionId)))
+    .limit(1);
+  if (!sectionRow) throw new Error("Section not found");
+
+  const sectionConflicts = await db.select()
+    .from(staffAssignments)
+    .where(and(
+      eq(staffAssignments.institutionId, institutionId),
+      eq(staffAssignments.sectionId, sectionId),
+      eq(staffAssignments.dayOfWeek, dayOfWeek),
+      lt(staffAssignments.startTime, endTime),
+      gt(staffAssignments.endTime, startTime)
+    ))
+    .limit(1);
+  if (sectionConflicts.length > 0) throw new Error("This section already has a timetable entry in that time range");
+
+  if (staffId) {
+    const staffConflicts = await db.select()
+      .from(staffAssignments)
+      .where(and(
+        eq(staffAssignments.institutionId, institutionId),
+        eq(staffAssignments.staffId, staffId),
+        eq(staffAssignments.dayOfWeek, dayOfWeek),
+        lt(staffAssignments.startTime, endTime),
+        gt(staffAssignments.endTime, startTime)
+      ))
+      .limit(1);
+    if (staffConflicts.length > 0) throw new Error("This staff member is already booked in that time range");
+  }
 
   await db.insert(staffAssignments).values({
     institutionId,

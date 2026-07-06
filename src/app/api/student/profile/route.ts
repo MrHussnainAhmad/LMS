@@ -3,9 +3,10 @@ import { db } from "@/db";
 import { students } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { updateStudentProfileSchema } from "@/lib/validators/student";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 export const PATCH = requireRole(["STUDENT"], async (req: NextRequest, { session }) => {
+  if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
   const parsed = updateStudentProfileSchema.safeParse(body);
 
@@ -15,7 +16,7 @@ export const PATCH = requireRole(["STUDENT"], async (req: NextRequest, { session
 
   await db.update(students)
     .set({ fatherName: parsed.data.fatherName })
-    .where(eq(students.id, session.userId));
+    .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)));
 
   return NextResponse.json({ message: "Profile updated successfully" });
 });

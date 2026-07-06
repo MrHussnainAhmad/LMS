@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { campuses, staff, staffProfileChangeRequests } from "@/db/schema";
+import { announcements, campuses, staff, staffProfileChangeRequests } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import type { JWTPayload } from "@/lib/auth";
 import { reviewStaffProfileChangeRequestSchema } from "@/lib/validators/staff";
@@ -62,6 +62,16 @@ export const PATCH = requireRole(["INSTITUTION"], async (
     await db.update(staffProfileChangeRequests)
       .set(reviewedValues)
       .where(eq(staffProfileChangeRequests.id, requestId));
+    await db.insert(announcements).values({
+      institutionId: session.userId,
+      senderRole: "INSTITUTION",
+      senderId: session.userId,
+      targetType: "USER",
+      targetUserRole: "STAFF",
+      targetUserId: requestRow.staffId,
+      title: "Profile change request rejected",
+      content: parsed.data.adminNote ? `Your profile change request was rejected. Reason: ${parsed.data.adminNote}` : "Your profile change request was rejected.",
+    });
     return NextResponse.json({ message: "Request rejected" });
   }
 
@@ -95,6 +105,16 @@ export const PATCH = requireRole(["INSTITUTION"], async (
     await db.update(staffProfileChangeRequests)
       .set(reviewedValues)
       .where(eq(staffProfileChangeRequests.id, requestId));
+    await db.insert(announcements).values({
+      institutionId: session.userId,
+      senderRole: "INSTITUTION",
+      senderId: session.userId,
+      targetType: "USER",
+      targetUserRole: "STAFF",
+      targetUserId: staffRow.id,
+      title: "Profile change request approved",
+      content: parsed.data.adminNote ? `Your profile change request was approved. Note: ${parsed.data.adminNote}` : "Your profile change request was approved and your profile was updated.",
+    });
   } catch (error) {
     if (typeof error === "object" && error && "code" in error && error.code === "23505") {
       return NextResponse.json({ error: "Email address is already in use" }, { status: 409 });

@@ -5,6 +5,10 @@ import { getSession } from "@/lib/auth";
 import { and, eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
+function todayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default async function StaffExamTimetablePage() {
   const session = await getSession();
   if (!session || session.role !== "STAFF" || !session.institutionId) redirect("/login");
@@ -38,6 +42,8 @@ export default async function StaffExamTimetablePage() {
     ))
     .orderBy(tests.date);
 
+  const activeExamRows = examRows.filter((exam) => (exam.endDate || exam.date) >= todayDateString());
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="border-b border-border pb-6">
@@ -46,7 +52,7 @@ export default async function StaffExamTimetablePage() {
         <p className="text-stone-500 mt-1">Monthly, Mid, and Final papers for the classes assigned to you.</p>
       </div>
 
-      <ExamTimetableList rows={examRows} emptyText="No institution exam timetable is available for your assigned classes yet." audience="staff" />
+      <ExamTimetableList rows={activeExamRows} emptyText="No active institution exam timetable is available for your assigned classes yet." audience="staff" />
     </div>
   );
 }
