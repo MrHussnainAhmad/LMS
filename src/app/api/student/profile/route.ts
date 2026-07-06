@@ -16,6 +16,7 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
         fatherName: students.fatherName,
         phone: students.phone,
         gender: students.gender,
+        profilePictureUrl: students.profilePictureUrl,
         loginRollNumber: students.loginRollNumber,
         classRollNumber: students.classRollNumber,
         className: classes.name,
@@ -47,7 +48,10 @@ export const PATCH = requireRole(["STUDENT"], async (req: NextRequest, { session
   }
 
   await db.update(students)
-    .set({ fatherName: parsed.data.fatherName })
+    .set({ 
+      ...(parsed.data.fatherName && { fatherName: parsed.data.fatherName }),
+      ...(parsed.data.profilePictureUrl && { profilePictureUrl: parsed.data.profilePictureUrl })
+    })
     .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)));
 
   return NextResponse.json({ message: "Profile updated successfully" });

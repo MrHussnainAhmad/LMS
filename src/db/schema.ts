@@ -110,6 +110,7 @@ export const staff = pgTable('staff', {
   name: varchar('name', { length: 255 }).notNull(),
   email: varchar('email', { length: 255 }).notNull().unique(), // generated slug email
   phone: varchar('phone', { length: 50 }),
+  profilePictureUrl: varchar('profile_picture_url', { length: 255 }),
   passwordHash: text('password_hash').notNull(),
   isActive: boolean('is_active').default(true).notNull(),
   mustChangePassword: boolean('must_change_password').default(true).notNull(),
@@ -165,6 +166,7 @@ export const students = pgTable('students', {
   fatherName: varchar('father_name', { length: 255 }),
   phone: varchar('phone', { length: 50 }),
   gender: varchar('gender', { length: 10 }).default('MALE').notNull(),
+  profilePictureUrl: varchar('profile_picture_url', { length: 255 }),
   loginRollNumber: varchar('login_roll_number', { length: 255 }).notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   classId: integer('class_id').notNull().references(() => classes.id, { onDelete: 'cascade' }),

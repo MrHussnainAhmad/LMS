@@ -24,6 +24,7 @@ export default async function StudentProfilePage() {
     phone: students.phone,
     loginRollNumber: students.loginRollNumber,
     classRollNumber: students.classRollNumber,
+    profilePictureUrl: students.profilePictureUrl,
     classId: students.classId,
     sectionId: students.sectionId,
     className: classes.name,

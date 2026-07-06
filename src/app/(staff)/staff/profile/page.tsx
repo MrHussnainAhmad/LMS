@@ -22,6 +22,7 @@ export default async function StaffProfilePage() {
     name: staff.name,
     email: staff.email,
     phone: staff.phone,
+    profilePictureUrl: staff.profilePictureUrl,
     campusId: staff.campusId,
     campusName: campuses.name,
     institutionId: staff.institutionId,

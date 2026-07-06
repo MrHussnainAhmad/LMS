@@ -7,6 +7,10 @@ export const createStaffSchema = z.object({
   subjectIds: z.array(z.coerce.number().min(1)).default([]),
 }).strict();
 
+export const updateStaffProfileSchema = z.object({
+  profilePictureUrl: z.string().url().max(255).optional(),
+}).strict();
+
 export const staffProfileChangeRequestSchema = z.object({
   firstName: z.string().trim().max(100).optional(),
   lastName: z.string().trim().max(100).optional(),

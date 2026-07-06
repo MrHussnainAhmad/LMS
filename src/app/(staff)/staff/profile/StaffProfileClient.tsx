@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { BriefcaseBusiness, CalendarClock, KeyRound, Mail, Send, UserRound } from "lucide-react";
+import { ProfilePictureUploader } from "@/components/ProfilePictureUploader";
 
 type StaffProfile = {
   id: number;
@@ -19,6 +20,7 @@ type StaffProfile = {
   campusName: string;
   isActive: boolean;
   joinedAt: string;
+  profilePictureUrl?: string | null;
 };
 
 type Assignment = {
@@ -126,6 +128,16 @@ export function StaffProfileClient({
         <h1 className="text-3xl font-display font-bold text-brand-950">Profile & Settings</h1>
         <p className="text-stone-500 mt-1">View your staff record, request corrections, and update your password.</p>
       </div>
+
+      <Card>
+        <CardContent className="p-6">
+          <ProfilePictureUploader 
+            currentPictureUrl={staff.profilePictureUrl} 
+            name={staff.firstName + " " + (staff.lastName || "")} 
+            apiEndpoint="/api/staff/profile" 
+          />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">

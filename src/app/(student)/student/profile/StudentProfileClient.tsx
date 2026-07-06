@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { BookOpen, CheckCircle2, KeyRound, Send, UserRound } from "lucide-react";
+import { ProfilePictureUploader } from "@/components/ProfilePictureUploader";
 
 type ProfileRequest = {
   id: number;
@@ -26,6 +27,7 @@ type StudentProfile = {
   phone: string | null;
   loginRollNumber: string;
   classRollNumber: string;
+  profilePictureUrl?: string | null;
   classId: number;
   sectionId: number;
   className: string;
@@ -142,6 +144,16 @@ export function StudentProfileClient({
         <h1 className="text-3xl font-display font-bold text-brand-950">Profile & Settings</h1>
         <p className="text-stone-500 mt-1">View your student record, request corrections, and update your password.</p>
       </div>
+
+      <Card>
+        <CardContent className="p-6">
+          <ProfilePictureUploader 
+            currentPictureUrl={student.profilePictureUrl} 
+            name={student.firstName + " " + (student.lastName || "")} 
+            apiEndpoint="/api/student/profile" 
+          />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">

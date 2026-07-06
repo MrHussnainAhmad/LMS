@@ -14,6 +14,7 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
         name: staff.name,
         email: staff.email,
         phone: staff.phone,
+        profilePictureUrl: staff.profilePictureUrl,
         campusName: campuses.name,
       })
       .from(staff)
@@ -27,4 +28,22 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
     console.error("Error fetching profile:", error);
     return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 });
   }
+});
+
+export const PATCH = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
+  if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const body = await req.json();
+  const parsed = (await import("@/lib/validators/staff")).updateStaffProfileSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+
+  await db.update(staff)
+    .set({ 
+      ...(parsed.data.profilePictureUrl && { profilePictureUrl: parsed.data.profilePictureUrl })
+    })
+    .where(and(eq(staff.id, session.userId), eq(staff.institutionId, session.institutionId)));
+
+  return NextResponse.json({ message: "Profile updated successfully" });
 });
