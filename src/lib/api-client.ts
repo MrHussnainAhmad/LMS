@@ -7,14 +7,55 @@ export class ApiError extends Error {
   }
 }
 
+let isRefreshing = false;
+let failedQueue: { resolve: () => void, reject: (err: any) => void }[] = [];
+
+const processQueue = (error: Error | null) => {
+  failedQueue.forEach(prom => {
+    if (error) prom.reject(error);
+    else prom.resolve();
+  });
+  failedQueue = [];
+};
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
+  let res = await fetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
+
+  if (res.status === 401 && !url.includes('/api/auth/refresh') && !url.includes('/api/auth/login')) {
+    if (!isRefreshing) {
+      isRefreshing = true;
+      try {
+        const refreshRes = await fetch('/api/auth/refresh', { method: 'POST' });
+        if (!refreshRes.ok) throw new Error('Session expired');
+        
+        processQueue(null);
+      } catch (err: any) {
+        processQueue(err);
+        throw err;
+      } finally {
+        isRefreshing = false;
+      }
+    } else {
+      await new Promise<void>((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      });
+    }
+
+    // Retry original request
+    res = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    });
+  }
 
   const isJson = res.headers.get('content-type')?.includes('application/json');
   const data = isJson ? await res.json() : await res.text();
