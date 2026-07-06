@@ -9,7 +9,10 @@ import { logAudit } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
-  const refreshToken = cookieStore.get('refresh_token')?.value;
+  const body = await req.json().catch(() => ({}));
+  const refreshToken = typeof body.refreshToken === 'string'
+    ? body.refreshToken
+    : cookieStore.get('refresh_token')?.value;
 
   if (!refreshToken) {
     return NextResponse.json({ error: 'No refresh token' }, { status: 401 });
@@ -62,5 +65,8 @@ export async function POST(req: NextRequest) {
     .where(eq(refreshTokens.id, record.id));
   await setAuthCookies(accessToken, newRefresh);
 
-  return NextResponse.json({ message: 'Token refreshed' });
+  return NextResponse.json({
+    message: 'Token refreshed',
+    ...(typeof body.refreshToken === 'string' ? { accessToken, refreshToken: newRefresh } : {}),
+  });
 }

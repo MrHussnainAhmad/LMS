@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
-    const { emailOrUsername, password, securityAnswer } = parsed.data;
+    const { emailOrUsername, password, securityAnswer, returnTokens } = parsed.data;
     const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';
     const userAgent = req.headers.get('user-agent') ?? 'Unknown';
 
@@ -232,7 +232,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ message: 'Logged in successfully', role, mustChangePassword });
+    return NextResponse.json({
+      message: 'Logged in successfully',
+      role,
+      mustChangePassword,
+      ...(returnTokens ? { accessToken, refreshToken } : {}),
+    });
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('Account temporarily locked')) {
       return NextResponse.json({ error: err.message }, { status: 423 });

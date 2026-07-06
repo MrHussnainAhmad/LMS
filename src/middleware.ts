@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSessionEdge } from './lib/auth-edge';
+import { applyCorsHeaders, corsPreflight } from './lib/cors';
 
 export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith('/api')) {
+    if (request.method === 'OPTIONS') return corsPreflight(request);
+    return applyCorsHeaders(request, NextResponse.next());
+  }
+
   const session = await getSessionEdge(request.cookies);
   const path = request.nextUrl.pathname;
 
@@ -67,6 +73,7 @@ function getDashboardPath(role: string) {
 
 export const config = {
   matcher: [
+    '/api/:path*',
     /*
      * Match all request paths except for the ones starting with:
      * - api (API routes are protected by rbac.ts)

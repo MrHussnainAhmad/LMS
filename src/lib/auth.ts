@@ -1,5 +1,6 @@
 import { SignJWT } from 'jose';
 import { cookies } from 'next/headers';
+import type { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { refreshTokens } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -66,6 +67,13 @@ export async function clearAuthCookies() {
 export async function getSession(): Promise<JWTPayload | null> {
   const cookieStore = await cookies();
   return await getSessionEdge(cookieStore);
+}
+
+export async function getSessionFromRequest(req: NextRequest): Promise<JWTPayload | null> {
+  const authorization = req.headers.get('authorization');
+  const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (bearerToken) return await verifyAccessToken(bearerToken);
+  return await getSessionEdge(req.cookies);
 }
 
 export async function revokeAllSessions(role: UserRole, userId: number) {

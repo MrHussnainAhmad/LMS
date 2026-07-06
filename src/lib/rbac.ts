@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, UserRole, JWTPayload } from './auth';
+import { getSessionFromRequest, UserRole, JWTPayload } from './auth';
 
 type RouteHandler = (
   req: NextRequest,
@@ -13,7 +13,7 @@ export function requireRole(
 ) {
   return async (req: NextRequest, context: any) => {
     try {
-      const session = await getSession();
+      const session = await getSessionFromRequest(req);
       if (!session) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }

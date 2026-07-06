@@ -4,6 +4,7 @@ export const loginSchema = z.object({
   emailOrUsername: z.string().min(1),
   password: z.string().min(1),
   securityAnswer: z.string().optional(),
+  returnTokens: z.boolean().optional(),
 }).strict();
 
 export const changePasswordSchema = z.object({

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import {
   onlineTestSubmissions,
@@ -8,7 +8,7 @@ import {
   students,
   tests,
 } from "@/db/schema";
-import { getSession } from "@/lib/auth";
+import { getSessionFromRequest } from "@/lib/auth";
 import { and, eq, inArray } from "drizzle-orm";
 import { expireStaleOnlineSubmissions } from "@/app/actions/online-test-actions";
 
@@ -24,8 +24,8 @@ function isCurrentOrFutureExam(date: string, endDate: string | null) {
   return (endDate || date) >= todayDateString();
 }
 
-export async function GET() {
-  const session = await getSession();
+export async function GET(req: NextRequest) {
+  const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({});
 
   if (session.role === "STUDENT" && session.institutionId) {
