@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { tests, classes, sections, subjects } from "@/db/schema";
+import { tests, classes, sections, subjects, onlineTests } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { eq, and, desc } from "drizzle-orm";
 
@@ -18,11 +18,13 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
         className: classes.name,
         sectionName: sections.name,
         subjectName: subjects.name,
+        durationMinutes: onlineTests.durationMinutes,
       })
       .from(tests)
       .leftJoin(classes, eq(tests.classId, classes.id))
       .leftJoin(sections, eq(tests.sectionId, sections.id))
       .leftJoin(subjects, eq(tests.subjectId, subjects.id))
+      .leftJoin(onlineTests, eq(onlineTests.testId, tests.id))
       .where(
         and(
           eq(tests.staffId, session.userId),

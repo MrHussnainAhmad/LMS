@@ -163,6 +163,53 @@ export async function createOnlineTestAction(formData: FormData) {
   revalidatePath("/student/dashboard");
 }
 
+export async function deleteOnlineTestAction(testId: number) {
+  const session = await getSession();
+  if (!session || session.role !== "STAFF" || !session.institutionId) throw new Error("Unauthorized");
+
+  const [test] = await db.select().from(tests).where(and(
+    eq(tests.id, testId),
+    eq(tests.institutionId, session.institutionId)
+  )).limit(1);
+
+  if (!test) throw new Error("Test not found");
+  if (test.staffId !== session.userId) throw new Error("You can only delete tests you hosted");
+
+  await db.delete(tests).where(eq(tests.id, testId));
+
+  revalidatePath("/staff/tests");
+  revalidatePath("/staff/dashboard");
+}
+
+export async function updateOnlineTestAction(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== "STAFF" || !session.institutionId) throw new Error("Unauthorized");
+
+  const testId = asInteger(formData.get("testId"), "Test");
+  const title = String(formData.get("title") || "").trim();
+  const durationMinutesStr = String(formData.get("durationMinutes") || "");
+  const durationMinutes = durationMinutesStr ? asInteger(formData.get("durationMinutes"), "Duration") : null;
+
+  if (!title) throw new Error("Test title is required");
+
+  const [test] = await db.select().from(tests).where(and(
+    eq(tests.id, testId),
+    eq(tests.institutionId, session.institutionId)
+  )).limit(1);
+
+  if (!test) throw new Error("Test not found");
+  if (test.staffId !== session.userId) throw new Error("You can only edit tests you hosted");
+
+  await db.update(tests).set({ title }).where(eq(tests.id, testId));
+
+  if (durationMinutes !== null) {
+    await db.update(onlineTests).set({ durationMinutes }).where(eq(onlineTests.testId, testId));
+  }
+
+  revalidatePath("/staff/tests");
+  revalidatePath("/staff/dashboard");
+}
+
 async function getStudentOnlineTest(studentId: number, institutionId: number, onlineTestId: number) {
   const [student] = await db.select().from(students).where(and(eq(students.id, studentId), eq(students.institutionId, institutionId))).limit(1);
   if (!student) throw new Error("Student not found");

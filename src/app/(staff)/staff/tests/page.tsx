@@ -2,6 +2,7 @@ import { ClipboardCheck, FileQuestion } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { OnlineTestBuilder } from "@/components/tests/OnlineTestBuilder";
+import { TestActions } from "@/components/tests/TestActions";
 import { gradeMixedTestAction } from "@/app/actions/online-test-actions";
 import { db } from "@/db";
 import { classes, onlineTestQuestions, onlineTestSubmissions, onlineTests, sections, staffAssignments, students, subjects, tests } from "@/db/schema";
@@ -128,6 +129,7 @@ export default async function StaffTestsPage() {
                             <h3 className="font-semibold text-brand-950">{test.title}</h3>
                             <p className="text-sm text-stone-500">{onlineTest.mode} - {className} - {sectionName || "Section"} - {subjectName || "Subject"}</p>
                             <p className="text-xs text-stone-500">{onlineTest.durationMinutes} min - {test.maxMarks} marks - {relatedSubmissions.length} submissions</p>
+                            <TestActions testId={test.id} currentTitle={test.title} currentDurationMinutes={onlineTest.durationMinutes} />
                           </div>
                           <span className="w-fit rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-brand-700 group-open:bg-brand-50">
                             Review submissions
