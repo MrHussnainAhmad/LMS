@@ -31,7 +31,15 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
 
     if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
-    return NextResponse.json({ profile });
+    const allClasses = await db.select({ id: classes.id, name: classes.name })
+      .from(classes)
+      .where(eq(classes.institutionId, session.institutionId));
+
+    const allSections = await db.select({ id: sections.id, name: sections.name, classId: sections.classId })
+      .from(sections)
+      .where(eq(sections.institutionId, session.institutionId));
+
+    return NextResponse.json({ profile, classes: allClasses, sections: allSections });
   } catch (error) {
     console.error("Error fetching profile:", error);
     return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 });
