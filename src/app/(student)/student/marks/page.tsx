@@ -1,21 +1,31 @@
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { FileText, Trophy } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { db } from "@/db";
+import { marks, subjects, tests } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { and, desc, eq } from "drizzle-orm";
+import { FileText, Trophy } from "lucide-react";
 import { redirect } from "next/navigation";
 
 export default async function StudentMarksPage() {
   const session = await getSession();
-  if (!session || session.role !== "STUDENT") {
-    redirect("/login");
-  }
+  if (!session || session.role !== "STUDENT" || !session.institutionId) redirect("/login");
+
+  const rows = await db.select({
+    mark: marks,
+    test: tests,
+    subjectName: subjects.name,
+  })
+    .from(marks)
+    .innerJoin(tests, eq(marks.testId, tests.id))
+    .leftJoin(subjects, eq(tests.subjectId, subjects.id))
+    .where(and(eq(marks.studentId, session.userId), eq(marks.institutionId, session.institutionId)))
+    .orderBy(desc(marks.createdAt));
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-brand-950">My Marks</h1>
-          <p className="text-stone-500 mt-1">Review your test scores and academic performance.</p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-display font-bold text-brand-950">My Marks</h1>
+        <p className="text-stone-500 mt-1">Review uploaded assessment and exam scores.</p>
       </div>
 
       <Card>
@@ -25,18 +35,42 @@ export default async function StudentMarksPage() {
             Performance Report
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-12">
-          <div className="flex flex-col items-center justify-center text-center space-y-4">
-            <div className="h-16 w-16 rounded-full bg-brand-50 flex items-center justify-center">
-              <Trophy className="h-8 w-8 text-brand-400" />
+        <CardContent className="p-0">
+          {rows.length === 0 ? (
+            <div className="p-12 flex flex-col items-center justify-center text-center space-y-4">
+              <div className="h-16 w-16 rounded-full bg-brand-50 flex items-center justify-center">
+                <Trophy className="h-8 w-8 text-brand-400" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-stone-800">No Grades Posted</h3>
+                <p className="text-stone-500 max-w-md mx-auto mt-2">
+                  There are currently no marks uploaded for your account.
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-xl font-bold text-stone-800">No Grades Posted</h3>
-              <p className="text-stone-500 max-w-md mx-auto mt-2">
-                There are currently no graded assignments or test scores published for your account. Check back later after assessments are evaluated.
-              </p>
+          ) : (
+            <div className="divide-y divide-border">
+              {rows.map(({ mark, test, subjectName }) => {
+                const percentage = mark.totalMarks > 0 ? Math.round((mark.marksObtained / mark.totalMarks) * 100) : 0;
+                return (
+                  <div key={mark.id} className="p-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="font-semibold text-brand-950">{test.title}</h3>
+                      <p className="text-sm text-stone-500">
+                        {test.type} - {subjectName || "Subject"} - {new Date(test.date).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="text-left sm:text-right">
+                      <p className="text-lg font-bold text-brand-900">
+                        {mark.marksObtained}/{mark.totalMarks}
+                      </p>
+                      <p className="text-xs text-stone-500">{percentage}%</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

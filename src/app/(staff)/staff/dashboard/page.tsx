@@ -1,11 +1,14 @@
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Clock, MapPin, Users, CheckSquare, FileEdit } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { CheckSquare, FileEdit } from "lucide-react";
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { staffAssignments, sections, classes, subjects, staff } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { getVisibleAnnouncements } from "@/lib/announcements";
+import { DashboardAnnouncements } from "@/components/announcements/DashboardAnnouncements";
+import { TodayTimetableCard, type TimetableEntry } from "@/components/timetable/ScheduleViews";
 
 export default async function StaffDashboard() {
   const session = await getSession();
@@ -41,6 +44,15 @@ export default async function StaffDashboard() {
 
   // Sort by start time manually for simplicity
   scheduleRows.sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const todayEntries: TimetableEntry[] = scheduleRows.map((row) => ({
+    id: row.id,
+    dayOfWeek: currentDay,
+    startTime: row.startTime,
+    endTime: row.endTime,
+    title: row.subject || "Subject",
+    meta: `${row.className}-${row.sectionName}`,
+  }));
+  const recentAnnouncements = await getVisibleAnnouncements(session, 4);
 
   return (
     <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
@@ -51,32 +63,7 @@ export default async function StaffDashboard() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">
-          <h2 className="text-lg font-semibold text-brand-900 px-1">Today's Timeline</h2>
-          
-          <div className="space-y-3 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:ml-[4.5rem] md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
-            {scheduleRows.length === 0 && (
-              <p className="text-stone-500 py-4 ml-12">You have no classes scheduled for today.</p>
-            )}
-            {scheduleRows.map((item, index) => (
-              <div key={item.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-surface bg-brand-100 text-brand-800 shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10">
-                  <Clock className="h-4 w-4" />
-                </div>
-                <Card className={`w-[calc(100%-3rem)] md:w-[calc(50%-2.5rem)] shadow-sm transition-all ${index === 0 ? 'ring-2 ring-brand-800' : ''}`}>
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-xs font-bold text-brand-800 bg-brand-50 px-2 py-1 rounded">{item.startTime} - {item.endTime}</span>
-                      {index === 0 && <span className="flex h-3 w-3"><span className="relative inline-flex rounded-full h-3 w-3 bg-success"></span></span>}
-                    </div>
-                    <h3 className="font-bold text-brand-950">{item.subject}</h3>
-                    <div className="flex items-center gap-4 mt-2 text-sm text-stone-500">
-                      <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {item.className}-{item.sectionName}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            ))}
-          </div>
+          <TodayTimetableCard entries={todayEntries} title="Today's Teaching Timetable" />
         </div>
 
         <div className="space-y-4 mt-8 lg:mt-0">
@@ -97,6 +84,7 @@ export default async function StaffDashboard() {
               </Link>
             </CardContent>
           </Card>
+          <DashboardAnnouncements announcements={recentAnnouncements} />
         </div>
       </div>
     </div>

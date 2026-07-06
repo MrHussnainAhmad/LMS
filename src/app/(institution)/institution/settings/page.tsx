@@ -2,9 +2,10 @@ import { db } from "@/db";
 import { institutions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Settings, Shield, Building2 } from "lucide-react";
+import { Shield, Building2 } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { InstitutionLogoUploader } from "./InstitutionLogoUploader";
 
 export default async function InstitutionSettingsPage() {
   const session = await getSession();
@@ -44,6 +45,8 @@ export default async function InstitutionSettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
+            <InstitutionLogoUploader currentLogoKey={profile.logoKey} institutionName={profile.name} />
+            <div className="border-t border-border" />
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-stone-500 uppercase tracking-wider">Institution Name</label>

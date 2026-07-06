@@ -1,10 +1,13 @@
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Clock, CheckCircle2, Megaphone, UploadCloud } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { CheckCircle2, UploadCloud } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { students, staffAssignments, subjects, staff, submissions, announcements } from "@/db/schema";
+import { students, staffAssignments, subjects, staff, submissions, marks, tests } from "@/db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { getVisibleAnnouncements } from "@/lib/announcements";
+import { DashboardAnnouncements } from "@/components/announcements/DashboardAnnouncements";
+import { TodayTimetableCard, type TimetableEntry } from "@/components/timetable/ScheduleViews";
 
 export default async function StudentDashboard() {
   const session = await getSession();
@@ -38,16 +41,32 @@ export default async function StudentDashboard() {
   );
 
   scheduleRows.sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const todayEntries: TimetableEntry[] = scheduleRows.map((row) => ({
+    id: row.id,
+    dayOfWeek: currentDay,
+    startTime: row.startTime,
+    endTime: row.endTime,
+    title: row.subject || "Break / Recess",
+    subtitle: row.teacher,
+    isBreak: !row.subject,
+  }));
 
   // Get total submissions
   const studentSubmissions = await db.select().from(submissions).where(eq(submissions.studentId, studentId));
 
-  // Get announcements
-  const recentAnnouncements = await db.select()
-    .from(announcements)
-    .where(eq(announcements.institutionId, currentStudent.institutionId))
-    .orderBy(desc(announcements.createdAt))
-    .limit(3);
+  const [latestMark] = await db.select({
+    mark: marks,
+    test: tests,
+    subjectName: subjects.name,
+  })
+    .from(marks)
+    .innerJoin(tests, eq(marks.testId, tests.id))
+    .leftJoin(subjects, eq(tests.subjectId, subjects.id))
+    .where(and(eq(marks.studentId, studentId), eq(marks.institutionId, currentStudent.institutionId)))
+    .orderBy(desc(marks.createdAt))
+    .limit(1);
+
+  const recentAnnouncements = await getVisibleAnnouncements(session, 4);
 
   return (
     <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
@@ -77,73 +96,29 @@ export default async function StudentDashboard() {
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-teal-100 text-sm font-medium mb-1">Latest Test Score</p>
-                <h3 className="text-4xl font-display font-bold">--</h3>
+                <h3 className="text-4xl font-display font-bold">
+                  {latestMark ? `${latestMark.mark.marksObtained}/${latestMark.mark.totalMarks}` : "--"}
+                </h3>
               </div>
               <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
                 <CheckCircle2 className="h-6 w-6 text-white" />
               </div>
             </div>
-            <p className="text-teal-100 text-xs mt-4">No recent test marks found.</p>
+            <p className="text-teal-100 text-xs mt-4">
+              {latestMark
+                ? `${latestMark.test.type} - ${latestMark.subjectName || "Subject"} - ${latestMark.test.title}`
+                : "No recent test marks found."}
+            </p>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6 mt-8">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg">Today's Classes</CardTitle>
-            <Clock className="h-4 w-4 text-stone-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {scheduleRows.length === 0 && (
-                <p className="text-stone-500 py-4 text-sm">You have no classes scheduled for today.</p>
-              )}
-              {scheduleRows.map((cls) => (
-                <div key={cls.id} className="flex items-center gap-4 p-4 border border-border rounded-lg bg-surface">
-                  <div className="flex-shrink-0 w-12 h-12 bg-brand-50 rounded-full flex items-center justify-center text-brand-600 font-bold">
-                    {cls.startTime.substring(0, 5)}
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-semibold text-brand-950">
-                      {cls.subject || "Break / Recess"}
-                    </h4>
-                    <p className="text-sm text-stone-500 flex items-center gap-2 mt-1">
-                      {cls.teacher && (
-                        <span className="flex items-center gap-1">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          {cls.teacher}
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5" />
-                        {cls.startTime.substring(0, 5)} - {cls.endTime.substring(0, 5)}
-                      </span>
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="lg:col-span-2">
+          <TodayTimetableCard entries={todayEntries} title="Today's Classes" />
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg">Announcements</CardTitle>
-            <Megaphone className="h-4 w-4 text-stone-400" />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {recentAnnouncements.length === 0 && (
-              <p className="text-stone-500 py-2 text-sm">No new announcements.</p>
-            )}
-            {recentAnnouncements.map(ann => (
-              <div key={ann.id} className="border-l-2 border-brand-500 pl-3 py-1">
-                <p className="text-sm font-semibold text-brand-900">{ann.title}</p>
-                <p className="text-xs text-stone-500 mt-1">{new Date(ann.createdAt).toLocaleDateString()}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <DashboardAnnouncements announcements={recentAnnouncements} />
       </div>
     </div>
   );

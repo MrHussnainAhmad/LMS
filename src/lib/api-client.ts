@@ -1,6 +1,9 @@
 export class ApiError extends Error {
-  constructor(public status: number, public data: any) {
-    super(data.error || 'An error occurred');
+  constructor(public status: number, public data: unknown) {
+    const message = typeof data === 'object' && data && 'error' in data && typeof data.error === 'string'
+      ? data.error
+      : 'An error occurred';
+    super(message);
   }
 }
 
@@ -25,7 +28,8 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   get: <T>(url: string, options?: RequestInit) => request<T>(url, { ...options, method: 'GET' }),
-  post: <T>(url: string, body: any, options?: RequestInit) => request<T>(url, { ...options, method: 'POST', body: JSON.stringify(body) }),
-  put: <T>(url: string, body: any, options?: RequestInit) => request<T>(url, { ...options, method: 'PUT', body: JSON.stringify(body) }),
+  post: <T>(url: string, body: unknown, options?: RequestInit) => request<T>(url, { ...options, method: 'POST', body: JSON.stringify(body) }),
+  patch: <T>(url: string, body: unknown, options?: RequestInit) => request<T>(url, { ...options, method: 'PATCH', body: JSON.stringify(body) }),
+  put: <T>(url: string, body: unknown, options?: RequestInit) => request<T>(url, { ...options, method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(url: string, options?: RequestInit) => request<T>(url, { ...options, method: 'DELETE' }),
 };

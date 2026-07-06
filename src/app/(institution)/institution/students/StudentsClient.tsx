@@ -11,13 +11,31 @@ import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { useRouter } from "next/navigation";
 
+type StudentRow = {
+  id: number;
+  loginRollNumber: string;
+  name: string;
+  gender: string;
+  yearOfJoining: number;
+};
+
+type CreateStudentResponse = {
+  credentials?: {
+    loginRollNumber?: string;
+  };
+};
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Something went wrong";
+}
+
 export function StudentsClient({
   students,
   campuses,
   classes,
   sections
 }: {
-  students: any[];
+  students: StudentRow[];
   campuses: { id: number; name: string }[];
   classes: { id: number; name: string }[];
   sections: { id: number; classId: number; name: string }[];
@@ -34,10 +52,10 @@ export function StudentsClient({
     : [];
 
   const columns = [
-    { header: "Roll Number", accessorKey: "loginRollNumber", sortable: true },
-    { header: "Name", accessorKey: "name", cell: (s: any) => <span className="font-medium text-brand-900">{s.name}</span> },
-    { header: "Gender", accessorKey: "gender" },
-    { header: "Year", accessorKey: "yearOfJoining" },
+    { header: "Roll Number", accessorKey: "loginRollNumber" as const, sortable: true },
+    { header: "Name", accessorKey: "name" as const, cell: (s: StudentRow) => <span className="font-medium text-brand-900">{s.name}</span> },
+    { header: "Gender", accessorKey: "gender" as const },
+    { header: "Year", accessorKey: "yearOfJoining" as const },
     { 
       header: "Actions", 
       cell: () => (
@@ -55,7 +73,7 @@ export function StudentsClient({
     const data = Object.fromEntries(formData);
     
     try {
-      const res = await api.post("/api/institution/students", data) as any;
+      const res = await api.post<CreateStudentResponse>("/api/institution/students", data);
       toast({ 
         title: "Student Created", 
         description: `Login ID generated: ${res.credentials?.loginRollNumber || 'Success'}`, 
@@ -63,8 +81,8 @@ export function StudentsClient({
       });
       setIsCreateOpen(false);
       router.refresh();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Error", description: errorMessage(err), variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -161,6 +179,11 @@ export function StudentsClient({
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Class Roll Number</label>
                   <Input name="classRollNumber" required placeholder="e.g. 001" />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Phone Number</label>
+                  <Input name="phone" placeholder="Optional" />
                 </div>
                 
                 <div className="pt-4 flex justify-end">

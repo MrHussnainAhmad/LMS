@@ -1,0 +1,106 @@
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/db";
+import { campuses, staff, staffProfileChangeRequests } from "@/db/schema";
+import { requireRole } from "@/lib/rbac";
+import type { JWTPayload } from "@/lib/auth";
+import { reviewStaffProfileChangeRequestSchema } from "@/lib/validators/staff";
+import { and, eq } from "drizzle-orm";
+
+type RequestedFields = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  campusId?: number;
+};
+
+function splitName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || "",
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
+export const PATCH = requireRole(["INSTITUTION"], async (
+  req: NextRequest,
+  { session, params }: { session: JWTPayload; params: Promise<{ id: string }> }
+) => {
+  const body = await req.json();
+  const parsed = reviewStaffProfileChangeRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+
+  const { id } = await params;
+  const requestId = Number(id);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  const [requestRow] = await db.select()
+    .from(staffProfileChangeRequests)
+    .where(and(
+      eq(staffProfileChangeRequests.id, requestId),
+      eq(staffProfileChangeRequests.institutionId, session.userId)
+    ))
+    .limit(1);
+
+  if (!requestRow) return NextResponse.json({ error: "Request not found" }, { status: 404 });
+  if (requestRow.status !== "PENDING") {
+    return NextResponse.json({ error: "Request has already been reviewed" }, { status: 400 });
+  }
+
+  const reviewedValues = {
+    status: parsed.data.status,
+    adminNote: parsed.data.adminNote || null,
+    reviewedBy: session.userId,
+    reviewedAt: new Date(),
+  };
+
+  if (parsed.data.status === "REJECTED") {
+    await db.update(staffProfileChangeRequests)
+      .set(reviewedValues)
+      .where(eq(staffProfileChangeRequests.id, requestId));
+    return NextResponse.json({ message: "Request rejected" });
+  }
+
+  const [staffRow] = await db.select().from(staff)
+    .where(and(eq(staff.id, requestRow.staffId), eq(staff.institutionId, session.userId)))
+    .limit(1);
+  if (!staffRow) return NextResponse.json({ error: "Staff not found" }, { status: 404 });
+
+  const requestedFields = requestRow.requestedFields as RequestedFields;
+  const updates: Partial<typeof staff.$inferInsert> = {};
+
+  if (requestedFields.firstName || requestedFields.lastName) {
+    const currentName = splitName(staffRow.name);
+    const firstName = requestedFields.firstName || currentName.firstName;
+    const lastName = requestedFields.lastName ?? currentName.lastName;
+    updates.name = `${firstName} ${lastName}`.trim();
+  }
+  if (requestedFields.email) updates.email = requestedFields.email;
+  if (requestedFields.phone) updates.phone = requestedFields.phone;
+
+  if (requestedFields.campusId) {
+    const [campus] = await db.select().from(campuses)
+      .where(and(eq(campuses.id, requestedFields.campusId), eq(campuses.institutionId, session.userId)))
+      .limit(1);
+    if (!campus) return NextResponse.json({ error: "Requested campus not found" }, { status: 400 });
+    updates.campusId = requestedFields.campusId;
+  }
+
+  try {
+    await db.update(staff).set(updates).where(eq(staff.id, staffRow.id));
+    await db.update(staffProfileChangeRequests)
+      .set(reviewedValues)
+      .where(eq(staffProfileChangeRequests.id, requestId));
+  } catch (error) {
+    if (typeof error === "object" && error && "code" in error && error.code === "23505") {
+      return NextResponse.json({ error: "Email address is already in use" }, { status: 409 });
+    }
+    throw error;
+  }
+
+  return NextResponse.json({ message: "Request approved and staff profile updated" });
+});

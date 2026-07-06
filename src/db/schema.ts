@@ -20,8 +20,10 @@ export const roleEnum = pgEnum('user_role', ['SUPER_ADMIN', 'EMPLOYEE', 'INSTITU
 export const instTypeEnum = pgEnum('institution_type', ['SCHOOL', 'COLLEGE', 'UNIVERSITY']);
 export const instStatusEnum = pgEnum('institution_status', ['PENDING', 'APPROVED', 'REJECTED']);
 export const attendanceStatusEnum = pgEnum('attendance_status', ['PRESENT', 'ABSENT', 'LATE', 'LEAVE']);
-export const testTypeEnum = pgEnum('test_type', ['DAILY', 'WEEKLY', 'MONTHLY', 'QUIZ']);
+export const testTypeEnum = pgEnum('test_type', ['DAILY', 'WEEKLY', 'QUIZ', 'MONTHLY', 'MID', 'FINAL']);
+export const testCreatorRoleEnum = pgEnum('test_creator_role', ['INSTITUTION', 'STAFF']);
 export const announcementTargetEnum = pgEnum('announcement_target', ['ALL', 'CAMPUS', 'CLASS', 'SECTION']);
+export const profileRequestStatusEnum = pgEnum('profile_request_status', ['PENDING', 'APPROVED', 'REJECTED']);
 
 // --- SUPER ADMIN ---
 export const superAdmins = pgTable('super_admins', {
@@ -146,6 +148,8 @@ export const students = pgTable('students', {
   institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
   campusId: integer('campus_id').references(() => campuses.id, { onDelete: 'set null' }),
   name: varchar('name', { length: 255 }).notNull(),
+  fatherName: varchar('father_name', { length: 255 }),
+  phone: varchar('phone', { length: 50 }),
   gender: varchar('gender', { length: 10 }).default('MALE').notNull(),
   loginRollNumber: varchar('login_roll_number', { length: 255 }).notNull().unique(),
   passwordHash: text('password_hash').notNull(),
@@ -162,6 +166,34 @@ export const students = pgTable('students', {
   instClassRollUnique: unique('inst_class_roll_unique').on(t.institutionId, t.classId, t.classRollNumber),
 }));
 
+// --- STUDENT PROFILE CHANGE REQUESTS ---
+export const studentProfileChangeRequests = pgTable('student_profile_change_requests', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  studentId: integer('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+  requestedFields: jsonb('requested_fields').notNull(),
+  reason: text('reason').notNull(),
+  status: profileRequestStatusEnum('status').default('PENDING').notNull(),
+  reviewedBy: integer('reviewed_by').references(() => institutions.id, { onDelete: 'set null' }),
+  reviewedAt: timestamp('reviewed_at'),
+  adminNote: text('admin_note'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// --- STAFF PROFILE CHANGE REQUESTS ---
+export const staffProfileChangeRequests = pgTable('staff_profile_change_requests', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  staffId: integer('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  requestedFields: jsonb('requested_fields').notNull(),
+  reason: text('reason').notNull(),
+  status: profileRequestStatusEnum('status').default('PENDING').notNull(),
+  reviewedBy: integer('reviewed_by').references(() => institutions.id, { onDelete: 'set null' }),
+  reviewedAt: timestamp('reviewed_at'),
+  adminNote: text('admin_note'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 // --- STAFF ASSIGNMENTS (TIMETABLE) ---
 export const staffAssignments = pgTable('staff_assignments', {
   id: serial('id').primaryKey(),
@@ -177,6 +209,20 @@ export const staffAssignments = pgTable('staff_assignments', {
   staffTimeSlotUnique: unique('staff_time_slot_unique').on(t.institutionId, t.staffId, t.dayOfWeek, t.startTime),
   sectionTimeSlotUnique: unique('section_time_slot_unique').on(t.institutionId, t.sectionId, t.dayOfWeek, t.startTime),
 }));
+
+// --- ASSIGNMENTS ---
+export const assignments = pgTable('assignments', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  staffId: integer('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  classId: integer('class_id').notNull().references(() => classes.id, { onDelete: 'cascade' }),
+  sectionId: integer('section_id').references(() => sections.id, { onDelete: 'cascade' }),
+  subjectId: integer('subject_id').references(() => subjects.id, { onDelete: 'set null' }),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  dueAt: timestamp('due_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
 
 // --- ATTENDANCES ---
 export const attendances = pgTable('attendances', {
@@ -195,13 +241,16 @@ export const attendances = pgTable('attendances', {
 export const tests = pgTable('tests', {
   id: serial('id').primaryKey(),
   institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
-  sectionId: integer('section_id').notNull().references(() => sections.id, { onDelete: 'cascade' }),
+  classId: integer('class_id').notNull().references(() => classes.id, { onDelete: 'cascade' }),
+  sectionId: integer('section_id').references(() => sections.id, { onDelete: 'cascade' }),
   subjectId: integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
-  staffId: integer('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  staffId: integer('staff_id').references(() => staff.id, { onDelete: 'set null' }),
+  createdByRole: testCreatorRoleEnum('created_by_role').notNull(),
   type: testTypeEnum('type').notNull(),
   title: varchar('title', { length: 255 }).notNull(),
   maxMarks: real('max_marks').notNull(),
   date: date('date').notNull(),
+  endDate: date('end_date'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -212,6 +261,7 @@ export const marks = pgTable('marks', {
   testId: integer('test_id').notNull().references(() => tests.id, { onDelete: 'cascade' }),
   studentId: integer('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
   marksObtained: real('marks_obtained').notNull(),
+  totalMarks: real('total_marks').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   studentTestUnique: unique('student_test_unique').on(t.testId, t.studentId),
@@ -247,11 +297,13 @@ export const announcementReads = pgTable('announcement_reads', {
 export const submissions = pgTable('submissions', {
   id: serial('id').primaryKey(),
   institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
-  testId: integer('test_id').notNull().references(() => tests.id, { onDelete: 'cascade' }),
+  assignmentId: integer('assignment_id').notNull().references(() => assignments.id, { onDelete: 'cascade' }),
   studentId: integer('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
   fileKey: varchar('file_key', { length: 255 }).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  studentAssignmentUnique: unique('student_assignment_unique').on(t.assignmentId, t.studentId),
+}));
 
 // --- AUDIT LOGS ---
 export const auditLogs = pgTable('audit_logs', {

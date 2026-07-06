@@ -48,9 +48,10 @@ export const markAttendanceSchema = z.object({
 }).strict();
 
 export const createTestSchema = z.object({
-  sectionId: z.number(),
-  subjectId: z.number(),
-  type: z.enum(['DAILY', 'WEEKLY', 'MONTHLY', 'QUIZ']),
+  classId: z.number(),
+  sectionId: z.number().optional(),
+  subjectIds: z.array(z.number()).min(1),
+  type: z.enum(['DAILY', 'WEEKLY', 'QUIZ', 'MONTHLY', 'MID', 'FINAL']),
   title: z.string().min(1),
   maxMarks: z.number().min(1),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
@@ -59,7 +60,17 @@ export const createTestSchema = z.object({
 export const enterMarksSchema = z.object({
   testId: z.number(),
   records: z.array(z.object({
-    studentId: z.number(),
+    rollNumber: z.string().min(1),
     marksObtained: z.number().min(0),
+    totalMarks: z.number().min(1),
   })).min(1),
+}).strict();
+
+export const createAssignmentSchema = z.object({
+  classId: z.number(),
+  sectionId: z.number().optional(),
+  subjectId: z.number().optional(),
+  title: z.string().min(1).max(255),
+  description: z.string().optional(),
+  dueAt: z.string().min(1),
 }).strict();

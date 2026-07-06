@@ -16,7 +16,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const { firstName, lastName, campusId, classId, sectionId, gender, yearOfJoining, classRollNumber, age } = parsed.data;
+  const { firstName, lastName, campusId, classId, sectionId, gender, yearOfJoining, classRollNumber, phone, age } = parsed.data;
 
   const [inst] = await db.select().from(institutions).where(eq(institutions.id, tenantId)).limit(1);
   const [classObj] = await db.select().from(classes).where(eq(classes.id, classId)).limit(1);
@@ -53,6 +53,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
       sectionId,
       yearOfJoining,
       classRollNumber,
+      phone,
       age,
       mustChangePassword: true,
       isActive: true,
@@ -71,8 +72,8 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
       message: 'Student created successfully', 
       credentials: { loginRollNumber, initialPassword } 
     }, { status: 201 });
-  } catch (err: any) {
-    if (err.code === '23505') {
+  } catch (err: unknown) {
+    if (typeof err === 'object' && err && 'code' in err && err.code === '23505') {
       return NextResponse.json({ error: 'Login roll number or class roll number already exists' }, { status: 409 });
     }
     console.error(err);
