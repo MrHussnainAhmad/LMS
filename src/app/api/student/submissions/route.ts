@@ -3,7 +3,7 @@ import { saveStudentSubmission } from "@/app/actions/assessment-actions";
 import { db } from "@/db";
 import { assignments, submissions, students, subjects } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, or, isNull } from "drizzle-orm";
 
 export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -33,7 +33,7 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
           eq(assignments.institutionId, session.institutionId),
           eq(assignments.classId, student.classId),
           // sectionId can be null if assignment is for whole class, or match student's section
-          inArray(assignments.sectionId, [student.sectionId, null])
+          or(eq(assignments.sectionId, student.sectionId), isNull(assignments.sectionId))
         )
       )
       .orderBy(desc(assignments.dueAt));
