@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Multi-Tenant LMS Backend
 
-## Getting Started
+This is the backend for a multi-tenant Learning Management System, built with Next.js 15, Drizzle ORM, Neon PostgreSQL, and custom JWT authentication.
 
-First, run the development server:
+## Tech Stack
+- **Framework**: Next.js 15 (App Router, strict TypeScript)
+- **Database**: PostgreSQL (Neon Serverless)
+- **ORM**: Drizzle ORM
+- **Auth**: Custom JWT (jose), Argon2id (`@node-rs/argon2`)
+- **Validation**: Zod
+- **Rate Limiting**: Upstash Redis
+- **File Storage**: Cloudflare R2
+- **Email**: Resend + React Email
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Setup Instructions
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+1. **Clone and Install**
+   ```bash
+   npm install
+   ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+2. **Environment Variables**
+   Copy `.env.example` to `.env` and fill in your credentials (Neon, Resend, Upstash, R2, JWT secret).
+   ```bash
+   cp .env.example .env
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. **Database Migrations**
+   Generate and push the schema to your Neon database:
+   ```bash
+   npx drizzle-kit generate
+   npx drizzle-kit push
+   ```
 
-## Learn More
+4. **Create Super Admin**
+   Run the CLI script to bootstrap the initial super admin:
+   ```bash
+   SUPER_ADMIN_EMAIL=admin@myapp.pk \
+   SUPER_ADMIN_PASSWORD=securepassword123 \
+   SUPER_ADMIN_SECURITY_QUESTION="What is your favorite color?" \
+   SUPER_ADMIN_SECURITY_ANSWER="Blue" \
+   npx tsx scripts/create-super-admin.ts
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+5. **Run Development Server**
+   ```bash
+   npm run dev
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## API Endpoints Overview
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Route | Method | Roles Allowed | Description |
+|---|---|---|---|
+| `/api/health` | GET | Public | Health check |
+| `/api/auth/login` | POST | Public | Login (returns JWT in cookies) |
+| `/api/auth/logout` | POST | Authenticated | Clears cookies |
+| `/api/auth/refresh` | POST | Authenticated | Rotates refresh token |
+| `/api/auth/change-password` | POST | EMPLOYEE, STAFF, STUDENT | Change password |
+| `/api/institution/register` | POST | Public | Self-registration for institutions |
+| `/api/admin/employees` | POST, GET | SUPER_ADMIN | Manage employees |
+| `/api/employee/institutions/[id]/review` | POST | SUPER_ADMIN, EMPLOYEE | Approve/Reject institutions |
+| `/api/institution/staff` | POST | INSTITUTION | Create staff |
+| `/api/institution/students` | POST | INSTITUTION | Create students |
+| `/api/institution/dashboard` | GET | INSTITUTION | Fetch counts |
+| `/api/staff/timetable` | GET | STAFF | Fetch staff timetable |
+| `/api/student/timetable` | GET | STUDENT | Fetch student timetable |
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+*(More CRUD endpoints for classes, sections, subjects, announcements, attendance, and marks follow similar RBAC patterns).*
