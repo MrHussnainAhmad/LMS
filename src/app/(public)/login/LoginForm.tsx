@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export function LoginForm() {
   const [activeTab, setActiveTab] = useState("STUDENT");
@@ -78,6 +79,15 @@ export function LoginForm() {
           <Button type="submit" className="w-full mt-6" disabled={isLoading}>
             {isLoading ? "Logging in..." : "Login"}
           </Button>
+
+          {activeTab === "INSTITUTION" && (
+            <div className="text-center mt-4 text-sm">
+              <span className="text-stone-500">Don't have an account? </span>
+              <Link href="/register" className="font-medium text-brand-900 hover:underline">
+                Request a Registration?
+              </Link>
+            </div>
+          )}
         </form>
       </Tabs.Root>
     </Card>
