@@ -1,8 +1,11 @@
 "use server";
 
 import { db } from "@/db";
-import { attendances, announcements } from "@/db/schema";
+import { attendances, announcements, sections, students } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { and, eq, inArray } from "drizzle-orm";
+
+type AnnouncementTargetType = "ALL" | "CAMPUS" | "CLASS" | "SECTION" | "USER";
 
 export async function submitAttendanceAction(
   sectionId: number,
@@ -15,8 +18,30 @@ export async function submitAttendanceAction(
   const institutionId = session.institutionId;
   if (!institutionId) throw new Error("No institution bound");
 
-  // We should upsert attendance for this section/date to avoid dupes
-  // Drizzle onConflictDoUpdate requires specifying constraints
+  const [section] = await db.select({ classTeacherId: sections.classTeacherId })
+    .from(sections)
+    .where(and(eq(sections.id, sectionId), eq(sections.institutionId, institutionId)))
+    .limit(1);
+
+  if (!section || section.classTeacherId !== session.userId) {
+    throw new Error("You are not authorized to mark attendance for this class. Only the designated Class Incharge can do this.");
+  }
+
+  if (records.length > 0) {
+    const studentIds = records.map(record => record.studentId);
+    const validStudents = await db.select({ id: students.id })
+      .from(students)
+      .where(and(
+        eq(students.institutionId, institutionId),
+        eq(students.sectionId, sectionId),
+        inArray(students.id, studentIds)
+      ));
+
+    if (validStudents.length !== new Set(studentIds).size) {
+      throw new Error("Attendance records include students outside this section.");
+    }
+  }
+
   for (const record of records) {
     await db.insert(attendances).values({
       institutionId,
@@ -42,7 +67,7 @@ export async function createStaffAnnouncementAction(formData: FormData) {
 
   const title = formData.get("title") as string;
   const content = formData.get("content") as string;
-  const targetType = formData.get("targetType") as any;
+  const targetType = formData.get("targetType") as AnnouncementTargetType;
   const targetClassId = formData.get("targetClassId") ? parseInt(formData.get("targetClassId") as string) : null;
   const targetSectionId = formData.get("targetSectionId") ? parseInt(formData.get("targetSectionId") as string) : null;
 

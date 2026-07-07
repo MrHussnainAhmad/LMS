@@ -134,6 +134,23 @@ export async function createSectionAction(formData: FormData) {
   const classTeacherIdRaw = formData.get("classTeacherId") as string;
   const classTeacherId = classTeacherIdRaw ? parseInt(classTeacherIdRaw, 10) : null;
 
+  if (!name.trim() || !Number.isInteger(classId)) throw new Error("Valid class and section name are required");
+  if (classTeacherIdRaw && !Number.isInteger(classTeacherId)) throw new Error("Invalid staff ID");
+
+  const [classRow] = await db.select({ id: classes.id })
+    .from(classes)
+    .where(and(eq(classes.id, classId), eq(classes.institutionId, institutionId)))
+    .limit(1);
+  if (!classRow) throw new Error("Class not found");
+
+  if (classTeacherId !== null) {
+    const [staffRow] = await db.select({ id: staff.id })
+      .from(staff)
+      .where(and(eq(staff.id, classTeacherId), eq(staff.institutionId, institutionId)))
+      .limit(1);
+    if (!staffRow) throw new Error("Selected staff member was not found in this institution");
+  }
+
   await db.insert(sections).values({
     institutionId,
     name,
@@ -152,18 +169,31 @@ export async function updateClassInchargeAction(formData: FormData) {
   const institutionId = session.userId;
   const sectionId = parseInt(formData.get("sectionId") as string, 10);
   const classTeacherIdRaw = formData.get("classTeacherId") as string;
-  
-  console.log("updateClassInchargeAction DEBUG:", { sectionId, classTeacherIdRaw, formData: Array.from(formData.entries()) });
-
   const classTeacherId = classTeacherIdRaw ? parseInt(classTeacherIdRaw, 10) : null;
 
   if (!Number.isInteger(sectionId)) throw new Error("Invalid section ID");
+  if (classTeacherIdRaw && !Number.isInteger(classTeacherId)) throw new Error("Invalid staff ID");
+
+  const [sectionRow] = await db.select({ id: sections.id })
+    .from(sections)
+    .where(and(eq(sections.id, sectionId), eq(sections.institutionId, institutionId)))
+    .limit(1);
+  if (!sectionRow) throw new Error("Section not found");
+
+  if (classTeacherId !== null) {
+    const [staffRow] = await db.select({ id: staff.id })
+      .from(staff)
+      .where(and(eq(staff.id, classTeacherId), eq(staff.institutionId, institutionId)))
+      .limit(1);
+    if (!staffRow) throw new Error("Selected staff member was not found in this institution");
+  }
 
   await db.update(sections)
     .set({ classTeacherId })
-    .where(and(eq(sections.id, sectionId), eq(sections.institutionId, institutionId)));
+    .where(eq(sections.id, sectionId));
 
   revalidatePath("/institution/timetable");
+  revalidatePath("/staff/attendance");
   return { success: true };
 }
 

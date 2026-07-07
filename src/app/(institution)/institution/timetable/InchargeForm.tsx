@@ -3,6 +3,11 @@
 import { updateClassInchargeAction } from "@/app/actions/institution-actions";
 import { useToast } from "@/components/ui/toaster";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { useRouter } from "next/navigation";
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Failed to update incharge";
+}
 
 export function InchargeForm({
   sectionId,
@@ -14,14 +19,16 @@ export function InchargeForm({
   staff: { id: number; name: string }[];
 }) {
   const { toast } = useToast();
+  const router = useRouter();
 
   return (
     <form action={async (formData) => {
       try {
         await updateClassInchargeAction(formData);
         toast({ title: "Success", description: "Class Incharge updated successfully.", variant: "success" });
-      } catch (err: any) {
-        toast({ title: "Error", description: err.message || "Failed to update incharge", variant: "destructive" });
+        router.refresh();
+      } catch (err: unknown) {
+        toast({ title: "Error", description: getErrorMessage(err), variant: "destructive" });
       }
     }} className="space-y-4">
       <input type="hidden" name="sectionId" value={sectionId} />

@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { staffAssignments, sections, classes, students } from "@/db/schema";
+import { sections, classes, students } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -35,7 +35,7 @@ export default async function AttendancePage() {
     .from(students)
     .where(and(eq(students.institutionId, session.institutionId), inArray(students.sectionId, sectionIds))) : [];
 
-  const studentsBySection: Record<number, any[]> = {};
+  const studentsBySection: Record<number, typeof allStudents> = {};
   allStudents.forEach(student => {
     if (!studentsBySection[student.sectionId]) {
       studentsBySection[student.sectionId] = [];
@@ -50,7 +50,11 @@ export default async function AttendancePage() {
     status: attendances.status
   })
     .from(attendances)
-    .where(and(eq(attendances.date, todayStr), inArray(attendances.sectionId, sectionIds))) : [];
+    .where(and(
+      eq(attendances.institutionId, session.institutionId),
+      eq(attendances.date, todayStr),
+      inArray(attendances.sectionId, sectionIds)
+    )) : [];
 
   const todayAttendanceBySection: Record<number, boolean> = {};
   todayRecords.forEach(record => {
