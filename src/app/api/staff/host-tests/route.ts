@@ -203,7 +203,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       }
     }
 
-    await db.insert(announcements).values({
+    const [insertedAnnouncement] = await db.insert(announcements).values({
       institutionId: session.institutionId,
       senderRole: "STAFF",
       senderId: session.userId,
@@ -211,7 +211,10 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       targetSectionId: sectionId,
       title: `Online test hosted: ${title}`,
       content: `${title} is now available for ${assignment.className} - ${assignment.sectionName} in ${assignment.subjectName}. Timer: ${durationMinutes} minutes. Do not change tabs after starting the test.`,
-    });
+    }).returning({ id: announcements.id });
+
+    const { processAnnouncementNotification } = await import("@/lib/notifications");
+    await processAnnouncementNotification(insertedAnnouncement.id);
 
     return NextResponse.json({ success: true, testId: test.id });
   } catch (error) {

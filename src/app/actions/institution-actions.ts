@@ -89,14 +89,17 @@ export async function createAnnouncementAction(formData: FormData) {
   const content = formData.get("content") as string;
   const targetType = formData.get("targetType") as "ALL" | "CAMPUS" | "CLASS" | "SECTION";
 
-  await db.insert(announcements).values({
+  const [inserted] = await db.insert(announcements).values({
     institutionId,
     senderRole: "INSTITUTION",
     senderId: institutionId,
     title,
     content,
     targetType,
-  });
+  }).returning({ id: announcements.id });
+
+  const { processAnnouncementNotification } = await import("@/lib/notifications");
+  await processAnnouncementNotification(inserted.id);
 
   revalidatePath("/institution/announcements");
   return { success: true };

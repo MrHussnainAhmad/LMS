@@ -46,7 +46,7 @@ export async function createStaffAnnouncementAction(formData: FormData) {
   const targetClassId = formData.get("targetClassId") ? parseInt(formData.get("targetClassId") as string) : null;
   const targetSectionId = formData.get("targetSectionId") ? parseInt(formData.get("targetSectionId") as string) : null;
 
-  await db.insert(announcements).values({
+  const [inserted] = await db.insert(announcements).values({
     institutionId,
     senderRole: "STAFF",
     senderId: session.userId,
@@ -55,7 +55,10 @@ export async function createStaffAnnouncementAction(formData: FormData) {
     targetSectionId,
     title,
     content
-  });
+  }).returning({ id: announcements.id });
+
+  const { processAnnouncementNotification } = await import("@/lib/notifications");
+  await processAnnouncementNotification(inserted.id);
 
   return { success: true };
 }

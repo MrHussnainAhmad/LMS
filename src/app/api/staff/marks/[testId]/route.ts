@@ -92,6 +92,17 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, p
       });
     }
 
+    const { createBulkNotifications } = await import("@/lib/notifications");
+    await createBulkNotifications(records.map((r: any) => ({
+      institutionId: session.institutionId!,
+      userRole: "STUDENT",
+      userId: Number(r.studentId),
+      type: "MARKS",
+      title: "Marks Updated",
+      message: `Your marks for ${test.title} have been updated. You scored ${r.marksObtained}/${expectedTotal}.`,
+      referenceId: test.id,
+    })));
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error saving manual marks:", error);

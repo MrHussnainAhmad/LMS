@@ -27,6 +27,7 @@ export const onlineQuestionTypeEnum = pgEnum('online_question_type', ['MCQ', 'SH
 export const onlineSubmissionStatusEnum = pgEnum('online_submission_status', ['IN_PROGRESS', 'SUBMITTED', 'AUTO_GRADED', 'PENDING_REVIEW', 'GRADED', 'FAILED', 'ABANDONED']);
 export const announcementTargetEnum = pgEnum('announcement_target', ['ALL', 'CAMPUS', 'CLASS', 'SECTION', 'USER']);
 export const profileRequestStatusEnum = pgEnum('profile_request_status', ['PENDING', 'APPROVED', 'REJECTED']);
+export const notificationTypeEnum = pgEnum('notification_type', ['ANNOUNCEMENT', 'EXAM_TIMETABLE', 'ASSIGNMENT', 'TEST', 'MARKS', 'ATTENDANCE', 'GENERAL']);
 
 // --- SUPER ADMIN ---
 export const superAdmins = pgTable('super_admins', {
@@ -351,6 +352,20 @@ export const announcementReads = pgTable('announcement_reads', {
 }, (t) => ({
   userAnnouncementUnique: unique('user_announcement_unique').on(t.announcementId, t.userRole, t.userId),
 }));
+
+// --- NOTIFICATIONS ---
+export const notifications = pgTable('notifications', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  userRole: roleEnum('user_role').notNull(),
+  userId: integer('user_id').notNull(),
+  type: notificationTypeEnum('type').notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  message: text('message').notNull(),
+  isRead: boolean('is_read').default(false).notNull(),
+  referenceId: integer('reference_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
 
 // --- SUBMISSIONS ---
 export const submissions = pgTable('submissions', {
