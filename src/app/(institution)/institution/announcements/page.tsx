@@ -4,6 +4,7 @@ import { eq, desc } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Megaphone, Trash2 } from "lucide-react";
 import { getSession } from "@/lib/auth";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createAnnouncementAction, deleteAnnouncementAction } from "@/app/actions/institution-actions";
 import { AnnouncementFormClient } from "./AnnouncementFormClient";
@@ -83,7 +84,11 @@ export default async function InstitutionAnnouncementsPage() {
                     )}
                     {allAnnouncements.map((ann) => (
                       <tr key={ann.id} className="hover:bg-stone-50/50 transition-colors">
-                        <td className="px-6 py-4 font-semibold text-brand-950">{ann.title}</td>
+                        <td className="px-6 py-4 font-semibold text-brand-950">
+                          <Link href={`/announcements/${ann.id}`} className="hover:text-brand-700 hover:underline">
+                            {ann.title}
+                          </Link>
+                        </td>
                         <td className="px-6 py-4">
                           <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-brand-100 text-brand-800 rounded-md">
                             {audienceLabel(ann)}
