@@ -152,6 +152,9 @@ export async function updateClassInchargeAction(formData: FormData) {
   const institutionId = session.userId;
   const sectionId = parseInt(formData.get("sectionId") as string, 10);
   const classTeacherIdRaw = formData.get("classTeacherId") as string;
+  
+  console.log("updateClassInchargeAction DEBUG:", { sectionId, classTeacherIdRaw, formData: Array.from(formData.entries()) });
+
   const classTeacherId = classTeacherIdRaw ? parseInt(classTeacherIdRaw, 10) : null;
 
   if (!Number.isInteger(sectionId)) throw new Error("Invalid section ID");

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { updateClassInchargeAction } from "@/app/actions/institution-actions";
 import { useToast } from "@/components/ui/toaster";
 import { SubmitButton } from "@/components/ui/submit-button";
@@ -15,11 +14,6 @@ export function InchargeForm({
   staff: { id: number; name: string }[];
 }) {
   const { toast } = useToast();
-  const [inchargeId, setInchargeId] = useState<string>(currentInchargeId ? currentInchargeId.toString() : "");
-
-  useEffect(() => {
-    setInchargeId(currentInchargeId ? currentInchargeId.toString() : "");
-  }, [currentInchargeId]);
 
   return (
     <form action={async (formData) => {
@@ -35,9 +29,9 @@ export function InchargeForm({
       <div>
         <label className="block text-sm font-medium text-stone-700 mb-1">Select Class Incharge</label>
         <select 
-          name="classTeacherId" 
-          value={inchargeId}
-          onChange={(e) => setInchargeId(e.target.value)}
+          key={currentInchargeId || "unassigned"}
+          name="classTeacherId"
+          defaultValue={currentInchargeId || ""}
           className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
         >
           <option value="">-- No Incharge Assigned --</option>
