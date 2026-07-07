@@ -1,10 +1,11 @@
 "use client";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { LayoutDashboard, CalendarDays, FileText, CheckSquare, UploadCloud, CalendarCheck, FileQuestion } from "lucide-react";
+import { LayoutDashboard, CalendarDays, FileText, CheckSquare, UploadCloud, CalendarCheck, FileQuestion, Megaphone } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
   { label: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard },
+  { label: "Announcements", href: "/student/announcements", icon: Megaphone },
   { label: "Timetable", href: "/student/timetable", icon: CalendarDays },
   { label: "Exam Timetable", href: "/student/exams", icon: CalendarCheck, availabilityKey: "examTimetable" as const },
   { label: "Tests", href: "/student/tests", icon: FileQuestion, availabilityKey: "studentTests" as const },

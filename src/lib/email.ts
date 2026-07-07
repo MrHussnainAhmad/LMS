@@ -32,10 +32,26 @@ export async function sendEmail(options: {
 }
 
 // Minimal email templates as functions returning HTML strings
-export const LoginNotificationEmail = ({ ip, userAgent, time }: { ip: string, userAgent: string, time: string }) => {
+export const LoginNotificationEmail = ({
+  ip,
+  userAgent,
+  time,
+  isFirstLogin,
+}: {
+  ip: string;
+  userAgent: string;
+  time: string;
+  isFirstLogin: boolean;
+}) => {
+  const title = isFirstLogin ? "New Login Detected" : "You have logged in to the system";
+  const message = isFirstLogin
+    ? "Your account has been accessed for the first time."
+    : "This is an alert to tell you that your account has been logged in. If this was not you, it is time to change your password.";
+
   return `
     <div style="font-family: sans-serif;">
-      <h1>New Login Detected</h1>
+      <h1>${title}</h1>
+      <p>${message}</p>
       <p>Your account was accessed from IP: ${ip}</p>
       <p>User Agent: ${userAgent}</p>
       <p>Time: ${time}</p>
@@ -43,7 +59,17 @@ export const LoginNotificationEmail = ({ ip, userAgent, time }: { ip: string, us
   `;
 };
 
-export const AccountCreatedEmail = ({ name, role, email, initialPassword }: any) => {
+export const AccountCreatedEmail = ({
+  name,
+  role,
+  email,
+  initialPassword,
+}: {
+  name: string;
+  role: string;
+  email: string;
+  initialPassword: string;
+}) => {
   return `
     <div style="font-family: sans-serif;">
       <h1>Welcome ${name}!</h1>
@@ -55,7 +81,15 @@ export const AccountCreatedEmail = ({ name, role, email, initialPassword }: any)
   `;
 };
 
-export const InstitutionStatusEmail = ({ name, status, reason }: any) => {
+export const InstitutionStatusEmail = ({
+  name,
+  status,
+  reason,
+}: {
+  name: string;
+  status: string;
+  reason?: string | null;
+}) => {
   return `
     <div style="font-family: sans-serif;">
       <h1>Institution Registration ${status}</h1>

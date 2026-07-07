@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { accountLockouts, superAdmins, employees, institutions, staff, students } from '@/db/schema';
+import { accountLockouts, auditLogs, superAdmins, employees, institutions, staff, students } from '@/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
 import { verify } from '@node-rs/argon2';
 import { createTokens, setAuthCookies, UserRole } from '@/lib/auth';
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';
     const userAgent = req.headers.get('user-agent') ?? 'Unknown';
 
-    let user: any = null;
+    let user: { id: number; email?: string; contactEmail?: string } | null = null;
     let role: UserRole | null = null;
     let institutionId: number | undefined;
     let campusId: number | undefined;
@@ -201,6 +201,16 @@ export async function POST(req: NextRequest) {
     await setAuthCookies(accessToken, refreshToken);
     await clearFailedLogins(role, user.id);
 
+    const shouldSendLoginEmail = role === 'EMPLOYEE' || role === 'INSTITUTION';
+    const previousLogin = shouldSendLoginEmail ? await db.select({ id: auditLogs.id })
+      .from(auditLogs)
+      .where(and(
+        eq(auditLogs.actorId, user.id),
+        eq(auditLogs.actorRole, role),
+        eq(auditLogs.action, 'LOGIN')
+      ))
+      .limit(1) : [];
+
     await logAudit({
       institutionId,
       actorId: user.id,
@@ -210,16 +220,22 @@ export async function POST(req: NextRequest) {
       ip,
     });
 
-    if (role === 'EMPLOYEE') {
-      await sendEmail({
-        to: user.email,
-        subject: 'New Login Detected',
-        html: LoginNotificationEmail({
-          ip: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
-          userAgent: req.headers.get('user-agent') ?? 'Unknown',
-          time: new Date().toISOString(),
-        }),
-      });
+    if (shouldSendLoginEmail) {
+      const loginEmail = role === 'EMPLOYEE' ? user.email : user.contactEmail;
+      const isFirstLogin = previousLogin.length === 0;
+
+      if (loginEmail) {
+        await sendEmail({
+          to: loginEmail,
+          subject: isFirstLogin ? 'New Login Detected' : 'Login Alert',
+          html: LoginNotificationEmail({
+            ip,
+            userAgent,
+            time: new Date().toISOString(),
+            isFirstLogin,
+          }),
+        });
+      }
     }
 
     return NextResponse.json({
