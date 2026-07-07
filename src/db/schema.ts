@@ -449,3 +449,11 @@ export const platformPages = pgTable('platform_pages', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+// --- FEATURED INSTITUTIONS (HOMEPAGE LOGOS) ---
+export const featuredInstitutions = pgTable('featured_institutions', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  logoKey: varchar('logo_key', { length: 255 }), // Cloudinary public_id or URL (optional)
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});

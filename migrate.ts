@@ -41,6 +41,14 @@ async function main() {
       CONSTRAINT "platform_pages_slug_unique" UNIQUE("slug")
     );
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS "featured_institutions" (
+      "id" serial PRIMARY KEY NOT NULL,
+      "name" varchar(255) NOT NULL,
+      "logo_key" varchar(255),
+      "created_at" timestamp DEFAULT now() NOT NULL
+    );
+  `;
   console.log('Migration complete');
   process.exit(0);
 }

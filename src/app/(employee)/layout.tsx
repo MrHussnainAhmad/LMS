@@ -1,11 +1,12 @@
 "use client";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { LayoutDashboard, Building2, FileText } from "lucide-react";
+import { LayoutDashboard, Building2, FileText, Star } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
   { label: "Dashboard", href: "/employee/dashboard", icon: LayoutDashboard },
   { label: "Verification Queue", href: "/employee/institutions", icon: Building2 },
+  { label: "Featured Logos", href: "/employee/featured-institutions", icon: Star },
   { label: "Footer Pages", href: "/employee/pages", icon: FileText },
 ];
 

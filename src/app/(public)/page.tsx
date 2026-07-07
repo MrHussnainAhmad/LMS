@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Users, BarChart3, ShieldCheck, ArrowRight, Sparkles, CheckCircle2, LayoutDashboard, Calendar, Bell, ChevronRight, PlayCircle, Star, MessageSquareQuote } from "lucide-react";
 import { db } from "@/db";
-import { institutions, platformReviews } from "@/db/schema";
+import { institutions, platformReviews, featuredInstitutions } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 
 export const metadata: Metadata = {
@@ -45,11 +45,12 @@ const jsonLd = {
 };
 
 export default async function LandingPage() {
-  const approvedInstitutions = await db.select({
-    id: institutions.id,
-    name: institutions.name,
-    logoKey: institutions.logoKey
-  }).from(institutions).where(eq(institutions.status, 'APPROVED'));
+  const featuredLogos = await db
+    .select()
+    .from(featuredInstitutions)
+    .orderBy(desc(featuredInstitutions.createdAt));
+
+  const shouldMarqueeLogos = featuredLogos.length > 5;
 
   const latestReviews = await db.select({
     id: platformReviews.id,
@@ -65,8 +66,6 @@ export default async function LandingPage() {
   .innerJoin(institutions, eq(platformReviews.institutionId, institutions.id))
   .orderBy(desc(platformReviews.createdAt))
   .limit(3);
-
-  const showMarquee = approvedInstitutions.length > 5;
 
   return (
     <div className="flex flex-col min-h-screen bg-[#FDFCFB] selection:bg-brand-500 selection:text-white font-sans text-stone-900 scroll-smooth overflow-x-hidden">
@@ -175,22 +174,44 @@ export default async function LandingPage() {
         </section>
 
         {/* --- Dynamic Social Proof Marquee --- */}
-        {approvedInstitutions.length > 0 && (
+        {featuredLogos.length > 0 && (
           <section className="w-full border-y border-stone-200 bg-white py-10 overflow-hidden relative">
              <div className="max-w-7xl mx-auto px-6 md:px-12 text-center relative">
                <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-white to-transparent z-10"></div>
                <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-white to-transparent z-10"></div>
                
-               <div className={showMarquee ? "flex whitespace-nowrap animate-marquee w-[200%]" : "flex flex-wrap justify-center items-center gap-12 md:gap-24 opacity-80 grayscale hover:grayscale-0 transition-all duration-500"}>
-                 {/* Double the array for seamless infinite scroll if marquee is true */}
-                 {(showMarquee ? [...approvedInstitutions, ...approvedInstitutions] : approvedInstitutions).map((inst, idx) => (
-                   <div key={`${inst.id}-${idx}`} className="inline-flex items-center gap-3 px-8 opacity-80 grayscale hover:grayscale-0 transition-all duration-300 shrink-0">
-                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                     {inst.logoKey && <img src={inst.logoKey} alt={inst.name} className="h-8 w-auto object-contain max-w-[120px]" />}
-                     {!inst.logoKey && <span className="text-xl font-display font-bold text-stone-800">{inst.name}</span>}
-                   </div>
-                 ))}
-               </div>
+               <div className={`flex items-center gap-16 py-4 ${shouldMarqueeLogos ? 'animate-marquee whitespace-nowrap' : 'justify-center'}`}>
+                {featuredLogos.map((inst, i) => (
+                  <div key={i} className="flex items-center gap-3 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300">
+                    <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center font-bold text-brand-700">
+                      {inst.logoKey ? (
+                        <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover rounded-xl" />
+                      ) : (
+                        inst.name.substring(0, 2).toUpperCase()
+                      )}
+                    </div>
+                    <span className="font-display font-semibold text-stone-700">{inst.name}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Duplicate for infinite marquee if needed */}
+              {shouldMarqueeLogos && (
+                <div className="flex items-center gap-16 py-4 animate-marquee whitespace-nowrap" aria-hidden="true">
+                  {featuredLogos.map((inst, i) => (
+                    <div key={`dup-${i}`} className="flex items-center gap-3 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300">
+                      <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center font-bold text-brand-700">
+                        {inst.logoKey ? (
+                          <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover rounded-xl" />
+                        ) : (
+                          inst.name.substring(0, 2).toUpperCase()
+                        )}
+                      </div>
+                      <span className="font-display font-semibold text-stone-700">{inst.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
              </div>
           </section>
         )}
