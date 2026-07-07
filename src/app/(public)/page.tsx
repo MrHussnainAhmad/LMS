@@ -1,179 +1,383 @@
 import { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Users, BarChart3, ShieldCheck, ArrowRight, Sparkles } from "lucide-react";
+import { BookOpen, Users, BarChart3, ShieldCheck, ArrowRight, Sparkles, CheckCircle2, LayoutDashboard, Calendar, Bell, ChevronRight, PlayCircle, Star } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Taleem360 | Modern Educational Platform",
-  description: "A comprehensive, multi-tenant learning management system built for schools, colleges, and universities.",
-  keywords: ["LMS", "Education", "School Management", "Taleem360", "Student Portal"],
+  title: "Taleem360 | The Ultimate Platform for Modern Educational Institutions",
+  description: "Taleem360 is the leading multi-tenant learning management system. Streamline administration, boost engagement, and leverage advanced analytics for your school, college, or university.",
+  keywords: ["Learning Management System", "School ERP", "Student Information System", "EdTech", "Taleem360", "Multi-tenant LMS"],
+  authors: [{ name: "Taleem360" }],
   openGraph: {
     title: "Taleem360 | Modern Educational Platform",
-    description: "The next-generation platform for modern education.",
+    description: "The next-generation platform for modern education. Simplify admin tasks and improve learning outcomes.",
     type: "website",
+    url: "https://taleem360.com",
+    siteName: "Taleem360"
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "Taleem360 | Modern Educational Platform",
+    description: "Streamline administration and boost engagement.",
+  }
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Taleem360",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any",
+  "description": "A comprehensive, multi-tenant learning management system built for schools, colleges, and universities.",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.9",
+    "ratingCount": "1024"
+  }
 };
 
 export default function LandingPage() {
   return (
-    <div className="flex flex-col min-h-screen bg-stone-50 selection:bg-brand-500 selection:text-white relative overflow-hidden">
-      {/* Decorative Background */}
-      <div className="fixed inset-0 pointer-events-none -z-10 flex justify-center items-center">
-        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-brand-300/20 blur-[120px]"></div>
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-300/20 blur-[120px]"></div>
+    <div className="flex flex-col min-h-screen bg-[#FDFCFB] selection:bg-brand-500 selection:text-white font-sans text-stone-900 scroll-smooth">
+      {/* SEO JSON-LD */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+
+      {/* Decorative Background Mesh */}
+      <div className="fixed inset-0 pointer-events-none -z-10 flex justify-center items-center overflow-hidden">
+        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full bg-brand-300/10 blur-[140px]"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-indigo-300/10 blur-[140px]"></div>
       </div>
 
-      <header className="sticky top-0 z-50 flex items-center justify-between px-8 py-4 backdrop-blur-xl bg-white/70 border-b border-white/20 shadow-sm transition-all duration-300">
+      {/* --- Sticky Header / Megamenu Placeholder --- */}
+      <header className="sticky top-0 z-50 flex items-center justify-between px-6 md:px-12 py-4 backdrop-blur-2xl bg-white/60 border-b border-stone-200/50 shadow-sm transition-all duration-300">
         <div className="flex items-center gap-3 group cursor-pointer">
-          <div className="bg-brand-600 p-2 rounded-xl group-hover:bg-brand-700 group-hover:scale-105 transition-all shadow-sm">
-            <BookOpen className="h-6 w-6 text-white" />
+          <div className="bg-brand-600 p-2 rounded-xl group-hover:bg-brand-700 transition-colors shadow-sm flex items-center justify-center">
+            <BookOpen className="h-5 w-5 text-white" />
           </div>
-          <span className="font-display font-bold text-2xl bg-gradient-to-r from-brand-900 to-indigo-900 bg-clip-text text-transparent tracking-tight">Taleem360</span>
+          <span className="font-display font-extrabold text-2xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Taleem360</span>
         </div>
-        <nav className="flex items-center gap-6">
-          <Link href="/login" className="text-sm font-medium text-stone-600 hover:text-brand-900 transition-colors">
-            Login
-          </Link>
-          <Button asChild className="rounded-full shadow-lg shadow-brand-500/20 hover:shadow-brand-500/40 hover:-translate-y-0.5 transition-all">
-            <Link href="/register">Register Institution</Link>
-          </Button>
+        
+        <nav className="hidden lg:flex items-center gap-8">
+          <Link href="#features" className="text-sm font-semibold text-stone-600 hover:text-brand-700 transition-colors">Features</Link>
+          <Link href="#solutions" className="text-sm font-semibold text-stone-600 hover:text-brand-700 transition-colors">Solutions</Link>
+          <Link href="#testimonials" className="text-sm font-semibold text-stone-600 hover:text-brand-700 transition-colors">Customers</Link>
+          <Link href="#pricing" className="text-sm font-semibold text-stone-600 hover:text-brand-700 transition-colors">Pricing</Link>
         </nav>
+
+        <div className="flex items-center gap-4">
+          <Link href="/login" className="hidden md:block text-sm font-semibold text-stone-600 hover:text-brand-900 transition-colors">
+            Log in
+          </Link>
+          <Button asChild className="rounded-full font-semibold shadow-lg shadow-brand-500/20 hover:shadow-brand-500/40 hover:-translate-y-0.5 transition-all">
+            <Link href="/register">Get Started</Link>
+          </Button>
+        </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center">
-        {/* Hero Section */}
-        <section className="relative w-full max-w-7xl mx-auto px-8 pt-32 pb-20 flex flex-col items-center text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand-100/80 text-brand-700 text-sm font-medium mb-8 border border-brand-200 backdrop-blur-sm hover:bg-brand-100 transition-colors shadow-sm cursor-pointer hover:scale-105">
-            <Sparkles className="h-4 w-4" />
-            <span>Discover the future of education</span>
+      <main className="flex-1 flex flex-col items-center w-full">
+        {/* --- Hero Section --- */}
+        <section className="relative w-full max-w-7xl mx-auto px-6 md:px-12 pt-24 pb-20 md:pt-32 md:pb-32 flex flex-col lg:flex-row items-center gap-16">
+          <div className="flex-1 flex flex-col items-start text-left z-10">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-50 border border-brand-200 text-brand-700 text-xs font-bold uppercase tracking-wider mb-8 shadow-sm">
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Taleem360 2.0 is live</span>
+            </div>
+            
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-display font-extrabold text-stone-900 mb-6 leading-[1.05] tracking-tight">
+              Manage your entire institution in <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-indigo-600">one place.</span>
+            </h1>
+            
+            <p className="text-lg md:text-xl text-stone-600 mb-10 leading-relaxed max-w-xl">
+              From attendance tracking to advanced gradebooks and seamless parent communication. The modern OS for forward-thinking schools and universities.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+              <Button size="lg" className="rounded-full h-14 px-8 text-base font-semibold shadow-xl shadow-brand-500/25 hover:shadow-brand-500/40 hover:-translate-y-1 transition-all group" asChild>
+                <Link href="/register">
+                  Start Free Trial <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              </Button>
+              <Button size="lg" variant="outline" className="rounded-full h-14 px-8 text-base font-semibold bg-white border-stone-200 hover:bg-stone-50 hover:border-stone-300 transition-all group" asChild>
+                <Link href="#demo">
+                  <PlayCircle className="mr-2 h-5 w-5 text-stone-500 group-hover:text-brand-600 transition-colors" /> Watch Demo
+                </Link>
+              </Button>
+            </div>
+            
+            <div className="mt-10 flex items-center gap-4 text-sm font-medium text-stone-500">
+              <div className="flex -space-x-2">
+                {[1,2,3,4].map(i => (
+                  <div key={i} className="w-8 h-8 rounded-full bg-stone-200 border-2 border-white flex items-center justify-center overflow-hidden">
+                     {/* eslint-disable-next-line @next/next/no-img-element */}
+                     <img src={`https://i.pravatar.cc/100?img=${i+10}`} alt="User" className="w-full h-full object-cover" />
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-col">
+                 <div className="flex text-amber-400">
+                    <Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/>
+                 </div>
+                 <span>Trusted by 500+ educators</span>
+              </div>
+            </div>
           </div>
           
-          <h1 className="text-5xl md:text-7xl font-display font-extrabold text-stone-900 mb-8 max-w-4xl mx-auto leading-[1.1] tracking-tight">
-            The next-generation platform for <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-indigo-600">modern education</span>
-          </h1>
-          
-          <p className="text-xl text-stone-600 max-w-2xl mx-auto mb-12 leading-relaxed">
-            A comprehensive, multi-tenant learning management system built for schools, colleges, and universities to manage everything seamlessly.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row justify-center gap-4 w-full sm:w-auto">
-            <Button size="lg" className="rounded-full h-14 px-8 text-base shadow-xl shadow-brand-500/20 hover:shadow-brand-500/40 hover:-translate-y-1 transition-all group" asChild>
-              <Link href="/register">
-                Get Started <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </Button>
-            <Button size="lg" variant="outline" className="rounded-full h-14 px-8 text-base bg-white/50 backdrop-blur-sm border-stone-200 hover:bg-white hover:border-stone-300 hover:shadow-md transition-all" asChild>
-              <Link href="/login">Student/Staff Login</Link>
-            </Button>
+          <div className="flex-1 w-full relative">
+            <div className="absolute inset-0 bg-gradient-to-tr from-brand-100 to-indigo-50 rounded-[2.5rem] transform rotate-3 scale-105 -z-10"></div>
+            <div className="relative bg-white rounded-[2rem] shadow-2xl shadow-stone-900/10 border border-stone-100 overflow-hidden">
+               {/* Complex Mockup Right Side */}
+               <div className="h-12 border-b border-stone-100 flex items-center px-6 gap-2 bg-stone-50/80">
+                 <div className="w-3 h-3 rounded-full bg-stone-300"></div><div className="w-3 h-3 rounded-full bg-stone-300"></div><div className="w-3 h-3 rounded-full bg-stone-300"></div>
+               </div>
+               <div className="p-6">
+                 <div className="flex items-center justify-between mb-8">
+                   <div className="h-6 w-32 bg-stone-100 rounded"></div>
+                   <div className="flex gap-2"><div className="h-8 w-8 bg-brand-50 rounded-full"></div><div className="h-8 w-8 bg-indigo-50 rounded-full"></div></div>
+                 </div>
+                 <div className="grid grid-cols-2 gap-4 mb-6">
+                   <div className="h-24 bg-gradient-to-br from-brand-500 to-brand-600 rounded-xl p-4 flex flex-col justify-end shadow-inner shadow-white/20">
+                     <div className="h-4 w-16 bg-white/30 rounded mb-2"></div>
+                     <div className="h-6 w-24 bg-white/90 rounded"></div>
+                   </div>
+                   <div className="h-24 bg-white border border-stone-100 rounded-xl p-4 flex flex-col justify-end shadow-sm">
+                     <div className="h-4 w-16 bg-stone-200 rounded mb-2"></div>
+                     <div className="h-6 w-24 bg-stone-800 rounded"></div>
+                   </div>
+                 </div>
+                 <div className="space-y-3">
+                   {[1,2,3].map(i => (
+                     <div key={i} className="h-16 w-full bg-stone-50 rounded-xl border border-stone-100 flex items-center px-4 gap-4">
+                       <div className="w-10 h-10 rounded-full bg-stone-200"></div>
+                       <div className="flex-1 space-y-2"><div className="h-3 w-1/3 bg-stone-300 rounded"></div><div className="h-2 w-1/4 bg-stone-200 rounded"></div></div>
+                       <div className="h-6 w-16 bg-green-100 rounded-full"></div>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* --- Social Proof Marquee --- */}
+        <section className="w-full border-y border-stone-200 bg-white py-10 overflow-hidden">
+           <div className="max-w-7xl mx-auto px-6 md:px-12 text-center">
+             <p className="text-sm font-semibold text-stone-400 uppercase tracking-widest mb-8">Empowering top institutions worldwide</p>
+             <div className="flex flex-wrap justify-center items-center gap-12 md:gap-24 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
+               {/* Mock Logos */}
+               <div className="text-xl font-display font-bold text-stone-800">Stanford Prep</div>
+               <div className="text-xl font-display font-bold text-stone-800 flex items-center gap-2"><div className="w-6 h-6 bg-stone-800 rounded-sm transform rotate-45"></div> Academy</div>
+               <div className="text-xl font-display font-bold text-stone-800">Oxford High</div>
+               <div className="text-xl font-display font-bold text-stone-800">Crescent Univ</div>
+               <div className="text-xl font-display font-bold text-stone-800 hidden md:block">Oakridge</div>
+             </div>
+           </div>
+        </section>
+
+        {/* --- Bento Box Features --- */}
+        <section id="features" className="w-full py-24 md:py-32 px-6 md:px-12 max-w-7xl mx-auto">
+          <div className="text-center mb-20 max-w-3xl mx-auto">
+            <h2 className="text-4xl md:text-5xl font-display font-bold text-stone-900 mb-6 tracking-tight">Everything you need, nothing you don't.</h2>
+            <p className="text-lg text-stone-600">A meticulously crafted suite of tools designed to reduce administrative overhead and let educators focus on teaching.</p>
           </div>
           
-          {/* Dashboard Preview Mockup */}
-          <div className="mt-24 relative w-full max-w-5xl rounded-2xl overflow-hidden shadow-2xl shadow-stone-900/10 border border-white/60 ring-1 ring-stone-900/5 group hover:shadow-brand-900/20 hover:-translate-y-2 transition-all duration-500">
-             <div className="w-full aspect-[16/9] bg-[#faf9f8] flex flex-col">
-               {/* Window Controls */}
-               <div className="h-12 border-b border-stone-200 flex items-center px-6 gap-2 bg-white/80 backdrop-blur-md">
-                 <div className="w-3.5 h-3.5 rounded-full bg-rose-400"></div>
-                 <div className="w-3.5 h-3.5 rounded-full bg-amber-400"></div>
-                 <div className="w-3.5 h-3.5 rounded-full bg-emerald-400"></div>
-               </div>
-               {/* Mock UI */}
-               <div className="flex-1 flex p-6 gap-6">
-                 {/* Sidebar */}
-                 <div className="w-64 bg-white rounded-xl shadow-sm border border-stone-100 hidden md:flex flex-col gap-4 p-4">
-                    <div className="h-8 w-2/3 bg-stone-100 rounded-md mb-4"></div>
-                    <div className="h-10 w-full bg-brand-50 rounded-lg border border-brand-100"></div>
-                    <div className="h-10 w-full bg-stone-50 rounded-lg"></div>
-                    <div className="h-10 w-full bg-stone-50 rounded-lg"></div>
-                    <div className="h-10 w-full bg-stone-50 rounded-lg mt-auto"></div>
-                 </div>
-                 {/* Main Content */}
-                 <div className="flex-1 flex flex-col gap-6">
-                   <div className="h-28 w-full bg-gradient-to-r from-brand-600 to-indigo-600 rounded-xl shadow-md p-6 flex flex-col justify-center">
-                      <div className="h-6 w-1/3 bg-white/20 rounded-md mb-2"></div>
-                      <div className="h-8 w-1/4 bg-white/40 rounded-md"></div>
-                   </div>
-                   <div className="flex-1 flex gap-6">
-                     <div className="flex-[2] bg-white rounded-xl shadow-sm border border-stone-100 p-6 flex flex-col gap-4">
-                        <div className="h-6 w-1/3 bg-stone-100 rounded-md mb-2"></div>
-                        <div className="flex-1 bg-stone-50 rounded-lg flex items-end p-4 gap-2">
-                           <div className="flex-1 bg-brand-200 rounded-t-md h-1/3"></div>
-                           <div className="flex-1 bg-brand-300 rounded-t-md h-1/2"></div>
-                           <div className="flex-1 bg-brand-400 rounded-t-md h-3/4"></div>
-                           <div className="flex-1 bg-brand-500 rounded-t-md h-full"></div>
-                        </div>
-                     </div>
-                     <div className="flex-1 bg-white rounded-xl shadow-sm border border-stone-100 p-6 flex flex-col gap-4">
-                        <div className="h-6 w-1/2 bg-stone-100 rounded-md mb-2"></div>
-                        <div className="flex-1 rounded-full border-8 border-brand-100 relative">
-                           <div className="absolute inset-0 rounded-full border-8 border-brand-500 border-t-transparent border-r-transparent -rotate-45"></div>
-                        </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-6 h-auto md:h-[600px]">
+             {/* Large Feature 1 */}
+             <div className="md:col-span-2 md:row-span-2 relative p-8 rounded-3xl bg-stone-50 border border-stone-200 overflow-hidden group hover:shadow-2xl transition-all duration-500 hover:border-brand-200 flex flex-col justify-between">
+                <div className="absolute inset-0 bg-gradient-to-br from-brand-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <div className="relative z-10 max-w-md mb-8">
+                  <div className="h-12 w-12 rounded-xl bg-brand-100 flex items-center justify-center mb-6 text-brand-700">
+                     <LayoutDashboard className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-3xl font-display font-bold text-stone-900 mb-4">Unified Command Center</h3>
+                  <p className="text-stone-600 text-lg">Manage multiple campuses, staff members, and thousands of students from a single, lightning-fast dashboard.</p>
+                </div>
+                {/* Mock UI snippet */}
+                <div className="relative z-10 bg-white rounded-t-2xl shadow-[0_0_40px_-10px_rgba(0,0,0,0.1)] border border-stone-200 border-b-0 h-48 w-full transform group-hover:-translate-y-2 transition-transform duration-500">
+                   <div className="p-4 flex gap-4">
+                     <div className="w-48 h-32 bg-stone-50 rounded-lg border border-stone-100"></div>
+                     <div className="flex-1 space-y-4 pt-2">
+                       <div className="h-4 w-3/4 bg-stone-200 rounded"></div>
+                       <div className="h-4 w-1/2 bg-stone-100 rounded"></div>
+                       <div className="h-4 w-2/3 bg-stone-100 rounded"></div>
                      </div>
                    </div>
-                 </div>
-               </div>
+                </div>
+             </div>
+
+             {/* Small Feature 1 */}
+             <div className="p-8 rounded-3xl bg-indigo-50 border border-indigo-100 overflow-hidden group hover:shadow-xl transition-all duration-500">
+                <div className="h-12 w-12 rounded-xl bg-indigo-100 flex items-center justify-center mb-6 text-indigo-700">
+                   <Calendar className="h-6 w-6" />
+                </div>
+                <h3 className="text-2xl font-display font-bold text-stone-900 mb-3">Smart Timetables</h3>
+                <p className="text-stone-700">Automate conflict resolution and generate optimal schedules instantly.</p>
+             </div>
+
+             {/* Small Feature 2 */}
+             <div className="p-8 rounded-3xl bg-stone-900 text-white border border-stone-800 overflow-hidden group hover:shadow-xl transition-all duration-500">
+                <div className="h-12 w-12 rounded-xl bg-stone-800 flex items-center justify-center mb-6 text-stone-300">
+                   <Bell className="h-6 w-6" />
+                </div>
+                <h3 className="text-2xl font-display font-bold mb-3">Instant Alerts</h3>
+                <p className="text-stone-400">Push notifications for parents, students, and staff. Never miss an update.</p>
              </div>
           </div>
         </section>
 
-        {/* Features Section */}
-        <section className="w-full py-32 px-8 bg-white relative">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-20">
-              <h2 className="text-4xl font-display font-bold text-stone-900 mb-4">Enterprise-grade features</h2>
-              <p className="text-lg text-stone-600 max-w-2xl mx-auto">Everything you need to run your educational institution efficiently and securely.</p>
-            </div>
-            <div className="grid md:grid-cols-3 gap-8">
-              {/* Feature 1 */}
-              <article className="group relative p-8 rounded-3xl bg-stone-50 hover:bg-white border border-transparent hover:border-brand-100 hover:shadow-2xl hover:shadow-brand-900/5 transition-all duration-500">
-                <div className="absolute inset-0 bg-gradient-to-br from-brand-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl"></div>
-                <div className="relative">
-                  <div className="h-16 w-16 rounded-2xl bg-brand-100 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:-rotate-3 group-hover:bg-brand-600 transition-all duration-300 shadow-sm">
-                    <Users className="h-8 w-8 text-brand-700 group-hover:text-white transition-colors" />
-                  </div>
-                  <h3 className="text-2xl font-display font-semibold mb-3 text-stone-900">Multi-Tenant</h3>
-                  <p className="text-stone-600 leading-relaxed">Strict data isolation ensures your institution's data remains private and secure at all times.</p>
-                </div>
-              </article>
-              {/* Feature 2 */}
-              <article className="group relative p-8 rounded-3xl bg-stone-50 hover:bg-white border border-transparent hover:border-indigo-100 hover:shadow-2xl hover:shadow-indigo-900/5 transition-all duration-500">
-                <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl"></div>
-                <div className="relative">
-                  <div className="h-16 w-16 rounded-2xl bg-indigo-100 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 group-hover:bg-indigo-600 transition-all duration-300 shadow-sm">
-                    <BarChart3 className="h-8 w-8 text-indigo-700 group-hover:text-white transition-colors" />
-                  </div>
-                  <h3 className="text-2xl font-display font-semibold mb-3 text-stone-900">Advanced Analytics</h3>
-                  <p className="text-stone-600 leading-relaxed">Visualize attendance trends and academic performance with real-time, interactive dashboards.</p>
-                </div>
-              </article>
-              {/* Feature 3 */}
-              <article className="group relative p-8 rounded-3xl bg-stone-50 hover:bg-white border border-transparent hover:border-purple-100 hover:shadow-2xl hover:shadow-purple-900/5 transition-all duration-500">
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl"></div>
-                <div className="relative">
-                  <div className="h-16 w-16 rounded-2xl bg-purple-100 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:-rotate-3 group-hover:bg-purple-600 transition-all duration-300 shadow-sm">
-                    <ShieldCheck className="h-8 w-8 text-purple-700 group-hover:text-white transition-colors" />
-                  </div>
-                  <h3 className="text-2xl font-display font-semibold mb-3 text-stone-900">Enterprise Security</h3>
-                  <p className="text-stone-600 leading-relaxed">RBAC, rate limiting, and modern encryption standards built-in by default to protect your data.</p>
-                </div>
-              </article>
-            </div>
+        {/* --- Deep Dive: Alternating Sections --- */}
+        <section className="w-full py-24 bg-white border-t border-stone-100">
+           <div className="max-w-7xl mx-auto px-6 md:px-12 flex flex-col md:flex-row items-center gap-16">
+              <div className="flex-1 space-y-8">
+                 <h2 className="text-4xl font-display font-bold text-stone-900 leading-tight">Advanced Gradebooks & Assessment</h2>
+                 <p className="text-lg text-stone-600">Ditch the spreadsheets. Our powerful gradebook handles complex weighting, custom grading scales, and automatic report card generation.</p>
+                 <ul className="space-y-4">
+                   {['Custom grading formulas', 'One-click report card printing', 'Parent portal integration'].map((item, i) => (
+                     <li key={i} className="flex items-center gap-3 text-stone-700 font-medium">
+                       <CheckCircle2 className="h-5 w-5 text-brand-600" /> {item}
+                     </li>
+                   ))}
+                 </ul>
+                 <Button variant="link" className="px-0 text-brand-700 font-semibold text-lg group">
+                   Explore Assessment Tools <ChevronRight className="ml-1 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                 </Button>
+              </div>
+              <div className="flex-1 w-full relative">
+                 <div className="w-full aspect-square md:aspect-auto md:h-[500px] bg-stone-100 rounded-3xl border border-stone-200 overflow-hidden relative shadow-lg">
+                    {/* Placeholder for complex image */}
+                    <div className="absolute inset-4 bg-white rounded-2xl shadow-sm border border-stone-100 p-6 flex flex-col gap-4">
+                       <div className="h-8 w-1/3 bg-stone-200 rounded"></div>
+                       <div className="flex-1 border border-stone-100 rounded-xl overflow-hidden flex flex-col">
+                         <div className="h-12 bg-stone-50 border-b border-stone-100 flex items-center px-4 gap-4">
+                            <div className="h-4 w-24 bg-stone-200 rounded"></div>
+                            <div className="h-4 w-16 bg-stone-200 rounded ml-auto"></div>
+                            <div className="h-4 w-16 bg-stone-200 rounded"></div>
+                         </div>
+                         <div className="flex-1 bg-white p-4 space-y-4">
+                           {[1,2,3,4].map(i => (
+                             <div key={i} className="h-6 flex items-center gap-4">
+                               <div className="h-4 w-24 bg-stone-100 rounded"></div>
+                               <div className="h-4 w-full bg-stone-50 rounded ml-auto flex items-center px-2"><div className="h-2 bg-brand-400 rounded" style={{width: `${80 - i*10}%`}}></div></div>
+                               <div className="h-4 w-12 bg-green-100 rounded"></div>
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </section>
+
+        {/* --- Testimonials --- */}
+        <section id="testimonials" className="w-full py-24 bg-stone-50 border-t border-stone-200">
+           <div className="max-w-7xl mx-auto px-6 md:px-12 text-center">
+             <h2 className="text-4xl font-display font-bold text-stone-900 mb-16">Loved by educators worldwide.</h2>
+             <div className="grid md:grid-cols-3 gap-8 text-left">
+               {[
+                 {quote: "Taleem360 transformed how we run our academy. Administrative work that took days now takes minutes.", author: "Sarah Jenkins", role: "Principal, Oakridge", img: 44},
+                 {quote: "The analytics dashboard alone is worth it. We can spot attendance trends before they become issues.", author: "Dr. Ahmed Khan", role: "Dean, Crescent Univ", img: 33},
+                 {quote: "Finally, an LMS that doesn't feel like it was built in 1995. Our teachers and students love the modern UI.", author: "Emily Chen", role: "IT Director, Stanford Prep", img: 22}
+               ].map((t, i) => (
+                 <div key={i} className="bg-white p-8 rounded-3xl shadow-sm border border-stone-200 hover:shadow-xl transition-all duration-300">
+                   <div className="flex text-brand-500 mb-6">
+                     <Star className="w-5 h-5 fill-current"/><Star className="w-5 h-5 fill-current"/><Star className="w-5 h-5 fill-current"/><Star className="w-5 h-5 fill-current"/><Star className="w-5 h-5 fill-current"/>
+                   </div>
+                   <p className="text-lg text-stone-700 mb-8 italic">"{t.quote}"</p>
+                   <div className="flex items-center gap-4">
+                     {/* eslint-disable-next-line @next/next/no-img-element */}
+                     <img src={`https://i.pravatar.cc/150?img=${t.img}`} alt={t.author} className="w-12 h-12 rounded-full border border-stone-200" />
+                     <div>
+                       <div className="font-bold text-stone-900">{t.author}</div>
+                       <div className="text-sm text-stone-500">{t.role}</div>
+                     </div>
+                   </div>
+                 </div>
+               ))}
+             </div>
+           </div>
+        </section>
+
+        {/* --- Final CTA --- */}
+        <section id="pricing" className="w-full py-24 px-6 md:px-12">
+          <div className="max-w-5xl mx-auto bg-stone-900 rounded-[3rem] p-12 md:p-20 text-center relative overflow-hidden shadow-2xl">
+             <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-500/20 blur-[100px] rounded-full translate-x-1/2 -translate-y-1/2"></div>
+             <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo-500/20 blur-[100px] rounded-full -translate-x-1/2 translate-y-1/2"></div>
+             
+             <div className="relative z-10">
+               <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-6">Ready to upgrade your institution?</h2>
+               <p className="text-xl text-stone-300 mb-10 max-w-2xl mx-auto">Join hundreds of schools using Taleem360 to streamline operations and enhance learning.</p>
+               <div className="flex flex-col sm:flex-row justify-center gap-4">
+                 <Button size="lg" className="rounded-full h-14 px-10 text-base font-bold bg-white text-stone-900 hover:bg-stone-100 hover:scale-105 transition-all">
+                   Start Free Trial
+                 </Button>
+                 <Button size="lg" variant="outline" className="rounded-full h-14 px-10 text-base font-bold text-white border-stone-600 hover:bg-stone-800 transition-all">
+                   Contact Sales
+                 </Button>
+               </div>
+             </div>
           </div>
         </section>
       </main>
 
-      <footer className="py-12 border-t border-stone-200 bg-white">
-        <div className="max-w-7xl mx-auto px-8 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-2 group cursor-pointer">
-            <BookOpen className="h-5 w-5 text-brand-800 group-hover:text-brand-600 transition-colors" />
-            <span className="font-display font-semibold text-xl text-stone-900 group-hover:text-brand-900 transition-colors">Taleem360</span>
-          </div>
-          <p className="text-stone-500 text-sm">
-            &copy; {new Date().getFullYear()} Taleem360. All rights reserved.
-          </p>
-          <div className="flex gap-6">
-             <Link href="#" className="text-sm font-medium text-stone-500 hover:text-brand-600 transition-colors">Privacy</Link>
-             <Link href="#" className="text-sm font-medium text-stone-500 hover:text-brand-600 transition-colors">Terms</Link>
-          </div>
+      {/* --- Professional Footer --- */}
+      <footer className="w-full bg-white border-t border-stone-200 pt-20 pb-10 px-6 md:px-12">
+        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-8 mb-16">
+           <div className="col-span-2">
+             <div className="flex items-center gap-2 mb-6">
+                <div className="bg-brand-600 p-1.5 rounded-lg">
+                  <BookOpen className="h-5 w-5 text-white" />
+                </div>
+                <span className="font-display font-bold text-2xl text-stone-900">Taleem360</span>
+             </div>
+             <p className="text-stone-500 text-sm max-w-xs mb-6">
+               The next-generation platform for modern education. Simplify admin tasks, boost engagement, and leverage advanced analytics.
+             </p>
+             <div className="flex gap-4">
+               {/* Social Icons Placeholders */}
+               <div className="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 hover:text-brand-600 hover:bg-brand-50 transition-colors cursor-pointer">in</div>
+               <div className="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 hover:text-brand-600 hover:bg-brand-50 transition-colors cursor-pointer">tw</div>
+             </div>
+           </div>
+           
+           <div>
+             <h4 className="font-bold text-stone-900 mb-4">Product</h4>
+             <ul className="space-y-3 text-sm text-stone-500">
+               <li><Link href="#features" className="hover:text-brand-600 transition-colors">Features</Link></li>
+               <li><Link href="#pricing" className="hover:text-brand-600 transition-colors">Pricing</Link></li>
+               <li><Link href="#testimonials" className="hover:text-brand-600 transition-colors">Case Studies</Link></li>
+               <li><Link href="#" className="hover:text-brand-600 transition-colors">Reviews</Link></li>
+             </ul>
+           </div>
+           
+           <div>
+             <h4 className="font-bold text-stone-900 mb-4">Company</h4>
+             <ul className="space-y-3 text-sm text-stone-500">
+               <li><Link href="#" className="hover:text-brand-600 transition-colors">About Us</Link></li>
+               <li><Link href="#" className="hover:text-brand-600 transition-colors">Careers</Link></li>
+               <li><Link href="#" className="hover:text-brand-600 transition-colors">Blog</Link></li>
+               <li><Link href="#" className="hover:text-brand-600 transition-colors">Contact</Link></li>
+             </ul>
+           </div>
+           
+           <div>
+             <h4 className="font-bold text-stone-900 mb-4">Legal</h4>
+             <ul className="space-y-3 text-sm text-stone-500">
+               <li><Link href="#" className="hover:text-brand-600 transition-colors">Privacy Policy</Link></li>
+               <li><Link href="#" className="hover:text-brand-600 transition-colors">Terms of Service</Link></li>
+               <li><Link href="#" className="hover:text-brand-600 transition-colors">Security</Link></li>
+               <li><Link href="#" className="hover:text-brand-600 transition-colors">GDPR</Link></li>
+             </ul>
+           </div>
+        </div>
+        
+        <div className="max-w-7xl mx-auto pt-8 border-t border-stone-100 flex flex-col md:flex-row justify-between items-center gap-4">
+           <p className="text-stone-400 text-sm">&copy; {new Date().getFullYear()} Taleem360 Inc. All rights reserved.</p>
+           <div className="text-stone-400 text-sm font-medium">Made with passion for educators.</div>
         </div>
       </footer>
     </div>
