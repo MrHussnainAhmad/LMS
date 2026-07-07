@@ -185,14 +185,12 @@ export default async function LandingPage() {
                <div className={`flex items-center gap-16 py-4 ${shouldMarqueeLogos ? 'animate-marquee whitespace-nowrap' : 'justify-center'}`}>
                 {featuredLogos.map((inst, i) => (
                   <div key={i} className="flex items-center gap-3 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300">
-                    <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center font-bold text-brand-700">
-                      {inst.logoKey ? (
-                        <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover rounded-xl" />
-                      ) : (
-                        inst.name.substring(0, 2).toUpperCase()
-                      )}
-                    </div>
-                    <span className="font-display font-semibold text-stone-700">{inst.name}</span>
+                    {inst.logoKey && (
+                      <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+                        <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover" />
+                      </div>
+                    )}
+                    <span className="font-display font-semibold text-stone-700 whitespace-nowrap">{inst.name}</span>
                   </div>
                 ))}
               </div>
@@ -202,14 +200,12 @@ export default async function LandingPage() {
                 <div className="flex items-center gap-16 py-4 animate-marquee whitespace-nowrap" aria-hidden="true">
                   {featuredLogos.map((inst, i) => (
                     <div key={`dup-${i}`} className="flex items-center gap-3 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300">
-                      <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center font-bold text-brand-700">
-                        {inst.logoKey ? (
-                          <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover rounded-xl" />
-                        ) : (
-                          inst.name.substring(0, 2).toUpperCase()
-                        )}
-                      </div>
-                      <span className="font-display font-semibold text-stone-700">{inst.name}</span>
+                      {inst.logoKey && (
+                        <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+                          <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover" />
+                        </div>
+                      )}
+                      <span className="font-display font-semibold text-stone-700 whitespace-nowrap">{inst.name}</span>
                     </div>
                   ))}
                 </div>
