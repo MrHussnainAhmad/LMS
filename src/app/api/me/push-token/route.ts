@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
 import { students, staff } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
+    const session = await getSessionFromRequest(req);
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -19,15 +19,21 @@ export async function POST(req: NextRequest) {
     }
 
     if (session.role === "STUDENT") {
-      await db
-        .update(students)
-        .set({ expoPushToken: token })
-        .where(eq(students.id, session.userId));
+      const studentData = await db.select({ token: students.expoPushToken }).from(students).where(eq(students.id, session.userId));
+      if (studentData[0]?.token !== token) {
+        await db
+          .update(students)
+          .set({ expoPushToken: token })
+          .where(eq(students.id, session.userId));
+      }
     } else if (session.role === "STAFF") {
-      await db
-        .update(staff)
-        .set({ expoPushToken: token })
-        .where(eq(staff.id, session.userId));
+      const staffData = await db.select({ token: staff.expoPushToken }).from(staff).where(eq(staff.id, session.userId));
+      if (staffData[0]?.token !== token) {
+        await db
+          .update(staff)
+          .set({ expoPushToken: token })
+          .where(eq(staff.id, session.userId));
+      }
     } else {
       return NextResponse.json({ error: "Only students and staff can register push tokens" }, { status: 403 });
     }

@@ -127,7 +127,7 @@ async function createExamAnnouncement(
   const label = type.charAt(0) + type.slice(1).toLowerCase();
   const action = status === "created" ? "scheduled" : status === "updated" ? "updated" : "cancelled";
 
-  await db.insert(announcements).values({
+  const [insertedAnnouncement] = await db.insert(announcements).values({
     institutionId,
     senderRole: "INSTITUTION",
     senderId: institutionId,
@@ -137,7 +137,10 @@ async function createExamAnnouncement(
     content: status === "cancelled"
       ? `${title} for ${classRow?.name || "this class"} has been cancelled.`
       : `${title} for ${classRow?.name || "this class"} has been ${action}. Exam dates run from ${startDate} to ${endDate} for ${subjectCount} book${subjectCount === 1 ? "" : "s"}. Sundays are skipped in the timetable.`,
-  });
+  }).returning({ id: announcements.id });
+
+  const { processAnnouncementNotification } = await import("@/lib/notifications");
+  await processAnnouncementNotification(insertedAnnouncement.id);
 }
 
 async function requireInstitutionSubjects(institutionId: number, subjectIds: number[]) {

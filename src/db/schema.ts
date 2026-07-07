@@ -11,7 +11,8 @@ import {
   date,
   time,
   jsonb,
-  real
+  real,
+  index
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -370,6 +371,22 @@ export const notifications = pgTable('notifications', {
   referenceId: integer('reference_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// --- EXPO PUSH TICKETS ---
+export const expoPushTickets = pgTable('expo_push_tickets', {
+  id: serial('id').primaryKey(),
+  ticketId: varchar('ticket_id', { length: 255 }).notNull().unique(),
+  token: varchar('token', { length: 255 }).notNull(),
+  userRole: roleEnum('user_role').notNull(),
+  userId: integer('user_id').notNull(),
+  notificationId: integer('notification_id').references(() => notifications.id, { onDelete: 'set null' }),
+  status: varchar('status', { length: 50 }).default('PENDING').notNull(),
+  error: text('error'),
+  checkedAt: timestamp('checked_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  statusCreatedAtIndex: index('expo_push_tickets_status_created_at_idx').on(t.status, t.createdAt),
+}));
 
 // --- SUBMISSIONS ---
 export const submissions = pgTable('submissions', {

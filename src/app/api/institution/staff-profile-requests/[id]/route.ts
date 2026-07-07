@@ -23,6 +23,11 @@ function splitName(name: string) {
   };
 }
 
+async function notifyAnnouncement(announcementId: number) {
+  const { processAnnouncementNotification } = await import("@/lib/notifications");
+  await processAnnouncementNotification(announcementId);
+}
+
 export const PATCH = requireRole(["INSTITUTION"], async (
   req: NextRequest,
   { session, params }: { session: JWTPayload; params: Promise<{ id: string }> }
@@ -63,7 +68,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (
     await db.update(staffProfileChangeRequests)
       .set(reviewedValues)
       .where(eq(staffProfileChangeRequests.id, requestId));
-    await db.insert(announcements).values({
+    const [insertedAnnouncement] = await db.insert(announcements).values({
       institutionId: session.userId,
       senderRole: "INSTITUTION",
       senderId: session.userId,
@@ -72,7 +77,8 @@ export const PATCH = requireRole(["INSTITUTION"], async (
       targetUserId: requestRow.staffId,
       title: "Profile change request rejected",
       content: parsed.data.adminNote ? `Your profile change request was rejected. Reason: ${parsed.data.adminNote}` : "Your profile change request was rejected.",
-    });
+    }).returning({ id: announcements.id });
+    await notifyAnnouncement(insertedAnnouncement.id);
     return NextResponse.json({ message: "Request rejected" });
   }
 
@@ -129,7 +135,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (
     await db.update(staffProfileChangeRequests)
       .set(reviewedValues)
       .where(eq(staffProfileChangeRequests.id, requestId));
-    await db.insert(announcements).values({
+    const [insertedAnnouncement] = await db.insert(announcements).values({
       institutionId: session.userId,
       senderRole: "INSTITUTION",
       senderId: session.userId,
@@ -138,7 +144,8 @@ export const PATCH = requireRole(["INSTITUTION"], async (
       targetUserId: staffRow.id,
       title: "Profile change request approved",
       content: parsed.data.adminNote ? `Your profile change request was approved. Note: ${parsed.data.adminNote}` : "Your profile change request was approved and your profile was updated.",
-    });
+    }).returning({ id: announcements.id });
+    await notifyAnnouncement(insertedAnnouncement.id);
   } catch (error) {
     if (typeof error === "object" && error && "code" in error && error.code === "23505") {
       return NextResponse.json({ error: "Email address is already in use" }, { status: 409 });
