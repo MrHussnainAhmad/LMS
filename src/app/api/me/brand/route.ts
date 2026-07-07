@@ -48,5 +48,6 @@ export async function GET(req: NextRequest) {
     logoKey: institution?.logoKey || null,
     href: dashboardHref(session.role),
     isInstitutionBrand: Boolean(institution),
+    role: session.role,
   });
 }

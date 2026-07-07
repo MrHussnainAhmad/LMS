@@ -121,11 +121,13 @@ export function AttendanceClient({
                       <button
                         key={statusObj.value}
                         onClick={() => toggleStatus(student.id, statusObj.value)}
+                        disabled={isAlreadyMarked}
                         className={cn(
                           "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors border",
                           isSelected 
                             ? statusObj.color
-                            : "bg-stone-50 text-stone-600 border-border hover:bg-stone-100"
+                            : "bg-stone-50 text-stone-600 border-border hover:bg-stone-100",
+                          isAlreadyMarked && "opacity-50 cursor-not-allowed"
                         )}
                       >
                         {statusObj.value.charAt(0) + statusObj.value.slice(1).toLowerCase()}
