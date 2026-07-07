@@ -177,11 +177,8 @@ export default async function LandingPage() {
 
         {/* --- Dynamic Social Proof Marquee --- */}
         {featuredLogos.length > 0 && (
-          <section className="w-full border-y border-stone-200 bg-white py-10 overflow-hidden relative">
+           <section className="w-full border-y border-stone-200 bg-white py-10 overflow-hidden relative">
              <div className="max-w-7xl mx-auto px-6 md:px-12 text-center relative">
-               <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-white to-transparent z-10"></div>
-               <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-white to-transparent z-10"></div>
-               
                <div className={shouldMarqueeLogos ? "flex w-max animate-marquee" : "flex flex-wrap justify-center"}>
                  <div className="flex items-center gap-16 py-4 px-8">
                   {featuredLogos.map((inst, i) => (

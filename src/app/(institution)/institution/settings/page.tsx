@@ -1,11 +1,13 @@
 import { db } from "@/db";
-import { institutions } from "@/db/schema";
+import { institutions, platformReviews } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Shield, Building2 } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { InstitutionLogoUploader } from "./InstitutionLogoUploader";
+import { PlatformReviewForm } from "@/components/PlatformReviewForm";
+import { Star } from "lucide-react";
 
 export default async function InstitutionSettingsPage() {
   const session = await getSession();
@@ -25,6 +27,7 @@ export default async function InstitutionSettingsPage() {
   }
 
   const profile = instData[0];
+  const [existingReview] = await db.select().from(platformReviews).where(eq(platformReviews.institutionId, institutionId)).limit(1);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -117,6 +120,21 @@ export default async function InstitutionSettingsPage() {
             </form>
           </CardContent>
         </Card>
+
+        {existingReview && (
+          <Card>
+            <CardHeader className="border-b border-border bg-brand-50/50">
+              <CardTitle className="text-lg flex items-center gap-2 text-brand-800">
+                <Star className="h-5 w-5 fill-brand-600 text-brand-600" />
+                Your Platform Review
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <p className="text-stone-500 text-sm mb-4">You can update the review that is featured on our homepage.</p>
+              <PlatformReviewForm defaultRating={existingReview.rating} defaultContent={existingReview.content} isUpdate={true} />
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
