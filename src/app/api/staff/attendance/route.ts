@@ -9,19 +9,46 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    // 1. Get distinct sections assigned to this staff member (matching web app logic)
-    const assignments = await db.selectDistinct({
+    // 1. Determine which sections this staff member is the "first lecture teacher" for TODAY
+    const today = new Date();
+    let currentDayOfWeek = today.getDay();
+    if (currentDayOfWeek === 0) currentDayOfWeek = 7;
+
+    const allTodayAssignments = await db.select({
+      sectionId: staffAssignments.sectionId,
+      staffId: staffAssignments.staffId,
+      startTime: staffAssignments.startTime,
+    })
+    .from(staffAssignments)
+    .where(and(
+      eq(staffAssignments.institutionId, session.institutionId),
+      eq(staffAssignments.dayOfWeek, currentDayOfWeek),
+      eq(staffAssignments.isBreak, false)
+    ));
+
+    const firstTeacherBySection: Record<number, { staffId: number, startTime: string }> = {};
+    allTodayAssignments.forEach(a => {
+      if (!a.staffId) return;
+      if (!firstTeacherBySection[a.sectionId] || a.startTime < firstTeacherBySection[a.sectionId].startTime) {
+        firstTeacherBySection[a.sectionId] = { staffId: a.staffId, startTime: a.startTime };
+      }
+    });
+
+    const authorizedSectionIds = Object.keys(firstTeacherBySection)
+      .map(Number)
+      .filter(sectionId => firstTeacherBySection[sectionId].staffId === session.userId);
+
+    const sectionIds = authorizedSectionIds;
+
+    const assignments = sectionIds.length > 0 ? await db.selectDistinct({
       id: sections.id,
       name: sections.name,
       classId: sections.classId,
       className: classes.name,
     })
-      .from(staffAssignments)
-      .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
+      .from(sections)
       .innerJoin(classes, eq(sections.classId, classes.id))
-      .where(and(eq(staffAssignments.staffId, session.userId), eq(staffAssignments.institutionId, session.institutionId)));
-
-    const sectionIds = assignments.map(a => a.id);
+      .where(inArray(sections.id, sectionIds)) : [];
 
     // 2. Fetch all students for these sections
     const allStudents = sectionIds.length > 0 ? await db.select({
@@ -89,6 +116,36 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
 
     if (!sectionId || !date || !records || !Array.isArray(records)) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
+
+    // Authorization: only the first teacher of the day can mark attendance
+    const today = new Date(date);
+    let currentDayOfWeek = today.getDay();
+    if (currentDayOfWeek === 0) currentDayOfWeek = 7;
+
+    const todayAssignments = await db.select({
+      staffId: staffAssignments.staffId,
+      startTime: staffAssignments.startTime,
+    })
+    .from(staffAssignments)
+    .where(and(
+      eq(staffAssignments.institutionId, session.institutionId),
+      eq(staffAssignments.dayOfWeek, currentDayOfWeek),
+      eq(staffAssignments.sectionId, sectionId),
+      eq(staffAssignments.isBreak, false)
+    ));
+
+    let firstTeacher: number | null = null;
+    let minTime = "23:59:59";
+    todayAssignments.forEach(a => {
+      if (a.staffId && a.startTime < minTime) {
+        minTime = a.startTime;
+        firstTeacher = a.staffId;
+      }
+    });
+
+    if (firstTeacher !== session.userId) {
+      return NextResponse.json({ error: "You are not authorized to mark attendance for this class today. Only the first lecture teacher (Class Incharge) can do this." }, { status: 403 });
     }
 
     // Upsert attendance

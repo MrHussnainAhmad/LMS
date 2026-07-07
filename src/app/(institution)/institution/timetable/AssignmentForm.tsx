@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { createTimetableAssignmentAction } from "@/app/actions/institution-actions";
+import { useToast } from "@/components/ui/toaster";
 
 export function AssignmentForm({
   sectionId,
@@ -14,9 +15,17 @@ export function AssignmentForm({
   staff: { id: number; name: string }[];
 }) {
   const [isBreak, setIsBreak] = useState(false);
+  const { toast } = useToast();
 
   return (
-    <form action={async (formData) => { await createTimetableAssignmentAction(formData); }} className="space-y-4">
+    <form action={async (formData) => { 
+      try {
+        await createTimetableAssignmentAction(formData); 
+        toast({ title: "Success", description: "Time slot assigned successfully.", variant: "success" });
+      } catch (err: any) {
+        toast({ title: "Error", description: err.message || "Failed to assign time slot", variant: "destructive" });
+      }
+    }} className="space-y-4">
       <input type="hidden" name="sectionId" value={sectionId || ""} />
 
       <div className="flex items-center gap-2 mb-4">
