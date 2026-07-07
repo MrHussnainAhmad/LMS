@@ -52,6 +52,16 @@ yarn-error.log*
 /drizzle/
 
 # local-only operational database scripts
+/check*.js
+/check*.ts
+/fix*.js
+/fix*.ts
+/migrate*.js
+/migrate*.ts
+/run_*.js
+/run_*.ts
+/clear_*.js
+/clear_*.ts
 /scripts/wipe.ts
 /scripts/clear-assignments.ts
 /scripts/create-super-admin.ts
