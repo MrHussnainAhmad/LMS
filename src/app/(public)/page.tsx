@@ -182,24 +182,10 @@ export default async function LandingPage() {
                <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-white to-transparent z-10"></div>
                <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-white to-transparent z-10"></div>
                
-               <div className={`flex items-center gap-16 py-4 ${shouldMarqueeLogos ? 'animate-marquee whitespace-nowrap' : 'justify-center'}`}>
-                {featuredLogos.map((inst, i) => (
-                  <div key={i} className="flex items-center gap-3 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300">
-                    {inst.logoKey && (
-                      <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
-                        <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover" />
-                      </div>
-                    )}
-                    <span className="font-display font-semibold text-stone-700 whitespace-nowrap">{inst.name}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Duplicate for infinite marquee if needed */}
-              {shouldMarqueeLogos && (
-                <div className="flex items-center gap-16 py-4 animate-marquee whitespace-nowrap" aria-hidden="true">
+               <div className={shouldMarqueeLogos ? "flex w-max animate-marquee" : "flex flex-wrap justify-center"}>
+                 <div className="flex items-center gap-16 py-4 px-8">
                   {featuredLogos.map((inst, i) => (
-                    <div key={`dup-${i}`} className="flex items-center gap-3 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300">
+                    <div key={i} className="flex items-center gap-3 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300 shrink-0">
                       {inst.logoKey && (
                         <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
                           <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover" />
@@ -208,8 +194,24 @@ export default async function LandingPage() {
                       <span className="font-display font-semibold text-stone-700 whitespace-nowrap">{inst.name}</span>
                     </div>
                   ))}
-                </div>
-              )}
+                 </div>
+
+                {/* Duplicate for infinite marquee if needed */}
+                {shouldMarqueeLogos && (
+                  <div className="flex items-center gap-16 py-4 px-8" aria-hidden="true">
+                    {featuredLogos.map((inst, i) => (
+                      <div key={`dup-${i}`} className="flex items-center gap-3 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300 shrink-0">
+                        {inst.logoKey && (
+                          <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+                            <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover" />
+                          </div>
+                        )}
+                        <span className="font-display font-semibold text-stone-700 whitespace-nowrap">{inst.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+               </div>
              </div>
           </section>
         )}
