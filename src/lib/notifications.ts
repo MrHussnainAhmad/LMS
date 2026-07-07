@@ -195,6 +195,7 @@ export async function checkExpoPushReceipts() {
   const receipts = (body.data || {}) as Record<string, ExpoReceipt>;
   let delivered = 0;
   let failed = 0;
+  let tokensCleaned = 0;
 
   await Promise.all(pendingTickets.map(async (ticket) => {
     const receipt = receipts[ticket.ticketId];
@@ -217,6 +218,7 @@ export async function checkExpoPushReceipts() {
     console.error("Expo Push Receipt Error:", { token: ticket.token, reason });
 
     if (receipt.details?.error === 'DeviceNotRegistered') {
+      tokensCleaned++;
       if (ticket.userRole === 'STUDENT') {
         await db.update(students)
           .set({ expoPushToken: null })
@@ -229,7 +231,7 @@ export async function checkExpoPushReceipts() {
     }
   }));
 
-  return { checked: pendingTickets.length, failed, delivered };
+  return { ticketsChecked: pendingTickets.length, tokensCleaned };
 }
 
 export async function processAnnouncementNotification(announcementId: number) {
