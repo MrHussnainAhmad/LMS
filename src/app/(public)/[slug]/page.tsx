@@ -6,8 +6,9 @@ import ReactMarkdown from "react-markdown";
 import Link from "next/link";
 import { BookOpen, ArrowLeft } from "lucide-react";
 
-export async function generateMetadata({ params }: { params: { slug: string } }) {
-  const [page] = await db.select().from(platformPages).where(eq(platformPages.slug, params.slug));
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const resolvedParams = await params;
+  const [page] = await db.select().from(platformPages).where(eq(platformPages.slug, resolvedParams.slug));
   
   if (!page) {
     return { title: "Page Not Found | Taleem360" };
@@ -21,8 +22,9 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 
 export const dynamic = "force-dynamic";
 
-export default async function StaticPage({ params }: { params: { slug: string } }) {
-  const [page] = await db.select().from(platformPages).where(eq(platformPages.slug, params.slug));
+export default async function StaticPage({ params }: { params: Promise<{ slug: string }> }) {
+  const resolvedParams = await params;
+  const [page] = await db.select().from(platformPages).where(eq(platformPages.slug, resolvedParams.slug));
 
   if (!page) {
     notFound();
