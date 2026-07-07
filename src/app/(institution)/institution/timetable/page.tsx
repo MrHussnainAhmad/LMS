@@ -133,6 +133,7 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
               <CardContent className="p-6">
                 {selectedSectionId && (
                   <InchargeForm 
+                    key={selectedSectionId}
                     sectionId={selectedSectionId} 
                     currentInchargeId={allSections.find(s => s.section.id === selectedSectionId)?.section.classTeacherId || null}
                     staff={allStaff.map(s => ({ id: s.id, name: s.name }))}
