@@ -123,6 +123,7 @@ export default async function InstitutionStaffPage() {
                   <input
                     type="text"
                     name="phone"
+                    required
                     className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                     placeholder="+1234567890"
                   />

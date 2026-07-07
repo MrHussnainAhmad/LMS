@@ -1,16 +1,13 @@
 "use server";
 
 import { db } from "@/db";
-import { campuses, staff, classes, sections, subjects, announcements, notifications } from "@/db/schema";
+import { campuses, staff, classes, sections, subjects, announcements, notifications, institutions } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { staffAssignments } from "@/db/schema";
 import { eq, and, gt, lt, inArray } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
-
-function generateSlug(name: string) {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "");
-}
+import { generateStaffEmail } from "@/lib/login-identifiers";
 
 export async function createCampusAction(formData: FormData) {
   const session = await getSession();
@@ -36,15 +33,29 @@ export async function createStaffAction(formData: FormData) {
   
   const institutionId = session.userId;
   const name = formData.get("name") as string;
-  const phone = formData.get("phone") as string;
+  const phone = ((formData.get("phone") as string) || "").trim();
   const password = formData.get("password") as string;
   const campusIdRaw = formData.get("campusId") as string;
   const campusId = campusIdRaw ? parseInt(campusIdRaw, 10) : null;
 
-  // Generate a slug email: john-doe@inst_slug.lms
-  const baseSlug = generateSlug(name);
-  const randomSuffix = Math.floor(Math.random() * 10000);
-  const email = `${baseSlug}-${randomSuffix}@inst-${institutionId}.lms`;
+  if (phone.replace(/\D/g, "").length < 4) {
+    throw new Error("Phone number must include at least 4 digits");
+  }
+
+  const [institution] = await db.select().from(institutions).where(eq(institutions.id, institutionId)).limit(1);
+  if (!institution) throw new Error("Institution not found");
+
+  const baseEmail = generateStaffEmail({ name, phone, institution });
+  const [localPart, domain] = baseEmail.split("@");
+  let email = baseEmail;
+  let count = 0;
+
+  while (true) {
+    const [existing] = await db.select().from(staff).where(eq(staff.email, email)).limit(1);
+    if (!existing) break;
+    count++;
+    email = `${localPart}${count}@${domain}`;
+  }
 
   const passwordHash = await hash(password);
 

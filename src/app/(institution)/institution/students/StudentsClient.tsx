@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import type { ReactNode } from "react";
 import { DataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
-import { Plus, Upload, MoreHorizontal, Eye, Edit, Trash, Download } from "lucide-react";
+import { Plus, Upload, MoreHorizontal, Eye, Edit, Trash } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
@@ -20,6 +21,7 @@ type StudentRow = {
   yearOfJoining: number;
   classId: number;
   sectionId: number;
+  classRollNumber: string;
   phone: string | null;
 };
 
@@ -27,6 +29,17 @@ type CreateStudentResponse = {
   credentials?: {
     loginRollNumber?: string;
   };
+};
+
+type StudentTableRow = StudentRow & {
+  searchString: string;
+};
+
+type StudentColumn = {
+  header: string;
+  accessorKey?: keyof StudentTableRow;
+  cell?: (student: StudentTableRow) => ReactNode;
+  sortable?: boolean;
 };
 
 function errorMessage(error: unknown) {
@@ -83,14 +96,14 @@ export function StudentsClient({
     }));
   }, [students, filterClassId, filterSectionId]);
 
-  const columns = [
+  const columns: StudentColumn[] = [
     { header: "Roll Number", accessorKey: "loginRollNumber" as const, sortable: true },
-    { header: "Name", accessorKey: "name" as const, cell: (s: any) => <span className="font-medium text-brand-900">{s.name}</span> },
+    { header: "Name", accessorKey: "name" as const, cell: (s) => <span className="font-medium text-brand-900">{s.name}</span> },
     { header: "Gender", accessorKey: "gender" as const },
     { header: "Year", accessorKey: "yearOfJoining" as const },
     { 
       header: "Actions", 
-      cell: (s: any) => (
+      cell: (s) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon">
@@ -335,6 +348,11 @@ export function StudentsClient({
                     {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Class Roll Number</label>
+                <Input name="classRollNumber" defaultValue={editStudent.classRollNumber} required />
               </div>
 
               <div className="space-y-1">

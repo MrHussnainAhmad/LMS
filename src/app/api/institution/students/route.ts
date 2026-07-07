@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { students, institutions, classes } from '@/db/schema';
+import { students, institutions, classes, sections } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { hash } from '@node-rs/argon2';
 import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStudentSchema } from '@/lib/validators/student';
 import { logAudit } from '@/lib/audit';
+import { generateStudentLoginRollNumber } from '@/lib/login-identifiers';
 
 export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { session }) => {
   const tenantId = getTenantContext(session);
@@ -20,21 +21,27 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
 
   const [inst] = await db.select().from(institutions).where(eq(institutions.id, tenantId)).limit(1);
   const [classObj] = await db.select().from(classes).where(and(eq(classes.id, classId), eq(classes.institutionId, tenantId))).limit(1);
+  const [sectionObj] = await db.select().from(sections).where(and(eq(sections.id, sectionId), eq(sections.institutionId, tenantId))).limit(1);
+
+  if (!inst) {
+    return NextResponse.json({ error: "Institution not found" }, { status: 404 });
+  }
 
   if (!classObj) {
     return NextResponse.json({ error: "Class not found" }, { status: 400 });
   }
 
-  // Extract digits from class name, e.g. "9", "10", "Pre-9th" -> "9". 
-  const classNumberMatch = classObj.name.match(/\d+/);
-  const classNumberStr = classNumberMatch ? classNumberMatch[0] : classObj.name.replace(/\s+/g, '').substring(0, 3).toUpperCase();
-  
-  // yearOfJoining last two digits:
-  const yearLastTwo = yearOfJoining.toString().slice(-2);
+  if (!sectionObj || sectionObj.classId !== classId) {
+    return NextResponse.json({ error: "Section not found for selected class" }, { status: 400 });
+  }
 
-  // roll number logic: {S|C|U}{year}{classLevel}{roll}@{username}.myapp.pk
-  const typeLetter = inst.type.charAt(0).toUpperCase();
-  const loginRollNumber = `${typeLetter}${yearLastTwo}${classNumberStr}${classRollNumber}@${inst.username}.${process.env.APP_DOMAIN || 'myapp.pk'}`;
+  const loginRollNumber = generateStudentLoginRollNumber({
+    institution: inst,
+    classRow: classObj,
+    sectionRow: sectionObj,
+    yearOfJoining,
+    classRollNumber,
+  });
 
   const initialPassword = '1234567890';
   const passwordHash = await hash(initialPassword);

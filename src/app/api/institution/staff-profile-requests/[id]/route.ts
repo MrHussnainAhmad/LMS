@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { announcements, campuses, staff, staffProfileChangeRequests } from "@/db/schema";
+import { announcements, campuses, institutions, staff, staffProfileChangeRequests } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import type { JWTPayload } from "@/lib/auth";
 import { reviewStaffProfileChangeRequestSchema } from "@/lib/validators/staff";
 import { and, eq } from "drizzle-orm";
+import { generateStaffEmail } from "@/lib/login-identifiers";
 
 type RequestedFields = {
   firstName?: string;
@@ -91,6 +92,29 @@ export const PATCH = requireRole(["INSTITUTION"], async (
   }
   if (requestedFields.email) updates.email = requestedFields.email;
   if (requestedFields.phone) updates.phone = requestedFields.phone;
+
+  if (!requestedFields.email && (updates.name || updates.phone)) {
+    const [institution] = await db.select().from(institutions).where(eq(institutions.id, session.userId)).limit(1);
+    if (!institution) return NextResponse.json({ error: "Institution not found" }, { status: 404 });
+
+    const baseEmail = generateStaffEmail({
+      name: updates.name || staffRow.name,
+      phone: updates.phone ?? staffRow.phone,
+      institution,
+    });
+    const [localPart, domain] = baseEmail.split("@");
+    let generatedEmail = baseEmail;
+    let count = 0;
+
+    while (true) {
+      const [existing] = await db.select({ id: staff.id }).from(staff).where(eq(staff.email, generatedEmail)).limit(1);
+      if (!existing || existing.id === staffRow.id) break;
+      count++;
+      generatedEmail = `${localPart}${count}@${domain}`;
+    }
+
+    updates.email = generatedEmail;
+  }
 
   if (requestedFields.campusId) {
     const [campus] = await db.select().from(campuses)

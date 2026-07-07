@@ -6,6 +6,7 @@ import { hash } from '@node-rs/argon2';
 import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStaffSchema } from '@/lib/validators/staff';
 import { logAudit } from '@/lib/audit';
+import { generateStaffEmail } from '@/lib/login-identifiers';
 
 export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { session }) => {
   const tenantId = getTenantContext(session);
@@ -19,10 +20,13 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
   const { name, phone, subjectIds, campusId } = parsed.data;
 
   const [inst] = await db.select().from(institutions).where(eq(institutions.id, tenantId)).limit(1);
+  if (!inst) {
+    return NextResponse.json({ error: "Institution not found" }, { status: 404 });
+  }
 
-  // Generate unique email slug
-  const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-  let generatedEmail = `${slug}@${inst.username}.${process.env.APP_DOMAIN || 'myapp.pk'}`;
+  const baseEmail = generateStaffEmail({ name, phone, institution: inst });
+  const [localPart, domain] = baseEmail.split('@');
+  let generatedEmail = baseEmail;
   
   // collision check
   let count = 0;
@@ -30,7 +34,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
     const [existing] = await db.select().from(staff).where(eq(staff.email, generatedEmail)).limit(1);
     if (!existing) break;
     count++;
-    generatedEmail = `${slug}${count}@${inst.username}.${process.env.APP_DOMAIN || 'myapp.pk'}`;
+    generatedEmail = `${localPart}${count}@${domain}`;
   }
 
   const initialPassword = '1234567890';
