@@ -145,6 +145,25 @@ export async function createSectionAction(formData: FormData) {
   return { success: true };
 }
 
+export async function updateClassInchargeAction(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+
+  const institutionId = session.userId;
+  const sectionId = parseInt(formData.get("sectionId") as string, 10);
+  const classTeacherIdRaw = formData.get("classTeacherId") as string;
+  const classTeacherId = classTeacherIdRaw ? parseInt(classTeacherIdRaw, 10) : null;
+
+  if (!Number.isInteger(sectionId)) throw new Error("Invalid section ID");
+
+  await db.update(sections)
+    .set({ classTeacherId })
+    .where(and(eq(sections.id, sectionId), eq(sections.institutionId, institutionId)));
+
+  revalidatePath("/institution/timetable");
+  return { success: true };
+}
+
 export async function createTimetableAssignmentAction(formData: FormData) {
   const session = await getSession();
   if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");

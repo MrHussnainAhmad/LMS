@@ -9,38 +9,8 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    // 1. Determine which sections this staff member is the "first lecture teacher" for TODAY
-    const today = new Date();
-    let currentDayOfWeek = today.getDay();
-    if (currentDayOfWeek === 0) currentDayOfWeek = 7;
-
-    const allTodayAssignments = await db.select({
-      sectionId: staffAssignments.sectionId,
-      staffId: staffAssignments.staffId,
-      startTime: staffAssignments.startTime,
-    })
-    .from(staffAssignments)
-    .where(and(
-      eq(staffAssignments.institutionId, session.institutionId),
-      eq(staffAssignments.dayOfWeek, currentDayOfWeek),
-      eq(staffAssignments.isBreak, false)
-    ));
-
-    const firstTeacherBySection: Record<number, { staffId: number, startTime: string }> = {};
-    allTodayAssignments.forEach(a => {
-      if (!a.staffId) return;
-      if (!firstTeacherBySection[a.sectionId] || a.startTime < firstTeacherBySection[a.sectionId].startTime) {
-        firstTeacherBySection[a.sectionId] = { staffId: a.staffId, startTime: a.startTime };
-      }
-    });
-
-    const authorizedSectionIds = Object.keys(firstTeacherBySection)
-      .map(Number)
-      .filter(sectionId => firstTeacherBySection[sectionId].staffId === session.userId);
-
-    const sectionIds = authorizedSectionIds;
-
-    const assignments = sectionIds.length > 0 ? await db.selectDistinct({
+    // Only fetch sections where this staff member is explicitly set as the class incharge
+    const assignments = await db.selectDistinct({
       id: sections.id,
       name: sections.name,
       classId: sections.classId,
@@ -48,7 +18,9 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
     })
       .from(sections)
       .innerJoin(classes, eq(sections.classId, classes.id))
-      .where(inArray(sections.id, sectionIds)) : [];
+      .where(and(eq(sections.classTeacherId, session.userId), eq(sections.institutionId, session.institutionId)));
+
+    const sectionIds = assignments.map(a => a.id);
 
     // 2. Fetch all students for these sections
     const allStudents = sectionIds.length > 0 ? await db.select({
@@ -118,34 +90,13 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
-    // Authorization: only the first teacher of the day can mark attendance
-    const today = new Date(date);
-    let currentDayOfWeek = today.getDay();
-    if (currentDayOfWeek === 0) currentDayOfWeek = 7;
+    // Authorization: only the class incharge can mark attendance
+    const [section] = await db.select({ classTeacherId: sections.classTeacherId })
+      .from(sections)
+      .where(and(eq(sections.id, sectionId), eq(sections.institutionId, session.institutionId)));
 
-    const todayAssignments = await db.select({
-      staffId: staffAssignments.staffId,
-      startTime: staffAssignments.startTime,
-    })
-    .from(staffAssignments)
-    .where(and(
-      eq(staffAssignments.institutionId, session.institutionId),
-      eq(staffAssignments.dayOfWeek, currentDayOfWeek),
-      eq(staffAssignments.sectionId, sectionId),
-      eq(staffAssignments.isBreak, false)
-    ));
-
-    let firstTeacher: number | null = null;
-    let minTime = "23:59:59";
-    todayAssignments.forEach(a => {
-      if (a.staffId && a.startTime < minTime) {
-        minTime = a.startTime;
-        firstTeacher = a.staffId;
-      }
-    });
-
-    if (firstTeacher !== session.userId) {
-      return NextResponse.json({ error: "You are not authorized to mark attendance for this class today. Only the first lecture teacher (Class Incharge) can do this." }, { status: 403 });
+    if (!section || section.classTeacherId !== session.userId) {
+      return NextResponse.json({ error: "You are not authorized to mark attendance for this class. Only the designated Class Incharge can do this." }, { status: 403 });
     }
 
     // Upsert attendance

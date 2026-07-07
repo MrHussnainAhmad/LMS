@@ -4,9 +4,10 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Calendar, Plus } from "lucide-react";
+import { Calendar, Plus, User } from "lucide-react";
 import { SectionSelector } from "./SectionSelector";
 import { AssignmentForm } from "./AssignmentForm";
+import { InchargeForm } from "./InchargeForm";
 import { InstitutionExamForm } from "@/components/exams/InstitutionExamForm";
 import { WeeklyTimetable, type TimetableEntry } from "@/components/timetable/ScheduleViews";
 
@@ -123,6 +124,24 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
 
           <div>
             <Card className="sticky top-6">
+              <CardHeader className="border-b border-border bg-stone-50/50 pb-4">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <User className="h-5 w-5 text-brand-600" />
+                  Class Incharge
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {selectedSectionId && (
+                  <InchargeForm 
+                    sectionId={selectedSectionId} 
+                    currentInchargeId={allSections.find(s => s.section.id === selectedSectionId)?.section.classTeacherId || null}
+                    staff={allStaff.map(s => ({ id: s.id, name: s.name }))}
+                  />
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="mt-6">
               <CardHeader className="border-b border-border bg-stone-50/50">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Plus className="h-5 w-5 text-brand-600" />
