@@ -231,7 +231,7 @@ export async function checkExpoPushReceipts() {
     }
   }));
 
-  return { ticketsChecked: pendingTickets.length, tokensCleaned };
+  return { ticketsChecked: pendingTickets.length, tokensCleaned, errors: failed };
 }
 
 export async function processAnnouncementNotification(announcementId: number) {
