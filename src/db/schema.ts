@@ -437,3 +437,15 @@ export const platformReviews = pgTable('platform_reviews', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+// --- PLATFORM PAGES (FOOTER) ---
+export const platformPages = pgTable('platform_pages', {
+  id: serial('id').primaryKey(),
+  slug: varchar('slug', { length: 255 }).notNull().unique(), // e.g. 'about-us'
+  title: varchar('title', { length: 255 }).notNull(),
+  content: text('content').notNull(),
+  lastEditedAt: timestamp('last_edited_at').defaultNow().notNull(),
+  lastEditedBy: integer('last_edited_by'), // Generic user ID
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});

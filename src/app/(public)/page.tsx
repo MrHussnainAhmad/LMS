@@ -99,10 +99,9 @@ export default async function LandingPage() {
         </div>
         
         <nav className="hidden lg:flex items-center gap-8">
-          <Link href="#features" className="text-sm font-semibold text-stone-600 hover:text-brand-700 transition-colors">Features</Link>
-          <Link href="#solutions" className="text-sm font-semibold text-stone-600 hover:text-brand-700 transition-colors">Solutions</Link>
-          <Link href="#testimonials" className="text-sm font-semibold text-stone-600 hover:text-brand-700 transition-colors">Customers</Link>
-          <Link href="#pricing" className="text-sm font-semibold text-stone-600 hover:text-brand-700 transition-colors">Pricing</Link>
+          <Link href="#testimonials" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Customers</Link>
+          <Link href="#pricing" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Pricing</Link>
+          <Link href="/login" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Login</Link>
         </nav>
 
         <div className="flex items-center gap-4">
@@ -294,46 +293,41 @@ export default async function LandingPage() {
       </main>
 
       {/* --- Professional Footer --- */}
-      <footer className="w-full bg-white border-t border-stone-200 pt-20 pb-10 px-6 md:px-12">
-        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-8 mb-16">
+      <footer className="w-full bg-stone-950 text-white border-t border-stone-800 pt-20 pb-10 px-6 md:px-12">
+        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-12 mb-16">
            <div className="col-span-2">
              <div className="flex items-center gap-2 mb-6">
                 <div className="bg-brand-600 p-1.5 rounded-lg">
                   <BookOpen className="h-5 w-5 text-white" />
                 </div>
-                <span className="font-display font-bold text-2xl text-stone-900">Taleem360</span>
+                <span className="font-display font-bold text-2xl">Taleem360</span>
              </div>
-             <p className="text-stone-500 text-sm max-w-xs mb-6">
+             <p className="text-stone-400 text-sm max-w-xs mb-6">
                The next-generation platform for modern education. Simplify admin tasks, boost engagement, and leverage advanced analytics.
              </p>
            </div>
            
            <div>
-             <h4 className="font-bold text-stone-900 mb-4">Product</h4>
-             <ul className="space-y-3 text-sm text-stone-500">
-               <li><Link href="#features" className="hover:text-brand-600 transition-colors">Features</Link></li>
-               <li><Link href="#pricing" className="hover:text-brand-600 transition-colors">Pricing</Link></li>
-             </ul>
-           </div>
-           
-           <div>
-             <h4 className="font-bold text-stone-900 mb-4">Company</h4>
-             <ul className="space-y-3 text-sm text-stone-500">
-               <li><Link href="#" className="hover:text-brand-600 transition-colors">About Us</Link></li>
-               <li><Link href="#" className="hover:text-brand-600 transition-colors">Contact</Link></li>
-             </ul>
-           </div>
-           
-           <div>
-             <h4 className="font-bold text-stone-900 mb-4">Legal</h4>
-             <ul className="space-y-3 text-sm text-stone-500">
-               <li><Link href="#" className="hover:text-brand-600 transition-colors">Privacy Policy</Link></li>
-               <li><Link href="#" className="hover:text-brand-600 transition-colors">Terms of Service</Link></li>
-             </ul>
-           </div>
+             <h4 className="text-lg font-bold text-white mb-6">Company</h4>
+             <ul className="space-y-4">
+                <li><Link href="/about-us" className="text-stone-400 hover:text-white transition-colors">About Us</Link></li>
+                <li><Link href="/careers" className="text-stone-400 hover:text-white transition-colors">Careers</Link></li>
+                <li><Link href="/blog" className="text-stone-400 hover:text-white transition-colors">Blog</Link></li>
+                <li><Link href="/contact" className="text-stone-400 hover:text-white transition-colors">Contact</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-lg font-bold text-white mb-6">Legal</h4>
+              <ul className="space-y-4">
+                <li><Link href="/privacy-policy" className="text-stone-400 hover:text-white transition-colors">Privacy Policy</Link></li>
+                <li><Link href="/terms-of-service" className="text-stone-400 hover:text-white transition-colors">Terms of Service</Link></li>
+                <li><Link href="/security" className="text-stone-400 hover:text-white transition-colors">Security</Link></li>
+                <li><Link href="/gdpr" className="text-stone-400 hover:text-white transition-colors">GDPR</Link></li>
+              </ul>
+            </div>
         </div>
         
-        <div className="max-w-7xl mx-auto pt-8 border-t border-stone-100 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="max-w-7xl mx-auto pt-8 border-t border-stone-800 flex flex-col md:flex-row justify-between items-center gap-4">
            <p className="text-stone-400 text-sm">&copy; {new Date().getFullYear()} Taleem360 Inc. All rights reserved.</p>
            <div className="text-stone-400 text-sm font-medium">Made with passion for educators.</div>
         </div>

@@ -28,6 +28,19 @@ async function main() {
       WHEN duplicate_object THEN null;
     END $$;
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS "platform_pages" (
+      "id" serial PRIMARY KEY NOT NULL,
+      "slug" varchar(255) NOT NULL,
+      "title" varchar(255) NOT NULL,
+      "content" text NOT NULL,
+      "last_edited_at" timestamp DEFAULT now() NOT NULL,
+      "last_edited_by" integer,
+      "created_at" timestamp DEFAULT now() NOT NULL,
+      "updated_at" timestamp DEFAULT now() NOT NULL,
+      CONSTRAINT "platform_pages_slug_unique" UNIQUE("slug")
+    );
+  `;
   console.log('Migration complete');
   process.exit(0);
 }
