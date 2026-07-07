@@ -13,17 +13,16 @@ export default async function AttendancePage() {
 
   const staffId = session.userId;
 
-  // Get distinct sections assigned to this staff member
+  // Get distinct sections where this staff member is the class incharge
   const assignments = await db.selectDistinct({
     id: sections.id,
     name: sections.name,
     classId: sections.classId,
     className: classes.name,
   })
-    .from(staffAssignments)
-    .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
+    .from(sections)
     .innerJoin(classes, eq(sections.classId, classes.id))
-    .where(and(eq(staffAssignments.staffId, staffId), eq(staffAssignments.institutionId, session.institutionId)));
+    .where(and(eq(sections.classTeacherId, staffId), eq(sections.institutionId, session.institutionId)));
 
   const sectionIds = assignments.map(a => a.id);
   
