@@ -18,10 +18,12 @@ const STATUS_STATES = [
 
 export function AttendanceClient({ 
   assignedSections, 
-  studentsBySection 
+  studentsBySection,
+  todayAttendanceBySection = {}
 }: { 
   assignedSections: any[], 
-  studentsBySection: Record<number, any[]> 
+  studentsBySection: Record<number, any[]>,
+  todayAttendanceBySection?: Record<number, boolean>
 }) {
   const [selectedSectionId, setSelectedSectionId] = useState<number>(assignedSections[0]?.id || 0);
   
@@ -63,6 +65,7 @@ export function AttendanceClient({
   };
 
   const presentCount = students.filter(s => s.status === "PRESENT").length;
+  const isAlreadyMarked = Boolean(todayAttendanceBySection[selectedSectionId]);
 
   return (
     <div className="space-y-6 animate-fade-in pb-24 lg:pb-0">
@@ -87,6 +90,12 @@ export function AttendanceClient({
 
       <div className="grid lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3 space-y-2">
+          {isAlreadyMarked && (
+            <div className="p-4 mb-4 text-sm text-brand-900 bg-brand-50 border border-brand-200 rounded-lg flex items-center gap-2">
+              <Check className="w-4 h-4" />
+              Attendance has already been marked for this class today.
+            </div>
+          )}
           {students.length === 0 && (
             <div className="p-12 text-center text-stone-500 border border-border rounded-lg bg-surface">
               No students enrolled in this section.
@@ -177,16 +186,16 @@ export function AttendanceClient({
               <span className="font-semibold text-success">{presentCount}</span>
             </div>
           </div>
-          <Button onClick={handleSubmit} disabled={isSubmitting} className="bg-brand-800 hover:bg-brand-900 text-white min-w-[120px]">
-            {isSubmitting ? "Submitting..." : "Submit"}
+          <Button onClick={handleSubmit} disabled={isSubmitting || isAlreadyMarked} className="bg-brand-800 hover:bg-brand-900 text-white min-w-[120px] disabled:opacity-50">
+            {isAlreadyMarked ? "Marked" : isSubmitting ? "Submitting..." : "Submit"}
           </Button>
         </div>
       </div>
 
       {/* Desktop Submit Button */}
       <div className="hidden lg:flex justify-end pt-6">
-        <Button onClick={handleSubmit} disabled={isSubmitting} size="lg" className="bg-brand-800 hover:bg-brand-900 text-white min-w-[200px]">
-          {isSubmitting ? "Submitting Attendance..." : "Submit Attendance"}
+        <Button onClick={handleSubmit} disabled={isSubmitting || isAlreadyMarked} size="lg" className="bg-brand-800 hover:bg-brand-900 text-white min-w-[200px] disabled:opacity-50">
+          {isAlreadyMarked ? "Attendance Already Marked" : isSubmitting ? "Submitting Attendance..." : "Submit Attendance"}
         </Button>
       </div>
     </div>

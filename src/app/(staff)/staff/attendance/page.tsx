@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { AttendanceClient } from "./AttendanceClient";
+import { attendances } from "@/db/schema";
 
 export default async function AttendancePage() {
   const session = await getSession();
@@ -43,10 +44,25 @@ export default async function AttendancePage() {
     studentsBySection[student.sectionId].push(student);
   });
 
+  const todayStr = new Date().toISOString().split("T")[0];
+  const todayRecords = sectionIds.length > 0 ? await db.select({
+    sectionId: attendances.sectionId,
+    studentId: attendances.studentId,
+    status: attendances.status
+  })
+    .from(attendances)
+    .where(and(eq(attendances.date, todayStr), inArray(attendances.sectionId, sectionIds))) : [];
+
+  const todayAttendanceBySection: Record<number, boolean> = {};
+  todayRecords.forEach(record => {
+    todayAttendanceBySection[record.sectionId] = true;
+  });
+
   return (
     <AttendanceClient 
       assignedSections={assignments} 
       studentsBySection={studentsBySection} 
+      todayAttendanceBySection={todayAttendanceBySection}
     />
   );
 }

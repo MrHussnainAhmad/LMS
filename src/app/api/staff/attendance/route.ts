@@ -50,6 +50,7 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
           date: attendances.date,
           status: attendances.status,
           studentName: students.name,
+          sectionId: attendances.sectionId,
           sectionName: sections.name,
         })
         .from(attendances)
