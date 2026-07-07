@@ -19,6 +19,8 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   };
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function StaticPage({ params }: { params: { slug: string } }) {
   const [page] = await db.select().from(platformPages).where(eq(platformPages.slug, params.slug));
 
