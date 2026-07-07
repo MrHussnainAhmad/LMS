@@ -28,6 +28,7 @@
     "@uiw/react-md-editor": "^4.1.1",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
+    "adm-zip": "^0.5.18",
     "autoprefixer": "^10.5.2",
     "cloudinary": "^2.10.0",
     "clsx": "^2.1.1",
@@ -47,6 +48,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^19",
