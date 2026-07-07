@@ -8,7 +8,7 @@ export default function LandingPage() {
       <header className="flex items-center justify-between px-8 py-4 border-b border-border bg-surface">
         <div className="flex items-center gap-2">
           <BookOpen className="h-6 w-6 text-brand-800" />
-          <span className="font-display font-semibold text-xl text-brand-900">LMS Platform</span>
+          <span className="font-display font-semibold text-xl text-brand-900">Taleem360</span>
         </div>
         <div className="flex items-center gap-4">
           <Link href="/login" className="text-sm font-medium text-stone-600 hover:text-brand-900">
@@ -66,7 +66,7 @@ export default function LandingPage() {
       </main>
 
       <footer className="py-8 text-center text-stone-500 text-sm border-t border-border bg-surface">
-        &copy; {new Date().getFullYear()} LMS Platform. All rights reserved.
+        &copy; {new Date().getFullYear()} Taleem360. All rights reserved.
       </footer>
     </div>
   );

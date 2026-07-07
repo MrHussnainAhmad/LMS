@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   if (!session) {
     return NextResponse.json({
-      name: "LMS Platform",
+      name: "Taleem360",
       logoKey: null,
       href: "/",
       isInstitutionBrand: false,
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   const institutionId = session.role === "INSTITUTION" ? session.userId : session.institutionId;
   if (!institutionId) {
     return NextResponse.json({
-      name: "LMS Platform",
+      name: "Taleem360",
       logoKey: null,
       href: dashboardHref(session.role),
       isInstitutionBrand: false,
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     .limit(1);
 
   return NextResponse.json({
-    name: institution?.name || "LMS Platform",
+    name: institution?.name || "Taleem360",
     logoKey: institution?.logoKey || null,
     href: dashboardHref(session.role),
     isInstitutionBrand: Boolean(institution),
