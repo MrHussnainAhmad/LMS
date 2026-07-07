@@ -75,16 +75,23 @@ export function AttendanceClient({
           <p className="text-stone-500 mt-1 text-sm lg:text-base">Select attendance status for each student</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <select 
-            value={selectedSectionId}
-            onChange={(e) => handleSectionChange(parseInt(e.target.value))}
-            className="h-10 w-full sm:w-auto rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring min-w-[150px]"
-          >
-            {assignedSections.length === 0 && <option value={0}>No Assigned Classes</option>}
-            {assignedSections.map(s => (
-              <option key={s.id} value={s.id}>{s.className} - {s.name}</option>
-            ))}
-          </select>
+          {assignedSections.length <= 1 ? (
+            <div className="h-10 w-full sm:w-auto rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium flex items-center min-w-[150px] shadow-sm text-brand-900">
+              {assignedSections.length === 1 
+                ? `${assignedSections[0].className} - ${assignedSections[0].name}` 
+                : "No Assigned Classes"}
+            </div>
+          ) : (
+            <select 
+              value={selectedSectionId}
+              onChange={(e) => handleSectionChange(parseInt(e.target.value))}
+              className="h-10 w-full sm:w-auto rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring min-w-[150px] shadow-sm"
+            >
+              {assignedSections.map(s => (
+                <option key={s.id} value={s.id}>{s.className} - {s.name}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
