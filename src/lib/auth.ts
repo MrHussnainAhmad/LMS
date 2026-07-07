@@ -13,8 +13,8 @@ const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-
 export { verifyAccessToken };
 export type { UserRole, JWTPayload };
 
-const ACCESS_TOKEN_EXPIRY = '15m';
-const REFRESH_TOKEN_EXPIRY_DAYS = 7;
+const ACCESS_TOKEN_EXPIRY = '30d';
+const REFRESH_TOKEN_EXPIRY_DAYS = 30;
 
 export async function createTokens(payload: JWTPayload) {
   const accessToken = await new SignJWT({ ...payload })
@@ -46,7 +46,7 @@ export async function setAuthCookies(accessToken: string, refreshToken: string) 
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: 15 * 60, // 15 mins
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   });
 
   cookieStore.set('refresh_token', refreshToken, {
