@@ -1,7 +1,10 @@
 import { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Users, BarChart3, ShieldCheck, ArrowRight, Sparkles, CheckCircle2, LayoutDashboard, Calendar, Bell, ChevronRight, PlayCircle, Star } from "lucide-react";
+import { BookOpen, Users, BarChart3, ShieldCheck, ArrowRight, Sparkles, CheckCircle2, LayoutDashboard, Calendar, Bell, ChevronRight, PlayCircle, Star, MessageSquareQuote } from "lucide-react";
+import { db } from "@/db";
+import { institutions, platformReviews } from "@/db/schema";
+import { eq, desc } from "drizzle-orm";
 
 export const metadata: Metadata = {
   title: "Taleem360 | The Ultimate Platform for Modern Educational Institutions",
@@ -41,19 +44,52 @@ const jsonLd = {
   }
 };
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const approvedInstitutions = await db.select({
+    id: institutions.id,
+    name: institutions.name,
+    logoKey: institutions.logoKey
+  }).from(institutions).where(eq(institutions.status, 'APPROVED'));
+
+  const latestReviews = await db.select({
+    id: platformReviews.id,
+    rating: platformReviews.rating,
+    content: platformReviews.content,
+    createdAt: platformReviews.createdAt,
+    institutionName: institutions.name,
+    logoKey: institutions.logoKey,
+    city: institutions.city,
+    country: institutions.country
+  })
+  .from(platformReviews)
+  .innerJoin(institutions, eq(platformReviews.institutionId, institutions.id))
+  .orderBy(desc(platformReviews.createdAt))
+  .limit(3);
+
+  const showMarquee = approvedInstitutions.length > 5;
+
   return (
-    <div className="flex flex-col min-h-screen bg-[#FDFCFB] selection:bg-brand-500 selection:text-white font-sans text-stone-900 scroll-smooth">
-      {/* SEO JSON-LD */}
+    <div className="flex flex-col min-h-screen bg-[#FDFCFB] selection:bg-brand-500 selection:text-white font-sans text-stone-900 scroll-smooth overflow-x-hidden">
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .animate-marquee {
+          animation: marquee 30s linear infinite;
+        }
+        .animate-marquee:hover {
+          animation-play-state: paused;
+        }
+      `}} />
+
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
-      {/* Decorative Background Mesh */}
       <div className="fixed inset-0 pointer-events-none -z-10 flex justify-center items-center overflow-hidden">
         <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full bg-brand-300/10 blur-[140px]"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-indigo-300/10 blur-[140px]"></div>
       </div>
 
-      {/* --- Sticky Header / Megamenu Placeholder --- */}
       <header className="sticky top-0 z-50 flex items-center justify-between px-6 md:px-12 py-4 backdrop-blur-2xl bg-white/60 border-b border-stone-200/50 shadow-sm transition-all duration-300">
         <div className="flex items-center gap-3 group cursor-pointer">
           <div className="bg-brand-600 p-2 rounded-xl group-hover:bg-brand-700 transition-colors shadow-sm flex items-center justify-center">
@@ -70,23 +106,16 @@ export default function LandingPage() {
         </nav>
 
         <div className="flex items-center gap-4">
-          <Link href="/login" className="hidden md:block text-sm font-semibold text-stone-600 hover:text-brand-900 transition-colors">
-            Log in
-          </Link>
           <Button asChild className="rounded-full font-semibold shadow-lg shadow-brand-500/20 hover:shadow-brand-500/40 hover:-translate-y-0.5 transition-all">
-            <Link href="/register">Get Started</Link>
+            <Link href="/register">Request as Institution</Link>
           </Button>
         </div>
       </header>
 
       <main className="flex-1 flex flex-col items-center w-full">
-        {/* --- Hero Section --- */}
+        {/* Hero Section */}
         <section className="relative w-full max-w-7xl mx-auto px-6 md:px-12 pt-24 pb-20 md:pt-32 md:pb-32 flex flex-col lg:flex-row items-center gap-16">
           <div className="flex-1 flex flex-col items-start text-left z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-50 border border-brand-200 text-brand-700 text-xs font-bold uppercase tracking-wider mb-8 shadow-sm">
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>Taleem360 2.0 is live</span>
-            </div>
             
             <h1 className="text-5xl md:text-6xl lg:text-7xl font-display font-extrabold text-stone-900 mb-6 leading-[1.05] tracking-tight">
               Manage your entire institution in <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-indigo-600">one place.</span>
@@ -99,31 +128,14 @@ export default function LandingPage() {
             <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
               <Button size="lg" className="rounded-full h-14 px-8 text-base font-semibold shadow-xl shadow-brand-500/25 hover:shadow-brand-500/40 hover:-translate-y-1 transition-all group" asChild>
                 <Link href="/register">
-                  Start Free Trial <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  Request as Institution <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </Button>
               <Button size="lg" variant="outline" className="rounded-full h-14 px-8 text-base font-semibold bg-white border-stone-200 hover:bg-stone-50 hover:border-stone-300 transition-all group" asChild>
-                <Link href="#demo">
-                  <PlayCircle className="mr-2 h-5 w-5 text-stone-500 group-hover:text-brand-600 transition-colors" /> Watch Demo
+                <Link href="/login">
+                  Log in
                 </Link>
               </Button>
-            </div>
-            
-            <div className="mt-10 flex items-center gap-4 text-sm font-medium text-stone-500">
-              <div className="flex -space-x-2">
-                {[1,2,3,4].map(i => (
-                  <div key={i} className="w-8 h-8 rounded-full bg-stone-200 border-2 border-white flex items-center justify-center overflow-hidden">
-                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                     <img src={`https://i.pravatar.cc/100?img=${i+10}`} alt="User" className="w-full h-full object-cover" />
-                  </div>
-                ))}
-              </div>
-              <div className="flex flex-col">
-                 <div className="flex text-amber-400">
-                    <Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/>
-                 </div>
-                 <span>Trusted by 500+ educators</span>
-              </div>
             </div>
           </div>
           
@@ -163,20 +175,26 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* --- Social Proof Marquee --- */}
-        <section className="w-full border-y border-stone-200 bg-white py-10 overflow-hidden">
-           <div className="max-w-7xl mx-auto px-6 md:px-12 text-center">
-             <p className="text-sm font-semibold text-stone-400 uppercase tracking-widest mb-8">Empowering top institutions worldwide</p>
-             <div className="flex flex-wrap justify-center items-center gap-12 md:gap-24 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
-               {/* Mock Logos */}
-               <div className="text-xl font-display font-bold text-stone-800">Stanford Prep</div>
-               <div className="text-xl font-display font-bold text-stone-800 flex items-center gap-2"><div className="w-6 h-6 bg-stone-800 rounded-sm transform rotate-45"></div> Academy</div>
-               <div className="text-xl font-display font-bold text-stone-800">Oxford High</div>
-               <div className="text-xl font-display font-bold text-stone-800">Crescent Univ</div>
-               <div className="text-xl font-display font-bold text-stone-800 hidden md:block">Oakridge</div>
+        {/* --- Dynamic Social Proof Marquee --- */}
+        {approvedInstitutions.length > 0 && (
+          <section className="w-full border-y border-stone-200 bg-white py-10 overflow-hidden relative">
+             <div className="max-w-7xl mx-auto px-6 md:px-12 text-center relative">
+               <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-white to-transparent z-10"></div>
+               <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-white to-transparent z-10"></div>
+               
+               <div className={showMarquee ? "flex whitespace-nowrap animate-marquee w-[200%]" : "flex flex-wrap justify-center items-center gap-12 md:gap-24 opacity-80 grayscale hover:grayscale-0 transition-all duration-500"}>
+                 {/* Double the array for seamless infinite scroll if marquee is true */}
+                 {(showMarquee ? [...approvedInstitutions, ...approvedInstitutions] : approvedInstitutions).map((inst, idx) => (
+                   <div key={`${inst.id}-${idx}`} className="inline-flex items-center gap-3 px-8 opacity-80 grayscale hover:grayscale-0 transition-all duration-300 shrink-0">
+                     {/* eslint-disable-next-line @next/next/no-img-element */}
+                     {inst.logoKey && <img src={inst.logoKey} alt={inst.name} className="h-8 w-auto object-contain max-w-[120px]" />}
+                     {!inst.logoKey && <span className="text-xl font-display font-bold text-stone-800">{inst.name}</span>}
+                   </div>
+                 ))}
+               </div>
              </div>
-           </div>
-        </section>
+          </section>
+        )}
 
         {/* --- Bento Box Features --- */}
         <section id="features" className="w-full py-24 md:py-32 px-6 md:px-12 max-w-7xl mx-auto">
@@ -186,7 +204,6 @@ export default function LandingPage() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-6 h-auto md:h-[600px]">
-             {/* Large Feature 1 */}
              <div className="md:col-span-2 md:row-span-2 relative p-8 rounded-3xl bg-stone-50 border border-stone-200 overflow-hidden group hover:shadow-2xl transition-all duration-500 hover:border-brand-200 flex flex-col justify-between">
                 <div className="absolute inset-0 bg-gradient-to-br from-brand-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <div className="relative z-10 max-w-md mb-8">
@@ -196,7 +213,6 @@ export default function LandingPage() {
                   <h3 className="text-3xl font-display font-bold text-stone-900 mb-4">Unified Command Center</h3>
                   <p className="text-stone-600 text-lg">Manage multiple campuses, staff members, and thousands of students from a single, lightning-fast dashboard.</p>
                 </div>
-                {/* Mock UI snippet */}
                 <div className="relative z-10 bg-white rounded-t-2xl shadow-[0_0_40px_-10px_rgba(0,0,0,0.1)] border border-stone-200 border-b-0 h-48 w-full transform group-hover:-translate-y-2 transition-transform duration-500">
                    <div className="p-4 flex gap-4">
                      <div className="w-48 h-32 bg-stone-50 rounded-lg border border-stone-100"></div>
@@ -209,7 +225,6 @@ export default function LandingPage() {
                 </div>
              </div>
 
-             {/* Small Feature 1 */}
              <div className="p-8 rounded-3xl bg-indigo-50 border border-indigo-100 overflow-hidden group hover:shadow-xl transition-all duration-500">
                 <div className="h-12 w-12 rounded-xl bg-indigo-100 flex items-center justify-center mb-6 text-indigo-700">
                    <Calendar className="h-6 w-6" />
@@ -218,7 +233,6 @@ export default function LandingPage() {
                 <p className="text-stone-700">Automate conflict resolution and generate optimal schedules instantly.</p>
              </div>
 
-             {/* Small Feature 2 */}
              <div className="p-8 rounded-3xl bg-stone-900 text-white border border-stone-800 overflow-hidden group hover:shadow-xl transition-all duration-500">
                 <div className="h-12 w-12 rounded-xl bg-stone-800 flex items-center justify-center mb-6 text-stone-300">
                    <Bell className="h-6 w-6" />
@@ -229,78 +243,36 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* --- Deep Dive: Alternating Sections --- */}
-        <section className="w-full py-24 bg-white border-t border-stone-100">
-           <div className="max-w-7xl mx-auto px-6 md:px-12 flex flex-col md:flex-row items-center gap-16">
-              <div className="flex-1 space-y-8">
-                 <h2 className="text-4xl font-display font-bold text-stone-900 leading-tight">Advanced Gradebooks & Assessment</h2>
-                 <p className="text-lg text-stone-600">Ditch the spreadsheets. Our powerful gradebook handles complex weighting, custom grading scales, and automatic report card generation.</p>
-                 <ul className="space-y-4">
-                   {['Custom grading formulas', 'One-click report card printing', 'Parent portal integration'].map((item, i) => (
-                     <li key={i} className="flex items-center gap-3 text-stone-700 font-medium">
-                       <CheckCircle2 className="h-5 w-5 text-brand-600" /> {item}
-                     </li>
-                   ))}
-                 </ul>
-                 <Button variant="link" className="px-0 text-brand-700 font-semibold text-lg group">
-                   Explore Assessment Tools <ChevronRight className="ml-1 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                 </Button>
-              </div>
-              <div className="flex-1 w-full relative">
-                 <div className="w-full aspect-square md:aspect-auto md:h-[500px] bg-stone-100 rounded-3xl border border-stone-200 overflow-hidden relative shadow-lg">
-                    {/* Placeholder for complex image */}
-                    <div className="absolute inset-4 bg-white rounded-2xl shadow-sm border border-stone-100 p-6 flex flex-col gap-4">
-                       <div className="h-8 w-1/3 bg-stone-200 rounded"></div>
-                       <div className="flex-1 border border-stone-100 rounded-xl overflow-hidden flex flex-col">
-                         <div className="h-12 bg-stone-50 border-b border-stone-100 flex items-center px-4 gap-4">
-                            <div className="h-4 w-24 bg-stone-200 rounded"></div>
-                            <div className="h-4 w-16 bg-stone-200 rounded ml-auto"></div>
-                            <div className="h-4 w-16 bg-stone-200 rounded"></div>
-                         </div>
-                         <div className="flex-1 bg-white p-4 space-y-4">
-                           {[1,2,3,4].map(i => (
-                             <div key={i} className="h-6 flex items-center gap-4">
-                               <div className="h-4 w-24 bg-stone-100 rounded"></div>
-                               <div className="h-4 w-full bg-stone-50 rounded ml-auto flex items-center px-2"><div className="h-2 bg-brand-400 rounded" style={{width: `${80 - i*10}%`}}></div></div>
-                               <div className="h-4 w-12 bg-green-100 rounded"></div>
-                             </div>
-                           ))}
-                         </div>
-                       </div>
-                    </div>
-                 </div>
-              </div>
-           </div>
-        </section>
-
         {/* --- Testimonials --- */}
-        <section id="testimonials" className="w-full py-24 bg-stone-50 border-t border-stone-200">
-           <div className="max-w-7xl mx-auto px-6 md:px-12 text-center">
-             <h2 className="text-4xl font-display font-bold text-stone-900 mb-16">Loved by educators worldwide.</h2>
-             <div className="grid md:grid-cols-3 gap-8 text-left">
-               {[
-                 {quote: "Taleem360 transformed how we run our academy. Administrative work that took days now takes minutes.", author: "Sarah Jenkins", role: "Principal, Oakridge", img: 44},
-                 {quote: "The analytics dashboard alone is worth it. We can spot attendance trends before they become issues.", author: "Dr. Ahmed Khan", role: "Dean, Crescent Univ", img: 33},
-                 {quote: "Finally, an LMS that doesn't feel like it was built in 1995. Our teachers and students love the modern UI.", author: "Emily Chen", role: "IT Director, Stanford Prep", img: 22}
-               ].map((t, i) => (
-                 <div key={i} className="bg-white p-8 rounded-3xl shadow-sm border border-stone-200 hover:shadow-xl transition-all duration-300">
-                   <div className="flex text-brand-500 mb-6">
-                     <Star className="w-5 h-5 fill-current"/><Star className="w-5 h-5 fill-current"/><Star className="w-5 h-5 fill-current"/><Star className="w-5 h-5 fill-current"/><Star className="w-5 h-5 fill-current"/>
-                   </div>
-                   <p className="text-lg text-stone-700 mb-8 italic">"{t.quote}"</p>
-                   <div className="flex items-center gap-4">
-                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                     <img src={`https://i.pravatar.cc/150?img=${t.img}`} alt={t.author} className="w-12 h-12 rounded-full border border-stone-200" />
-                     <div>
-                       <div className="font-bold text-stone-900">{t.author}</div>
-                       <div className="text-sm text-stone-500">{t.role}</div>
+        {latestReviews.length > 0 && (
+          <section id="testimonials" className="w-full py-24 bg-stone-50 border-t border-stone-200">
+             <div className="max-w-7xl mx-auto px-6 md:px-12 text-center">
+               <h2 className="text-4xl font-display font-bold text-stone-900 mb-16 flex items-center justify-center gap-4">
+                  <MessageSquareQuote className="h-10 w-10 text-brand-500" /> What institutions say
+               </h2>
+               <div className="grid md:grid-cols-3 gap-8 text-left">
+                 {latestReviews.map((review) => (
+                   <div key={review.id} className="bg-white p-8 rounded-3xl shadow-sm border border-stone-200 hover:shadow-xl transition-all duration-300 flex flex-col">
+                     <div className="flex text-amber-400 mb-6">
+                       {Array.from({length: 5}).map((_, i) => (
+                          <Star key={i} className={`w-5 h-5 ${i < review.rating ? 'fill-current' : 'text-stone-200'}`} />
+                       ))}
+                     </div>
+                     <p className="text-lg text-stone-700 mb-8 italic flex-1">"{review.content}"</p>
+                     <div className="flex items-center gap-4 mt-auto">
+                       {/* eslint-disable-next-line @next/next/no-img-element */}
+                       {review.logoKey ? <img src={review.logoKey} alt={review.institutionName} className="w-12 h-12 rounded-full border border-stone-200 object-cover" /> : <div className="w-12 h-12 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-xl">{review.institutionName.charAt(0)}</div>}
+                       <div>
+                         <div className="font-bold text-stone-900 line-clamp-1">{review.institutionName}</div>
+                         <div className="text-sm text-stone-500">{review.city}, {review.country}</div>
+                       </div>
                      </div>
                    </div>
-                 </div>
-               ))}
+                 ))}
+               </div>
              </div>
-           </div>
-        </section>
+          </section>
+        )}
 
         {/* --- Final CTA --- */}
         <section id="pricing" className="w-full py-24 px-6 md:px-12">
@@ -311,12 +283,9 @@ export default function LandingPage() {
              <div className="relative z-10">
                <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-6">Ready to upgrade your institution?</h2>
                <p className="text-xl text-stone-300 mb-10 max-w-2xl mx-auto">Join hundreds of schools using Taleem360 to streamline operations and enhance learning.</p>
-               <div className="flex flex-col sm:flex-row justify-center gap-4">
-                 <Button size="lg" className="rounded-full h-14 px-10 text-base font-bold bg-white text-stone-900 hover:bg-stone-100 hover:scale-105 transition-all">
-                   Start Free Trial
-                 </Button>
-                 <Button size="lg" variant="outline" className="rounded-full h-14 px-10 text-base font-bold text-white border-stone-600 hover:bg-stone-800 transition-all">
-                   Contact Sales
+               <div className="flex justify-center">
+                 <Button size="lg" className="rounded-full h-14 px-10 text-base font-bold bg-white text-stone-900 hover:bg-stone-100 hover:scale-105 transition-all" asChild>
+                   <a href="mailto:Workwithhussnainahmad@gmail.com">Contact Sales: Workwithhussnainahmad@gmail.com</a>
                  </Button>
                </div>
              </div>
@@ -337,11 +306,6 @@ export default function LandingPage() {
              <p className="text-stone-500 text-sm max-w-xs mb-6">
                The next-generation platform for modern education. Simplify admin tasks, boost engagement, and leverage advanced analytics.
              </p>
-             <div className="flex gap-4">
-               {/* Social Icons Placeholders */}
-               <div className="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 hover:text-brand-600 hover:bg-brand-50 transition-colors cursor-pointer">in</div>
-               <div className="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 hover:text-brand-600 hover:bg-brand-50 transition-colors cursor-pointer">tw</div>
-             </div>
            </div>
            
            <div>
@@ -349,8 +313,6 @@ export default function LandingPage() {
              <ul className="space-y-3 text-sm text-stone-500">
                <li><Link href="#features" className="hover:text-brand-600 transition-colors">Features</Link></li>
                <li><Link href="#pricing" className="hover:text-brand-600 transition-colors">Pricing</Link></li>
-               <li><Link href="#testimonials" className="hover:text-brand-600 transition-colors">Case Studies</Link></li>
-               <li><Link href="#" className="hover:text-brand-600 transition-colors">Reviews</Link></li>
              </ul>
            </div>
            
@@ -358,8 +320,6 @@ export default function LandingPage() {
              <h4 className="font-bold text-stone-900 mb-4">Company</h4>
              <ul className="space-y-3 text-sm text-stone-500">
                <li><Link href="#" className="hover:text-brand-600 transition-colors">About Us</Link></li>
-               <li><Link href="#" className="hover:text-brand-600 transition-colors">Careers</Link></li>
-               <li><Link href="#" className="hover:text-brand-600 transition-colors">Blog</Link></li>
                <li><Link href="#" className="hover:text-brand-600 transition-colors">Contact</Link></li>
              </ul>
            </div>
@@ -369,8 +329,6 @@ export default function LandingPage() {
              <ul className="space-y-3 text-sm text-stone-500">
                <li><Link href="#" className="hover:text-brand-600 transition-colors">Privacy Policy</Link></li>
                <li><Link href="#" className="hover:text-brand-600 transition-colors">Terms of Service</Link></li>
-               <li><Link href="#" className="hover:text-brand-600 transition-colors">Security</Link></li>
-               <li><Link href="#" className="hover:text-brand-600 transition-colors">GDPR</Link></li>
              </ul>
            </div>
         </div>

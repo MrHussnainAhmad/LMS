@@ -427,3 +427,13 @@ export const passwordResets = pgTable('password_resets', {
   expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// --- PLATFORM REVIEWS ---
+export const platformReviews = pgTable('platform_reviews', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }).unique(),
+  rating: integer('rating').notNull(), // 1 to 5
+  content: text('content').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
