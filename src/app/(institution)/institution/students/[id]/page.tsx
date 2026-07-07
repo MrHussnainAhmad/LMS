@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Printer, ArrowLeft, User, BookOpen, CheckCircle, FileText } from "lucide-react";
 import Link from "next/link";
+import { PrintButton } from "./PrintButton";
 
 export default async function StudentProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -80,11 +81,7 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
         <Link href="/institution/students" className="flex items-center text-sm text-stone-500 hover:text-brand-600 transition-colors">
           <ArrowLeft className="h-4 w-4 mr-1" /> Back to Directory
         </Link>
-        <Button onClick={undefined} variant="outline" className="gap-2" style={{ WebkitAppRegion: 'no-drag' } as any} asChild>
-          <button onClick={() => { if(typeof window !== 'undefined') window.print() }}>
-            <Printer className="h-4 w-4" /> Download / Print PDF
-          </button>
-        </Button>
+        <PrintButton />
       </div>
 
       <div className="grid grid-cols-1 gap-6">
