@@ -14,14 +14,72 @@ type NotificationPayload = {
 };
 
 export async function createNotification(payload: NotificationPayload) {
-  return await db.insert(notifications).values(payload);
+  const result = await db.insert(notifications).values(payload);
+  await sendExpoPushNotifications([payload]);
+  return result;
 }
 
 export async function createBulkNotifications(payloads: NotificationPayload[]) {
   if (payloads.length === 0) return;
   
   // Drizzle supports bulk inserts
-  return await db.insert(notifications).values(payloads);
+  const result = await db.insert(notifications).values(payloads);
+  await sendExpoPushNotifications(payloads);
+  return result;
+}
+
+async function sendExpoPushNotifications(payloads: NotificationPayload[]) {
+  try {
+    const { students, staff } = await import("@/db/schema");
+    const { inArray } = await import("drizzle-orm");
+
+    const studentIds = payloads.filter(p => p.userRole === 'STUDENT').map(p => p.userId);
+    const staffIds = payloads.filter(p => p.userRole === 'STAFF').map(p => p.userId);
+
+    const tokens: string[] = [];
+
+    if (studentIds.length > 0) {
+      const studentRecords = await db.select({ token: students.expoPushToken }).from(students).where(inArray(students.id, studentIds));
+      studentRecords.forEach(r => { if (r.token) tokens.push(r.token) });
+    }
+
+    if (staffIds.length > 0) {
+      const staffRecords = await db.select({ token: staff.expoPushToken }).from(staff).where(inArray(staff.id, staffIds));
+      staffRecords.forEach(r => { if (r.token) tokens.push(r.token) });
+    }
+
+    if (tokens.length === 0) return;
+
+    // Expo Push expects an array of messages
+    // Grouping all tokens into one message if the payload title/body is same, but here we just take the first payload's title/message for bulk
+    // This is a simplified approach assuming bulk notifications are typically the same message broadcasted.
+    const samplePayload = payloads[0];
+
+    const pushMessages = tokens.map(token => ({
+      to: token,
+      sound: 'default',
+      title: samplePayload.title,
+      body: samplePayload.message,
+      data: { type: samplePayload.type, referenceId: samplePayload.referenceId },
+    }));
+
+    // Send in chunks of 100 as per Expo guidelines
+    const CHUNK_SIZE = 100;
+    for (let i = 0; i < pushMessages.length; i += CHUNK_SIZE) {
+      const chunk = pushMessages.slice(i, i + CHUNK_SIZE);
+      fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(chunk),
+      }).catch(err => console.error("Expo Push Error:", err));
+    }
+  } catch (err) {
+    console.error("Error preparing push notifications:", err);
+  }
 }
 
 export async function processAnnouncementNotification(announcementId: number) {

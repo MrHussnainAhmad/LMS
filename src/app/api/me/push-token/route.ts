@@ -1,0 +1,40 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import { db } from "@/db";
+import { students, staff } from "@/db/schema";
+import { eq } from "drizzle-orm";
+
+export async function POST(req: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { token } = body;
+
+    if (!token || typeof token !== "string") {
+      return NextResponse.json({ error: "Invalid token" }, { status: 400 });
+    }
+
+    if (session.role === "STUDENT") {
+      await db
+        .update(students)
+        .set({ expoPushToken: token })
+        .where(eq(students.id, session.userId));
+    } else if (session.role === "STAFF") {
+      await db
+        .update(staff)
+        .set({ expoPushToken: token })
+        .where(eq(staff.id, session.userId));
+    } else {
+      return NextResponse.json({ error: "Only students and staff can register push tokens" }, { status: 403 });
+    }
+
+    return NextResponse.json({ success: true, message: "Push token registered successfully" });
+  } catch (error) {
+    console.error("Error registering push token:", error);
+    return NextResponse.json({ error: "Failed to register push token" }, { status: 500 });
+  }
+}

@@ -115,6 +115,7 @@ export const staff = pgTable('staff', {
   passwordHash: text('password_hash').notNull(),
   isActive: boolean('is_active').default(true).notNull(),
   mustChangePassword: boolean('must_change_password').default(true).notNull(),
+  expoPushToken: varchar('expo_push_token', { length: 255 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 });
@@ -177,6 +178,7 @@ export const students = pgTable('students', {
   age: integer('age'),
   isActive: boolean('is_active').default(true).notNull(),
   mustChangePassword: boolean('must_change_password').default(true).notNull(),
+  expoPushToken: varchar('expo_push_token', { length: 255 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 }, (t) => ({
