@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toaster";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2, ImageUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { useRef } from "react";
 
 type FeaturedInst = {
   id: number;
@@ -19,6 +20,8 @@ export default function FeaturedInstitutionsClient() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [logoKey, setLogoKey] = useState("");
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -37,6 +40,46 @@ export default function FeaturedInstitutionsClient() {
       console.error("Failed to fetch featured institutions", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleImageUpload = async (file: File) => {
+    setIsUploadingImage(true);
+    try {
+      if (!file.type.startsWith("image/")) throw new Error("Please select an image file");
+      if (file.size > 2 * 1024 * 1024) throw new Error("Image must be 2MB or smaller");
+
+      const sigRes = await fetch("/api/upload/signature", { method: "POST" });
+      const signaturePayload = await sigRes.json();
+      
+      if (!sigRes.ok || !signaturePayload.signature) {
+        throw new Error(signaturePayload.error || "Upload service is not configured");
+      }
+
+      const uploadData = new FormData();
+      uploadData.append("file", file);
+      uploadData.append("api_key", signaturePayload.apiKey);
+      uploadData.append("timestamp", signaturePayload.timestamp.toString());
+      uploadData.append("signature", signaturePayload.signature);
+      uploadData.append("folder", "lms-uploads");
+
+      const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/image/upload`, {
+        method: "POST",
+        body: uploadData,
+      });
+      const uploadPayload = await cloudinaryResponse.json();
+      
+      if (!cloudinaryResponse.ok || !uploadPayload.secure_url) {
+        throw new Error(uploadPayload.error?.message || "Cloudinary rejected the picture upload");
+      }
+
+      setLogoKey(uploadPayload.secure_url);
+      toast({ title: "Image Uploaded", description: "Logo ready to save.", variant: "success" });
+    } catch (error: any) {
+      toast({ title: "Could not upload", description: error.message || "Upload failed", variant: "destructive" });
+    } finally {
+      setIsUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -92,14 +135,30 @@ export default function FeaturedInstitutionsClient() {
             />
           </div>
           <div className="flex-1 space-y-2">
-            <label className="text-sm font-medium text-stone-700">Logo URL (Optional)</label>
-            <Input 
-              value={logoKey} 
-              onChange={(e) => setLogoKey(e.target.value)} 
-              placeholder="https://..." 
-            />
+            <label className="text-sm font-medium text-stone-700">Logo (Optional)</label>
+            <div className="flex items-center gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) handleImageUpload(file);
+                }}
+              />
+              <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isUploadingImage} className="gap-2 w-full justify-start text-stone-600 font-normal">
+                {isUploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageUp className="h-4 w-4" />}
+                {isUploadingImage ? "Uploading..." : logoKey ? "Change Logo" : "Upload Image"}
+              </Button>
+              {logoKey && (
+                <div className="h-10 w-10 shrink-0 rounded-md border border-stone-200 overflow-hidden bg-stone-50">
+                  <img src={logoKey} alt="Logo preview" className="h-full w-full object-cover" />
+                </div>
+              )}
+            </div>
           </div>
-          <Button type="submit" disabled={isSubmitting || !name.trim()} className="bg-brand-600 hover:bg-brand-700">
+          <Button type="submit" disabled={isSubmitting || !name.trim() || isUploadingImage} className="bg-brand-600 hover:bg-brand-700">
             {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
             Add
           </Button>
