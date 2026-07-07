@@ -21,6 +21,7 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
         parentalWhatsapp: students.parentalWhatsapp,
         loginRollNumber: students.loginRollNumber,
         classRollNumber: students.classRollNumber,
+        age: students.age,
         className: classes.name,
         sectionName: sections.name,
         campusName: campuses.name,
