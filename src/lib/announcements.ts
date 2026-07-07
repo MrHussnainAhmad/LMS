@@ -9,17 +9,9 @@ export type VisibleAnnouncement = {
   content: string;
   targetType: "ALL" | "CAMPUS" | "CLASS" | "SECTION" | "USER";
   senderRole: JWTPayload["role"];
-  createdAtLabel: string;
+  createdAtIso: string;
   isRead: boolean;
 };
-
-export function formatAnnouncementDate(value: Date) {
-  return value.toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC",
-  });
-}
 
 async function getStudentScope(userId: number, institutionId: number) {
   const [student] = await db.select().from(students).where(and(eq(students.id, userId), eq(students.institutionId, institutionId))).limit(1);
@@ -105,7 +97,7 @@ export async function getVisibleAnnouncements(session: JWTPayload, limit = 4) {
     content: announcement.content,
     targetType: announcement.targetType,
     senderRole: announcement.senderRole,
-    createdAtLabel: formatAnnouncementDate(announcement.createdAt),
+    createdAtIso: announcement.createdAt.toISOString(),
     isRead: readIds.has(announcement.id),
   }));
 }
@@ -128,7 +120,7 @@ export async function getVisibleAnnouncementById(session: JWTPayload, id: number
     content: announcement.content,
     targetType: announcement.targetType,
     senderRole: announcement.senderRole,
-    createdAtLabel: formatAnnouncementDate(announcement.createdAt),
+    createdAtIso: announcement.createdAt.toISOString(),
     isRead: Boolean(read),
   };
 }

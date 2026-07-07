@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { announcements, staffAssignments, classes, sections } from "@/db/schema";
 import { and, eq, desc } from "drizzle-orm";
+import { LocalDateTime } from "@/components/LocalDateTime";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Megaphone, Bell } from "lucide-react";
 import { getSession } from "@/lib/auth";
@@ -84,7 +85,7 @@ export default async function StaffAnnouncementsPage() {
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="font-semibold text-brand-950 text-lg">{ann.title}</h3>
                       <span className="text-xs text-stone-500 bg-stone-100 px-2 py-1 rounded-md whitespace-nowrap">
-                        {new Date(ann.createdAt).toLocaleDateString()}
+                        <LocalDateTime value={ann.createdAt.toISOString()} compact />
                       </span>
                     </div>
                     <p className="text-stone-600 whitespace-pre-wrap text-sm leading-relaxed">

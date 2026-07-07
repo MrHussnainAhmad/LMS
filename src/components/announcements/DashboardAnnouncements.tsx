@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { VisibleAnnouncement } from "@/lib/announcements";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Megaphone } from "lucide-react";
+import { LocalDateTime } from "@/components/LocalDateTime";
 
 export function DashboardAnnouncements({ announcements }: { announcements: VisibleAnnouncement[] }) {
   return (
@@ -30,7 +31,7 @@ export function DashboardAnnouncements({ announcements }: { announcements: Visib
                 {!announcement.isRead && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-danger" />}
               </div>
               <p className="mt-2 text-xs text-stone-500">
-                {announcement.senderRole} - {announcement.createdAtLabel}
+                {announcement.senderRole} - <LocalDateTime value={announcement.createdAtIso} />
               </p>
             </Link>
           ))

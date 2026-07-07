@@ -1,9 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LocalDateTime } from "@/components/LocalDateTime";
 import { getSession } from "@/lib/auth";
 import { getVisibleAnnouncementById, markAnnouncementRead } from "@/lib/announcements";
 import { ArrowLeft, CalendarClock, CheckCircle2, Megaphone, Target, UserRound } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import type { ReactNode } from "react";
 
 function portalHref(role: string) {
   if (role === "SUPER_ADMIN") return "/sa/dashboard";
@@ -80,7 +82,7 @@ export default async function AnnouncementDetailPage({ params }: { params: Promi
             <CardContent className="space-y-4 p-5">
               <MetaItem icon={Target} label="Audience" value={announcement.targetType} />
               <MetaItem icon={UserRound} label="From" value={roleLabel(announcement.senderRole)} />
-              <MetaItem icon={CalendarClock} label="Published" value={announcement.createdAtLabel} />
+              <MetaItem icon={CalendarClock} label="Published" value={<LocalDateTime value={announcement.createdAtIso} />} />
               <MetaItem icon={CheckCircle2} label="Status" value="Read" />
             </CardContent>
           </Card>
@@ -106,7 +108,7 @@ function MetaItem({
 }: {
   icon: typeof Target;
   label: string;
-  value: string;
+  value: ReactNode;
 }) {
   return (
     <div className="flex gap-3">

@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { announcements, campuses, classes, sections } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { LocalDateTime } from "@/components/LocalDateTime";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Megaphone, Trash2 } from "lucide-react";
 import { getSession } from "@/lib/auth";
@@ -94,8 +95,8 @@ export default async function InstitutionAnnouncementsPage() {
                             {audienceLabel(ann)}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-stone-500">
-                          {new Date(ann.createdAt).toLocaleString()}
+                        <td className="px-6 py-4 text-stone-500 whitespace-nowrap">
+                          <LocalDateTime value={ann.createdAt.toISOString()} compact />
                         </td>
                         <td className="px-6 py-4">
                           <form action={deleteAnnouncement} className="flex justify-end">

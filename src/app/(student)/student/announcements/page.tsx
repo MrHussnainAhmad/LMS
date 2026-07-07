@@ -1,4 +1,5 @@
 import { EmptyState } from "@/components/ui/empty-state";
+import { LocalDateTime } from "@/components/LocalDateTime";
 import { getVisibleAnnouncements } from "@/lib/announcements";
 import { getSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -68,7 +69,7 @@ export default async function StudentAnnouncementsPage() {
                 <span className="font-medium capitalize text-stone-600">From {roleLabel(announcement.senderRole)}</span>
                 <span className="flex items-center gap-1">
                   <CalendarClock className="h-3.5 w-3.5" />
-                  {announcement.createdAtLabel}
+                  <LocalDateTime value={announcement.createdAtIso} compact />
                 </span>
                 <span className="rounded-md bg-stone-100 px-2 py-1 font-medium text-stone-600">{announcement.targetType}</span>
               </div>
