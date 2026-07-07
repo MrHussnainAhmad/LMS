@@ -2,11 +2,18 @@ import { db } from "@/db";
 import { announcements, campuses, classes, sections } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Megaphone } from "lucide-react";
+import { Megaphone, Trash2 } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { createAnnouncementAction } from "@/app/actions/institution-actions";
+import { createAnnouncementAction, deleteAnnouncementAction } from "@/app/actions/institution-actions";
 import { AnnouncementFormClient } from "./AnnouncementFormClient";
+
+function audienceLabel(announcement: typeof announcements.$inferSelect) {
+  if (announcement.targetType === "USER" && announcement.targetUserRole && !announcement.targetUserId) {
+    return `${announcement.targetUserRole} ONLY`;
+  }
+  return announcement.targetType;
+}
 
 export default async function InstitutionAnnouncementsPage() {
   const session = await getSession();
@@ -28,6 +35,12 @@ export default async function InstitutionAnnouncementsPage() {
   async function createAnnouncement(formData: FormData) {
     "use server";
     await createAnnouncementAction(formData);
+    redirect("/institution/announcements");
+  }
+
+  async function deleteAnnouncement(formData: FormData) {
+    "use server";
+    await deleteAnnouncementAction(formData);
     redirect("/institution/announcements");
   }
 
@@ -57,12 +70,13 @@ export default async function InstitutionAnnouncementsPage() {
                       <th className="px-6 py-4 font-medium">Title</th>
                       <th className="px-6 py-4 font-medium">Target Audience</th>
                       <th className="px-6 py-4 font-medium">Date Sent</th>
+                      <th className="px-6 py-4 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {allAnnouncements.length === 0 && (
                       <tr>
-                        <td colSpan={3} className="px-6 py-8 text-center text-stone-500">
+                        <td colSpan={4} className="px-6 py-8 text-center text-stone-500">
                           No announcements sent yet.
                         </td>
                       </tr>
@@ -72,11 +86,23 @@ export default async function InstitutionAnnouncementsPage() {
                         <td className="px-6 py-4 font-semibold text-brand-950">{ann.title}</td>
                         <td className="px-6 py-4">
                           <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-brand-100 text-brand-800 rounded-md">
-                            {ann.targetType}
+                            {audienceLabel(ann)}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-stone-500">
                           {new Date(ann.createdAt).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4">
+                          <form action={deleteAnnouncement} className="flex justify-end">
+                            <input type="hidden" name="announcementId" value={ann.id} />
+                            <button
+                              type="submit"
+                              className="inline-flex items-center gap-2 rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-xs font-semibold text-danger transition-colors hover:bg-danger/15"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </button>
+                          </form>
                         </td>
                       </tr>
                     ))}

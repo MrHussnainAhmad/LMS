@@ -1,11 +1,11 @@
 "use server";
 
 import { db } from "@/db";
-import { campuses, staff, classes, sections, subjects, announcements } from "@/db/schema";
+import { campuses, staff, classes, sections, subjects, announcements, notifications } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { staffAssignments } from "@/db/schema";
-import { eq, and, gt, lt } from "drizzle-orm";
+import { eq, and, gt, lt, inArray } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 
 function generateSlug(name: string) {
@@ -87,7 +87,56 @@ export async function createAnnouncementAction(formData: FormData) {
   const institutionId = session.userId;
   const title = formData.get("title") as string;
   const content = formData.get("content") as string;
-  const targetType = formData.get("targetType") as "ALL" | "CAMPUS" | "CLASS" | "SECTION";
+  const targetTypeRaw = formData.get("targetType") as string;
+  const targetCampusId = parseOptionalId(formData.get("targetCampusId"));
+  const targetClassId = parseOptionalId(formData.get("targetClassId"));
+  const targetSectionId = parseOptionalId(formData.get("targetSectionId"));
+
+  if (!title.trim() || !content.trim()) throw new Error("Title and content are required");
+  if (!["ALL", "STAFF", "CAMPUS", "CLASS", "SECTION"].includes(targetTypeRaw)) throw new Error("Invalid target audience");
+
+  let targetType: "ALL" | "CAMPUS" | "CLASS" | "SECTION" | "USER" = "ALL";
+  let targetUserRole: "STAFF" | null = null;
+  let resolvedCampusId: number | null = null;
+  let resolvedClassId: number | null = null;
+  let resolvedSectionId: number | null = null;
+
+  if (targetTypeRaw === "STAFF") {
+    targetType = "USER";
+    targetUserRole = "STAFF";
+  } else if (targetTypeRaw === "CAMPUS") {
+    if (!targetCampusId) throw new Error("Campus is required");
+    const [campusRow] = await db.select({ id: campuses.id })
+      .from(campuses)
+      .where(and(eq(campuses.id, targetCampusId), eq(campuses.institutionId, institutionId)))
+      .limit(1);
+    if (!campusRow) throw new Error("Campus not found");
+    targetType = "CAMPUS";
+    resolvedCampusId = targetCampusId;
+  } else if (targetTypeRaw === "CLASS") {
+    if (!targetClassId) throw new Error("Class is required");
+    const [classRow] = await db.select({ id: classes.id })
+      .from(classes)
+      .where(and(eq(classes.id, targetClassId), eq(classes.institutionId, institutionId)))
+      .limit(1);
+    if (!classRow) throw new Error("Class not found");
+    targetType = "CLASS";
+    resolvedClassId = targetClassId;
+  } else if (targetTypeRaw === "SECTION") {
+    if (!targetClassId || !targetSectionId) throw new Error("Class and section are required");
+    const [sectionRow] = await db.select({ id: sections.id })
+      .from(sections)
+      .where(and(
+        eq(sections.id, targetSectionId),
+        eq(sections.classId, targetClassId),
+        eq(sections.institutionId, institutionId)
+      ))
+      .limit(1);
+    if (!sectionRow) throw new Error("Section not found for the selected class");
+    targetType = "SECTION";
+    resolvedClassId = targetClassId;
+    resolvedSectionId = targetSectionId;
+  }
 
   const [inserted] = await db.insert(announcements).values({
     institutionId,
@@ -96,12 +145,56 @@ export async function createAnnouncementAction(formData: FormData) {
     title,
     content,
     targetType,
+    targetCampusId: resolvedCampusId,
+    targetClassId: resolvedClassId,
+    targetSectionId: resolvedSectionId,
+    targetUserRole,
   }).returning({ id: announcements.id });
 
   const { processAnnouncementNotification } = await import("@/lib/notifications");
   await processAnnouncementNotification(inserted.id);
 
   revalidatePath("/institution/announcements");
+  return { success: true };
+}
+
+function parseOptionalId(value: FormDataEntryValue | null) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const parsed = parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+export async function deleteAnnouncementAction(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+
+  const institutionId = session.userId;
+  const announcementId = parseOptionalId(formData.get("announcementId"));
+  if (!announcementId) throw new Error("Invalid announcement ID");
+
+  const [announcement] = await db.select({ id: announcements.id })
+    .from(announcements)
+    .where(and(eq(announcements.id, announcementId), eq(announcements.institutionId, institutionId)))
+    .limit(1);
+  if (!announcement) throw new Error("Announcement not found");
+
+  await db.delete(notifications)
+    .where(and(
+      eq(notifications.institutionId, institutionId),
+      eq(notifications.referenceId, announcementId),
+      inArray(notifications.type, ["ANNOUNCEMENT", "EXAM_TIMETABLE"])
+    ));
+
+  await db.delete(announcements)
+    .where(and(eq(announcements.id, announcementId), eq(announcements.institutionId, institutionId)));
+
+  revalidatePath("/institution/announcements");
+  revalidatePath("/institution/dashboard");
+  revalidatePath("/staff/announcements");
+  revalidatePath("/staff/dashboard");
+  revalidatePath("/student/announcements");
+  revalidatePath("/student/dashboard");
+  revalidatePath(`/announcements/${announcementId}`);
   return { success: true };
 }
 

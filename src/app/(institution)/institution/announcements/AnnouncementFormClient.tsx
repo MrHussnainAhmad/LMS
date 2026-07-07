@@ -57,6 +57,7 @@ export function AnnouncementFormClient({
               className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
             >
               <option value="ALL">Everyone</option>
+              <option value="STAFF">Staff Only</option>
               <option value="CAMPUS">Specific Campus</option>
               <option value="CLASS">Specific Class</option>
               <option value="SECTION">Specific Section</option>

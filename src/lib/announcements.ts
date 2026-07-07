@@ -64,6 +64,7 @@ function canSeeAnnouncement(
   if (session.role === "INSTITUTION") return true;
   if (announcement.senderRole === session.role && announcement.senderId === session.userId) return true;
   if (announcement.targetType === "USER") {
+    if (announcement.targetUserRole === session.role && !announcement.targetUserId) return true;
     return announcement.targetUserRole === session.role && announcement.targetUserId === session.userId;
   }
   if (announcement.targetType === "ALL") return true;

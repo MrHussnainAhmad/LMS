@@ -83,8 +83,7 @@ async function sendExpoPushNotifications(payloads: NotificationPayload[]) {
 }
 
 export async function processAnnouncementNotification(announcementId: number) {
-  const { announcements, students, staff } = await import("@/db/schema");
-  const { eq, and } = await import("drizzle-orm");
+  const { announcements, students, staff, staffAssignments, sections } = await import("@/db/schema");
   const { eq: eqOp, and: andOp } = await import("drizzle-orm");
 
   const [announcement] = await db.select().from(announcements).where(eqOp(announcements.id, announcementId));
@@ -123,15 +122,36 @@ export async function processAnnouncementNotification(announcementId: number) {
   else if (announcement.targetType === 'CLASS' && announcement.targetClassId) {
     const classStudents = await db.select({ id: students.id }).from(students).where(andOp(eqOp(students.institutionId, announcement.institutionId), eqOp(students.classId, announcement.targetClassId)));
     classStudents.forEach(s => pushToPayload(s.id, 'STUDENT'));
+
+    const classStaff = await db.select({ id: staffAssignments.staffId })
+      .from(staffAssignments)
+      .innerJoin(sections, eqOp(staffAssignments.sectionId, sections.id))
+      .where(andOp(eqOp(staffAssignments.institutionId, announcement.institutionId), eqOp(sections.classId, announcement.targetClassId)));
+    Array.from(new Set(classStaff.map(s => s.id).filter((id): id is number => Boolean(id))))
+      .forEach(id => pushToPayload(id, 'STAFF'));
   }
   // 4. SECTION
   else if (announcement.targetType === 'SECTION' && announcement.targetSectionId) {
     const secStudents = await db.select({ id: students.id }).from(students).where(andOp(eqOp(students.institutionId, announcement.institutionId), eqOp(students.sectionId, announcement.targetSectionId)));
     secStudents.forEach(s => pushToPayload(s.id, 'STUDENT'));
+
+    const sectionStaff = await db.select({ id: staffAssignments.staffId })
+      .from(staffAssignments)
+      .where(andOp(eqOp(staffAssignments.institutionId, announcement.institutionId), eqOp(staffAssignments.sectionId, announcement.targetSectionId)));
+    Array.from(new Set(sectionStaff.map(s => s.id).filter((id): id is number => Boolean(id))))
+      .forEach(id => pushToPayload(id, 'STAFF'));
   }
   // 5. USER
-  else if (announcement.targetType === 'USER' && announcement.targetUserRole && announcement.targetUserId) {
-    pushToPayload(announcement.targetUserId, announcement.targetUserRole as 'STUDENT' | 'STAFF');
+  else if (announcement.targetType === 'USER' && announcement.targetUserRole) {
+    if (announcement.targetUserId) {
+      pushToPayload(announcement.targetUserId, announcement.targetUserRole as 'STUDENT' | 'STAFF');
+    } else if (announcement.targetUserRole === 'STAFF') {
+      const roleStaff = await db.select({ id: staff.id }).from(staff).where(eqOp(staff.institutionId, announcement.institutionId));
+      roleStaff.forEach(s => pushToPayload(s.id, 'STAFF'));
+    } else if (announcement.targetUserRole === 'STUDENT') {
+      const roleStudents = await db.select({ id: students.id }).from(students).where(eqOp(students.institutionId, announcement.institutionId));
+      roleStudents.forEach(s => pushToPayload(s.id, 'STUDENT'));
+    }
   }
 
   await createBulkNotifications(payloads);
