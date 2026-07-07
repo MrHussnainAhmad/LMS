@@ -8,6 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Printer, ArrowLeft, User, BookOpen, CheckCircle, FileText } from "lucide-react";
 import Link from "next/link";
 import { PrintButton } from "./PrintButton";
+import { AttendanceCalendar } from "./AttendanceCalendar";
+import { ResultsTabs } from "./ResultsTabs";
+import { SubmissionsList } from "./SubmissionsList";
+import { StudentAnalytics } from "./StudentAnalytics";
 
 export default async function StudentProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -26,9 +30,10 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
     gender: students.gender,
     loginRollNumber: students.loginRollNumber,
     classRollNumber: students.classRollNumber,
+    profilePictureUrl: students.profilePictureUrl,
+    emergencyContact: students.emergencyContact,
+    parentalWhatsapp: students.parentalWhatsapp,
     yearOfJoining: students.yearOfJoining,
-    phone: students.phone,
-    age: students.age,
     className: classes.name,
     sectionName: sections.name,
   })
@@ -47,19 +52,18 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
     .orderBy(desc(attendances.date))
     .limit(30);
 
-  // Fetch Marks
   const marksRecords = await db.select({
     id: marks.id,
     marksObtained: marks.marksObtained,
     totalMarks: marks.totalMarks,
     testTitle: tests.title,
     date: tests.date,
+    testType: tests.type,
   })
     .from(marks)
     .innerJoin(tests, eq(marks.testId, tests.id))
     .where(eq(marks.studentId, studentId))
-    .orderBy(desc(tests.date))
-    .limit(20);
+    .orderBy(desc(tests.date));
 
   // Fetch Submissions
   const submissionRecords = await db.select({
@@ -67,12 +71,12 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
     fileKey: submissions.fileKey,
     createdAt: submissions.createdAt,
     assignmentTitle: assignments.title,
+    dueAt: assignments.dueAt,
   })
     .from(submissions)
     .innerJoin(assignments, eq(submissions.assignmentId, assignments.id))
     .where(eq(submissions.studentId, studentId))
-    .orderBy(desc(submissions.createdAt))
-    .limit(20);
+    .orderBy(desc(submissions.createdAt));
 
   return (
     <div className="space-y-6 animate-fade-in print:space-y-4">
@@ -88,8 +92,12 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
         {/* Profile Card */}
         <Card className="border-t-4 border-t-brand-600">
           <CardHeader className="bg-stone-50/50 flex flex-row items-center gap-4">
-            <div className="h-16 w-16 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center">
-              <User className="h-8 w-8" />
+            <div className="h-16 w-16 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center overflow-hidden border-2 border-white shadow-sm shrink-0">
+              {student.profilePictureUrl ? (
+                <img src={student.profilePictureUrl} alt={student.name} className="w-full h-full object-cover" />
+              ) : (
+                <User className="h-8 w-8" />
+              )}
             </div>
             <div>
               <CardTitle className="text-2xl text-brand-950">{student.name}</CardTitle>
@@ -115,12 +123,12 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
                 <p className="mt-1 text-stone-800">{student.yearOfJoining}</p>
               </div>
               <div>
-                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Age</p>
-                <p className="mt-1 text-stone-800">{student.age || 'N/A'}</p>
+                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Emergency Contact</p>
+                <p className="mt-1 text-stone-800">{student.emergencyContact || 'N/A'}</p>
               </div>
               <div>
-                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Phone</p>
-                <p className="mt-1 text-stone-800">{student.phone || 'N/A'}</p>
+                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Parental Whatsapp</p>
+                <p className="mt-1 text-stone-800">{student.parentalWhatsapp || 'N/A'}</p>
               </div>
             </div>
           </CardContent>
@@ -134,34 +142,8 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
                 <CheckCircle className="h-5 w-5 text-emerald-600" /> Recent Attendance
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-stone-100 text-stone-600">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Date</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {attendanceRecords.length === 0 && (
-                    <tr><td colSpan={2} className="px-4 py-4 text-center text-stone-500">No records found.</td></tr>
-                  )}
-                  {attendanceRecords.map(r => (
-                    <tr key={r.id}>
-                      <td className="px-4 py-2">{r.date}</td>
-                      <td className="px-4 py-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          r.status === 'PRESENT' ? 'bg-emerald-100 text-emerald-700' :
-                          r.status === 'ABSENT' ? 'bg-red-100 text-red-700' :
-                          'bg-amber-100 text-amber-700'
-                        }`}>
-                          {r.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <CardContent className="p-4">
+              <AttendanceCalendar records={attendanceRecords as any} />
             </CardContent>
           </Card>
 
@@ -172,30 +154,8 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
                 <BookOpen className="h-5 w-5 text-blue-600" /> Recent Results
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-stone-100 text-stone-600">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Test</th>
-                    <th className="px-4 py-2 font-medium">Date</th>
-                    <th className="px-4 py-2 font-medium">Score</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {marksRecords.length === 0 && (
-                    <tr><td colSpan={3} className="px-4 py-4 text-center text-stone-500">No records found.</td></tr>
-                  )}
-                  {marksRecords.map(r => (
-                    <tr key={r.id}>
-                      <td className="px-4 py-2 font-medium">{r.testTitle}</td>
-                      <td className="px-4 py-2">{r.date}</td>
-                      <td className="px-4 py-2 font-mono">
-                        {r.marksObtained} / {r.totalMarks}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <CardContent className="p-4">
+              <ResultsTabs records={marksRecords} />
             </CardContent>
           </Card>
         </div>
@@ -207,32 +167,21 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
               <FileText className="h-5 w-5 text-purple-600" /> Assignment Submissions
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-stone-100 text-stone-600">
-                <tr>
-                  <th className="px-4 py-2 font-medium">Assignment</th>
-                  <th className="px-4 py-2 font-medium">Submitted On</th>
-                  <th className="px-4 py-2 font-medium">File</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {submissionRecords.length === 0 && (
-                  <tr><td colSpan={3} className="px-4 py-4 text-center text-stone-500">No records found.</td></tr>
-                )}
-                {submissionRecords.map(r => (
-                  <tr key={r.id}>
-                    <td className="px-4 py-2 font-medium">{r.assignmentTitle}</td>
-                    <td className="px-4 py-2">{new Date(r.createdAt).toLocaleString()}</td>
-                    <td className="px-4 py-2 font-mono text-xs text-blue-600 truncate max-w-[200px]">
-                      {r.fileKey}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <CardContent className="p-4">
+            <SubmissionsList records={submissionRecords.map(s => ({
+              ...s,
+              createdAt: s.createdAt.toISOString(),
+              dueAt: s.dueAt.toISOString()
+            }))} />
           </CardContent>
         </Card>
+
+        {/* Analytics Section */}
+        <StudentAnalytics data={{
+          attendances: attendanceRecords as any,
+          marks: marksRecords,
+          submissions: submissionRecords.map(s => ({ createdAt: s.createdAt.toISOString() }))
+        }} />
 
       </div>
     </div>

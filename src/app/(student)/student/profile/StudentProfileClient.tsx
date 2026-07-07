@@ -28,6 +28,8 @@ type StudentProfile = {
   loginRollNumber: string;
   classRollNumber: string;
   profilePictureUrl?: string | null;
+  emergencyContact?: string | null;
+  parentalWhatsapp?: string | null;
   classId: number;
   sectionId: number;
   className: string;
@@ -77,7 +79,7 @@ export function StudentProfileClient({
     return requestClassId ? sections.filter((section) => section.classId === Number(requestClassId)) : sections;
   }, [requestClassId, sections]);
 
-  const handleFatherName = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleContactInfo = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSavingFatherName(true);
     const formData = new FormData(event.currentTarget);
@@ -85,8 +87,10 @@ export function StudentProfileClient({
     try {
       await api.patch("/api/student/profile", {
         fatherName: String(formData.get("fatherName") || ""),
+        emergencyContact: String(formData.get("emergencyContact") || ""),
+        parentalWhatsapp: String(formData.get("parentalWhatsapp") || ""),
       });
-      toast({ title: "Profile updated", description: "Father name saved successfully.", variant: "success" });
+      toast({ title: "Profile updated", description: "Contact info saved successfully.", variant: "success" });
       router.refresh();
     } catch (error: unknown) {
       toast({ title: "Could not save", description: errorMessage(error), variant: "destructive" });
@@ -168,7 +172,8 @@ export function StudentProfileClient({
               <div className="grid gap-4 md:grid-cols-2">
                 <ReadOnlyField label="First Name" value={student.firstName} />
                 <ReadOnlyField label="Last Name" value={student.lastName || "-"} />
-                <ReadOnlyField label="Phone Number" value={student.phone || "Not added"} />
+                <ReadOnlyField label="Emergency Contact" value={student.emergencyContact || "Not added"} />
+                <ReadOnlyField label="Parental Whatsapp" value={student.parentalWhatsapp || "Not added"} />
                 <ReadOnlyField label="Roll Number" value={student.classRollNumber} />
                 <ReadOnlyField label="Login ID" value={student.loginRollNumber} />
                 <ReadOnlyField label="Class" value={student.className} />
@@ -275,16 +280,22 @@ export function StudentProfileClient({
             <CardHeader className="border-b border-border bg-stone-50/70">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <CheckCircle2 className="h-5 w-5 text-brand-700" />
-                Father Name
+                Contact Information
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
-              <form onSubmit={handleFatherName} className="space-y-4">
+              <form onSubmit={handleContactInfo} className="space-y-4">
                 <Field label="Father Name">
                   <Input name="fatherName" defaultValue={student.fatherName || ""} required />
                 </Field>
+                <Field label="Emergency Contact">
+                  <Input name="emergencyContact" defaultValue={student.emergencyContact || ""} placeholder="E.g. +1234567890" />
+                </Field>
+                <Field label="Parental Whatsapp (or Elder Sibling)">
+                  <Input name="parentalWhatsapp" defaultValue={student.parentalWhatsapp || ""} placeholder="E.g. +1234567890" />
+                </Field>
                 <Button type="submit" disabled={isSavingFatherName} className="w-full">
-                  {isSavingFatherName ? "Saving..." : "Save Father Name"}
+                  {isSavingFatherName ? "Saving..." : "Save Contact Info"}
                 </Button>
               </form>
             </CardContent>

@@ -15,6 +15,8 @@ export const createStudentSchema = z.object({
 
 export const updateStudentProfileSchema = z.object({
   fatherName: z.string().trim().min(2).max(255).optional(),
+  emergencyContact: z.string().trim().max(50).optional(),
+  parentalWhatsapp: z.string().trim().max(50).optional(),
   profilePictureUrl: z.string().url().max(255).optional(),
 }).strict();
 

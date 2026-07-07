@@ -17,6 +17,8 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
         phone: students.phone,
         gender: students.gender,
         profilePictureUrl: students.profilePictureUrl,
+        emergencyContact: students.emergencyContact,
+        parentalWhatsapp: students.parentalWhatsapp,
         loginRollNumber: students.loginRollNumber,
         classRollNumber: students.classRollNumber,
         className: classes.name,
@@ -58,7 +60,9 @@ export const PATCH = requireRole(["STUDENT"], async (req: NextRequest, { session
   await db.update(students)
     .set({ 
       ...(parsed.data.fatherName && { fatherName: parsed.data.fatherName }),
-      ...(parsed.data.profilePictureUrl && { profilePictureUrl: parsed.data.profilePictureUrl })
+      ...(parsed.data.profilePictureUrl && { profilePictureUrl: parsed.data.profilePictureUrl }),
+      ...(parsed.data.emergencyContact !== undefined && { emergencyContact: parsed.data.emergencyContact }),
+      ...(parsed.data.parentalWhatsapp !== undefined && { parentalWhatsapp: parsed.data.parentalWhatsapp })
     })
     .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)));
 
