@@ -18,6 +18,7 @@ export const updateStudentProfileSchema = z.object({
   emergencyContact: z.string().trim().max(50).optional(),
   parentalWhatsapp: z.string().trim().max(50).optional(),
   profilePictureUrl: z.string().url().max(255).optional(),
+  age: z.coerce.number().min(1).max(100).optional(),
 }).strict();
 
 export const studentProfileChangeRequestSchema = z.object({

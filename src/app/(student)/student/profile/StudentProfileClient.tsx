@@ -27,6 +27,7 @@ type StudentProfile = {
   phone: string | null;
   loginRollNumber: string;
   classRollNumber: string;
+  age?: number | null;
   profilePictureUrl?: string | null;
   emergencyContact?: string | null;
   parentalWhatsapp?: string | null;
@@ -89,6 +90,7 @@ export function StudentProfileClient({
         fatherName: String(formData.get("fatherName") || ""),
         emergencyContact: String(formData.get("emergencyContact") || ""),
         parentalWhatsapp: String(formData.get("parentalWhatsapp") || ""),
+        age: formData.get("age") ? Number(formData.get("age")) : undefined,
       });
       toast({ title: "Profile updated", description: "Contact info saved successfully.", variant: "success" });
       router.refresh();
@@ -172,6 +174,7 @@ export function StudentProfileClient({
               <div className="grid gap-4 md:grid-cols-2">
                 <ReadOnlyField label="First Name" value={student.firstName} />
                 <ReadOnlyField label="Last Name" value={student.lastName || "-"} />
+                <ReadOnlyField label="Age" value={student.age ? String(student.age) : "Not added"} />
                 <ReadOnlyField label="Emergency Contact" value={student.emergencyContact || "Not added"} />
                 <ReadOnlyField label="Parental Whatsapp" value={student.parentalWhatsapp || "Not added"} />
                 <ReadOnlyField label="Roll Number" value={student.classRollNumber} />
@@ -287,6 +290,9 @@ export function StudentProfileClient({
               <form onSubmit={handleContactInfo} className="space-y-4">
                 <Field label="Father Name">
                   <Input name="fatherName" defaultValue={student.fatherName || ""} required />
+                </Field>
+                <Field label="Age">
+                  <Input name="age" type="number" defaultValue={student.age || ""} placeholder="E.g. 18" />
                 </Field>
                 <Field label="Emergency Contact">
                   <Input name="emergencyContact" defaultValue={student.emergencyContact || ""} placeholder="E.g. +1234567890" />

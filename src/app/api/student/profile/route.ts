@@ -62,7 +62,8 @@ export const PATCH = requireRole(["STUDENT"], async (req: NextRequest, { session
       ...(parsed.data.fatherName && { fatherName: parsed.data.fatherName }),
       ...(parsed.data.profilePictureUrl && { profilePictureUrl: parsed.data.profilePictureUrl }),
       ...(parsed.data.emergencyContact !== undefined && { emergencyContact: parsed.data.emergencyContact }),
-      ...(parsed.data.parentalWhatsapp !== undefined && { parentalWhatsapp: parsed.data.parentalWhatsapp })
+      ...(parsed.data.parentalWhatsapp !== undefined && { parentalWhatsapp: parsed.data.parentalWhatsapp }),
+      ...(parsed.data.age !== undefined && { age: parsed.data.age })
     })
     .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)));
 
