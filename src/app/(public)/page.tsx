@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Users, BarChart3, ShieldCheck, ArrowRight, Sparkles, CheckCircle2, LayoutDashboard, Calendar, Bell, ChevronRight, PlayCircle, Star, MessageSquareQuote } from "lucide-react";
+import { Users, BarChart3, ShieldCheck, ArrowRight, Sparkles, CheckCircle2, LayoutDashboard, Calendar, Bell, ChevronRight, PlayCircle, Star, MessageSquareQuote } from "lucide-react";
 import { db } from "@/db";
 import { institutions, platformReviews, featuredInstitutions } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
@@ -93,8 +93,9 @@ export default async function LandingPage() {
 
       <header className="sticky top-0 z-50 flex items-center justify-between px-6 md:px-12 py-4 backdrop-blur-2xl bg-white/60 border-b border-stone-200/50 shadow-sm transition-all duration-300">
         <div className="flex items-center gap-3 group cursor-pointer">
-          <div className="bg-brand-600 p-2 rounded-xl group-hover:bg-brand-700 transition-colors shadow-sm flex items-center justify-center">
-            <BookOpen className="h-5 w-5 text-white" />
+          <div className="h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-brand-100 transition-transform group-hover:scale-105">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/Logo.png" alt="Taleem360 logo" className="h-full w-full object-contain" />
           </div>
           <span className="font-display font-extrabold text-2xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Taleem360</span>
         </div>
@@ -315,8 +316,9 @@ export default async function LandingPage() {
         <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-12 mb-16">
            <div className="col-span-2">
              <div className="flex items-center gap-2 mb-6">
-                <div className="bg-brand-600 p-1.5 rounded-lg">
-                  <BookOpen className="h-5 w-5 text-white" />
+                <div className="h-9 w-9 overflow-hidden rounded-lg bg-white ring-1 ring-white/10">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/Logo.png" alt="Taleem360 logo" className="h-full w-full object-contain" />
                 </div>
                 <span className="font-display font-bold text-2xl">Taleem360</span>
              </div>

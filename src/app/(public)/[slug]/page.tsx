@@ -4,7 +4,7 @@ import { platformPages } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import ReactMarkdown from "react-markdown";
 import Link from "next/link";
-import { BookOpen, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = await params;
@@ -34,8 +34,9 @@ export default async function StaticPage({ params }: { params: Promise<{ slug: s
     <div className="min-h-screen flex flex-col bg-[#FDFCFB] selection:bg-brand-500 selection:text-white">
       <header className="sticky top-0 z-50 flex items-center px-6 md:px-12 py-4 backdrop-blur-2xl bg-white/60 border-b border-stone-200/50">
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="bg-brand-600 p-2 rounded-xl group-hover:bg-brand-700 transition-colors flex items-center justify-center">
-            <BookOpen className="h-5 w-5 text-white" />
+          <div className="h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-brand-100 transition-transform group-hover:scale-105">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/Logo.png" alt="Taleem360 logo" className="h-full w-full object-contain" />
           </div>
           <span className="font-display font-extrabold text-xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Taleem360</span>
         </Link>

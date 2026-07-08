@@ -1,6 +1,5 @@
 "use client";
 
-import { BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ShellBrand = {
@@ -48,8 +47,9 @@ export function BrandMark({ brand, className, iconClassName }: BrandMarkProps) {
   }
 
   return (
-    <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-800 ring-1 ring-brand-100", className)}>
-      <BookOpen className={cn("h-5 w-5", iconClassName)} />
+    <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white ring-1 ring-brand-100", className)}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/Logo.png" alt="Taleem360 logo" className={cn("h-full w-full object-contain", iconClassName)} />
     </span>
   );
 }
