@@ -3,6 +3,8 @@ import { db } from "@/db";
 import { notifications } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { eq, and } from "drizzle-orm";
+import { getVisibleAnnouncements } from "@/lib/announcements";
+import { announcementReads } from "@/db/schema";
 
 export const PATCH = requireRole(["STUDENT", "STAFF", "INSTITUTION", "EMPLOYEE", "SUPER_ADMIN"], async (req: NextRequest, { session }) => {
   try {
@@ -16,6 +18,16 @@ export const PATCH = requireRole(["STUDENT", "STAFF", "INSTITUTION", "EMPLOYEE",
           eq(notifications.isRead, false)
         )
       );
+
+    const unreadAnnouncements = (await getVisibleAnnouncements(session, 1000)).filter((a) => !a.isRead);
+    if (unreadAnnouncements.length > 0) {
+      const values = unreadAnnouncements.map((a) => ({
+        announcementId: a.id,
+        userRole: session.role,
+        userId: session.userId,
+      }));
+      await db.insert(announcementReads).values(values).onConflictDoNothing();
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

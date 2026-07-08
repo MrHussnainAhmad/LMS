@@ -2,17 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { notifications } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, gte } from "drizzle-orm";
+import { getUserCreatedAt } from "@/lib/user";
 
 export const GET = requireRole(["STUDENT", "STAFF", "INSTITUTION", "EMPLOYEE", "SUPER_ADMIN"], async (req: NextRequest, { session }) => {
   try {
+    const userCreatedAt = await getUserCreatedAt(session);
+
     const userNotifications = await db.select()
       .from(notifications)
       .where(
         and(
           session.institutionId ? eq(notifications.institutionId, session.institutionId) : undefined,
           eq(notifications.userRole, session.role),
-          eq(notifications.userId, session.userId)
+          eq(notifications.userId, session.userId),
+          gte(notifications.createdAt, userCreatedAt)
         )
       )
       .orderBy(desc(notifications.createdAt))
@@ -25,7 +29,8 @@ export const GET = requireRole(["STUDENT", "STAFF", "INSTITUTION", "EMPLOYEE", "
           session.institutionId ? eq(notifications.institutionId, session.institutionId) : undefined,
           eq(notifications.userRole, session.role),
           eq(notifications.userId, session.userId),
-          eq(notifications.isRead, false)
+          eq(notifications.isRead, false),
+          gte(notifications.createdAt, userCreatedAt)
         )
       );
 

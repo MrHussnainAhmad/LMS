@@ -1,7 +1,8 @@
 import { db } from "@/db";
 import { announcementReads, announcements, staff, staffAssignments, students, sections } from "@/db/schema";
 import type { JWTPayload } from "@/lib/auth-types";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, gte } from "drizzle-orm";
+import { getUserCreatedAt } from "@/lib/user";
 
 export type AnnouncementRecipientRole = "STUDENT" | "STAFF";
 
@@ -181,9 +182,16 @@ export async function getVisibleAnnouncements(session: JWTPayload, limit = 4) {
   const institutionId = getSessionInstitutionId(session);
   if (!institutionId) return [];
 
+  const userCreatedAt = await getUserCreatedAt(session);
+
   const rows = await db.select()
     .from(announcements)
-    .where(eq(announcements.institutionId, institutionId))
+    .where(
+      and(
+        eq(announcements.institutionId, institutionId),
+        gte(announcements.createdAt, userCreatedAt)
+      )
+    )
     .orderBy(desc(announcements.createdAt))
     .limit(50);
 
@@ -213,10 +221,18 @@ export async function getVisibleAnnouncementById(session: JWTPayload, id: number
   const institutionId = getSessionInstitutionId(session);
   if (!institutionId) return null;
 
+  const userCreatedAt = await getUserCreatedAt(session);
+
   const [announcement] = await db
     .select()
     .from(announcements)
-    .where(and(eq(announcements.id, id), eq(announcements.institutionId, institutionId)))
+    .where(
+      and(
+        eq(announcements.id, id), 
+        eq(announcements.institutionId, institutionId),
+        gte(announcements.createdAt, userCreatedAt)
+      )
+    )
     .limit(1);
 
   if (!announcement) return null;
