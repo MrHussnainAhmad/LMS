@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { accountLockouts, auditLogs, superAdmins, employees, institutions, staff, students } from '@/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
@@ -12,6 +12,7 @@ import { sendEmail, LoginNotificationEmail } from '@/lib/email';
 const MAX_FAILED_LOGINS = Number(process.env.AUTH_LOCKOUT_MAX_FAILED || 5);
 const LOCKOUT_WINDOW_MINUTES = Number(process.env.AUTH_LOCKOUT_WINDOW_MINUTES || 15);
 const LOCKOUT_COOLDOWN_MINUTES = Number(process.env.AUTH_LOCKOUT_COOLDOWN_MINUTES || 15);
+const LOGIN_LOOKUP_ORDER: UserRole[] = ['SUPER_ADMIN', 'EMPLOYEE', 'INSTITUTION', 'STAFF', 'STUDENT'];
 
 function addMinutes(value: Date, minutes: number) {
   return new Date(value.getTime() + minutes * 60 * 1000);
@@ -80,6 +81,61 @@ async function rejectFailedLogin(role: UserRole, userId: number, institutionId: 
   return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
 }
 
+function getLoginLookupRoles(roleHint?: UserRole) {
+  return roleHint ? [roleHint] : LOGIN_LOOKUP_ORDER;
+}
+
+async function runPostLoginSideEffects(params: {
+  role: UserRole;
+  user: { id: number; email?: string; contactEmail?: string };
+  institutionId?: number;
+  ip: string;
+  userAgent: string;
+}) {
+  const { role, user, institutionId, ip, userAgent } = params;
+  const shouldSendLoginEmail = role === 'EMPLOYEE' || role === 'INSTITUTION';
+
+  try {
+    const previousLogin = shouldSendLoginEmail ? await db.select({ id: auditLogs.id })
+      .from(auditLogs)
+      .where(and(
+        eq(auditLogs.actorId, user.id),
+        eq(auditLogs.actorRole, role),
+        eq(auditLogs.action, 'LOGIN')
+      ))
+      .limit(1) : [];
+
+    await logAudit({
+      institutionId,
+      actorId: user.id,
+      actorRole: role,
+      action: 'LOGIN',
+      target: 'Self',
+      ip,
+    });
+
+    if (!shouldSendLoginEmail) return;
+
+    const loginEmail = role === 'EMPLOYEE' ? user.email : user.contactEmail;
+    const isFirstLogin = previousLogin.length === 0;
+
+    if (loginEmail) {
+      await sendEmail({
+        to: loginEmail,
+        subject: isFirstLogin ? 'New Login Detected' : 'Login Alert',
+        html: LoginNotificationEmail({
+          ip,
+          userAgent,
+          time: new Date().toISOString(),
+          isFirstLogin,
+        }),
+      });
+    }
+  } catch (err) {
+    console.error('Post-login side effect failed:', err);
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const rateLimit = await withRateLimit(req, 'auth');
@@ -93,10 +149,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
-    const { emailOrUsername, password, securityAnswer, returnTokens } = parsed.data;
+    const { emailOrUsername, password, roleHint, securityAnswer, returnTokens } = parsed.data;
     const loginIdentifier = emailOrUsername.trim().toLowerCase();
     const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';
     const userAgent = req.headers.get('user-agent') ?? 'Unknown';
+    const lookupRoles = getLoginLookupRoles(roleHint);
 
     let user: { id: number; email?: string; contactEmail?: string } | null = null;
     let role: UserRole | null = null;
@@ -104,50 +161,73 @@ export async function POST(req: NextRequest) {
     let campusId: number | undefined;
     let mustChangePassword = false;
 
-    // Run all database lookups concurrently to drastically improve login speed
-    const [adminRes, empRes, instRes, stfRes, stuRes] = await Promise.all([
-      db.select({
-        id: superAdmins.id,
-        email: superAdmins.email,
-        passwordHash: superAdmins.passwordHash,
-        securityAnswerHash: superAdmins.securityAnswerHash,
-      }).from(superAdmins).where(sql`lower(${superAdmins.email}) = ${loginIdentifier}`).limit(1),
-      db.select({
-        id: employees.id,
-        email: employees.email,
-        passwordHash: employees.passwordHash,
-        mustChangePassword: employees.mustChangePassword,
-      }).from(employees).where(sql`lower(${employees.email}) = ${loginIdentifier}`).limit(1),
-      db.select({
-        id: institutions.id,
-        contactEmail: institutions.contactEmail,
-        adminPasswordHash: institutions.adminPasswordHash,
-        status: institutions.status,
-      }).from(institutions).where(sql`lower(${institutions.contactEmail}) = ${loginIdentifier}`).limit(1),
-      db.select({
-        id: staff.id,
-        email: staff.email,
-        passwordHash: staff.passwordHash,
-        isActive: staff.isActive,
-        institutionId: staff.institutionId,
-        campusId: staff.campusId,
-        mustChangePassword: staff.mustChangePassword,
-      }).from(staff).where(sql`lower(${staff.email}) = ${loginIdentifier}`).limit(1),
-      db.select({
-        id: students.id,
-        loginRollNumber: students.loginRollNumber,
-        passwordHash: students.passwordHash,
-        isActive: students.isActive,
-        institutionId: students.institutionId,
-        mustChangePassword: students.mustChangePassword,
-      }).from(students).where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`).limit(1),
-    ]);
+    const lookupResults = await Promise.all(
+      lookupRoles.map(async (lookupRole) => {
+        switch (lookupRole) {
+          case 'SUPER_ADMIN':
+            return {
+              role: lookupRole,
+              rows: await db.select({
+                id: superAdmins.id,
+                email: superAdmins.email,
+                passwordHash: superAdmins.passwordHash,
+                securityAnswerHash: superAdmins.securityAnswerHash,
+              }).from(superAdmins).where(sql`lower(${superAdmins.email}) = ${loginIdentifier}`).limit(1),
+            };
+          case 'EMPLOYEE':
+            return {
+              role: lookupRole,
+              rows: await db.select({
+                id: employees.id,
+                email: employees.email,
+                passwordHash: employees.passwordHash,
+                mustChangePassword: employees.mustChangePassword,
+              }).from(employees).where(sql`lower(${employees.email}) = ${loginIdentifier}`).limit(1),
+            };
+          case 'INSTITUTION':
+            return {
+              role: lookupRole,
+              rows: await db.select({
+                id: institutions.id,
+                contactEmail: institutions.contactEmail,
+                adminPasswordHash: institutions.adminPasswordHash,
+                status: institutions.status,
+              }).from(institutions).where(sql`lower(${institutions.contactEmail}) = ${loginIdentifier}`).limit(1),
+            };
+          case 'STAFF':
+            return {
+              role: lookupRole,
+              rows: await db.select({
+                id: staff.id,
+                email: staff.email,
+                passwordHash: staff.passwordHash,
+                isActive: staff.isActive,
+                institutionId: staff.institutionId,
+                campusId: staff.campusId,
+                mustChangePassword: staff.mustChangePassword,
+              }).from(staff).where(sql`lower(${staff.email}) = ${loginIdentifier}`).limit(1),
+            };
+          case 'STUDENT':
+            return {
+              role: lookupRole,
+              rows: await db.select({
+                id: students.id,
+                loginRollNumber: students.loginRollNumber,
+                passwordHash: students.passwordHash,
+                isActive: students.isActive,
+                institutionId: students.institutionId,
+                mustChangePassword: students.mustChangePassword,
+              }).from(students).where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`).limit(1),
+            };
+        }
+      })
+    );
 
-    const admin = adminRes[0];
-    const emp = empRes[0];
-    const inst = instRes[0];
-    const stf = stfRes[0];
-    const stu = stuRes[0];
+    const admin = lookupResults.find((result) => result.role === 'SUPER_ADMIN')?.rows[0];
+    const emp = lookupResults.find((result) => result.role === 'EMPLOYEE')?.rows[0];
+    const inst = lookupResults.find((result) => result.role === 'INSTITUTION')?.rows[0];
+    const stf = lookupResults.find((result) => result.role === 'STAFF')?.rows[0];
+    const stu = lookupResults.find((result) => result.role === 'STUDENT')?.rows[0];
 
     if (admin) {
       if (!securityAnswer) {
@@ -231,42 +311,13 @@ export async function POST(req: NextRequest) {
     await setAuthCookies(accessToken, refreshToken);
     await clearFailedLogins(role, user.id);
 
-    const shouldSendLoginEmail = role === 'EMPLOYEE' || role === 'INSTITUTION';
-    const previousLogin = shouldSendLoginEmail ? await db.select({ id: auditLogs.id })
-      .from(auditLogs)
-      .where(and(
-        eq(auditLogs.actorId, user.id),
-        eq(auditLogs.actorRole, role),
-        eq(auditLogs.action, 'LOGIN')
-      ))
-      .limit(1) : [];
-
-    await logAudit({
+    after(() => runPostLoginSideEffects({
+      role,
+      user,
       institutionId,
-      actorId: user.id,
-      actorRole: role,
-      action: 'LOGIN',
-      target: 'Self',
       ip,
-    });
-
-    if (shouldSendLoginEmail) {
-      const loginEmail = role === 'EMPLOYEE' ? user.email : user.contactEmail;
-      const isFirstLogin = previousLogin.length === 0;
-
-      if (loginEmail) {
-        await sendEmail({
-          to: loginEmail,
-          subject: isFirstLogin ? 'New Login Detected' : 'Login Alert',
-          html: LoginNotificationEmail({
-            ip,
-            userAgent,
-            time: new Date().toISOString(),
-            isFirstLogin,
-          }),
-        });
-      }
-    }
+      userAgent,
+    }));
 
     return NextResponse.json({
       message: 'Logged in successfully',

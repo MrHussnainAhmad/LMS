@@ -28,6 +28,7 @@ export default function SaLoginPage() {
       await api.post("/api/auth/login", {
         emailOrUsername,
         password,
+        roleHint: "SUPER_ADMIN",
         securityAnswer,
       });
 

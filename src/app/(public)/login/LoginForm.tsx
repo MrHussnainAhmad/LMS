@@ -110,6 +110,7 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
   const PortalIcon = selectedOption?.icon ?? copy.icon;
   const identifierLabel = selectedOption?.identifierLabel ?? copy.identifierLabel;
   const identifierPlaceholder = selectedOption?.identifierPlaceholder ?? copy.identifierPlaceholder;
+  const roleHint = selectedOption?.id ?? (mode === "INSTITUTION" ? "INSTITUTION" : "EMPLOYEE");
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -123,6 +124,7 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
       const res = await api.post<{ role: string; mustChangePassword: boolean }>("/api/auth/login", {
         emailOrUsername,
         password,
+        roleHint,
       });
 
       toast({ title: "Success", description: "Logged in successfully", variant: "success" });

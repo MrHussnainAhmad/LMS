@@ -49,7 +49,8 @@ yarn-error.log*
 *.db
 *.sqlite
 *.sqlite3
-/drizzle/
+/drizzle/*
+!/drizzle/0006_login_lookup_indexes.sql
 
 # local-only operational database scripts
 /check*.js
