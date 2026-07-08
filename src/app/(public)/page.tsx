@@ -6,6 +6,24 @@ import { db } from "@/db";
 import { institutions, platformReviews, featuredInstitutions } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 
+const pricingPlans = [
+  {
+    name: "Small School",
+    students: "Up to 300 students",
+    price: "PKR 7,000",
+  },
+  {
+    name: "Medium School",
+    students: "Up to 700 students",
+    price: "PKR 12,000",
+  },
+  {
+    name: "Large School",
+    students: "Up to 1000 students",
+    price: "PKR 20,000",
+  },
+];
+
 export const metadata: Metadata = {
   title: "Taleem360 | The Ultimate Platform for Modern Educational Institutions",
   description: "Taleem360 is the leading multi-tenant learning management system. Streamline administration, boost engagement, and leverage advanced analytics for your school, college, or university.",
@@ -294,13 +312,41 @@ export default async function LandingPage() {
 
         {/* --- Final CTA --- */}
         <section id="pricing" className="w-full py-24 px-6 md:px-12">
-          <div className="max-w-5xl mx-auto bg-stone-900 rounded-[3rem] p-12 md:p-20 text-center relative overflow-hidden shadow-2xl">
+          <div className="max-w-6xl mx-auto bg-stone-900 rounded-[3rem] p-8 md:p-14 lg:p-16 text-center relative overflow-hidden shadow-2xl">
              <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-500/20 blur-[100px] rounded-full translate-x-1/2 -translate-y-1/2"></div>
              <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo-500/20 blur-[100px] rounded-full -translate-x-1/2 translate-y-1/2"></div>
              
              <div className="relative z-10">
-               <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-6">Ready to upgrade your institution?</h2>
-               <p className="text-xl text-stone-300 mb-10 max-w-2xl mx-auto">Join hundreds of schools using Taleem360 to streamline operations and enhance learning.</p>
+               <div className="mb-10">
+                 <p className="text-sm font-bold uppercase tracking-[0.2em] text-brand-200 mb-4">Pricing</p>
+                 <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-6">Simple plans for every institution.</h2>
+                 <p className="text-lg md:text-xl text-stone-300 max-w-2xl mx-auto">Start with a one-time setup, then choose the monthly plan that matches your student strength.</p>
+               </div>
+
+               <div className="mx-auto mb-6 max-w-xl rounded-2xl border border-white/10 bg-white/10 p-5 text-left backdrop-blur">
+                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                   <div>
+                     <p className="text-sm font-semibold uppercase tracking-wider text-stone-300">One-time setup fee</p>
+                     <p className="mt-1 text-sm text-stone-400">Institution setup, onboarding, and basic configuration.</p>
+                   </div>
+                   <p className="text-2xl font-display font-bold text-white">PKR 15,000</p>
+                 </div>
+               </div>
+
+               <div className="grid gap-4 md:grid-cols-3 mb-10 text-left">
+                 {pricingPlans.map((plan) => (
+                   <div key={plan.name} className="rounded-2xl border border-white/10 bg-white p-6 shadow-xl shadow-black/10">
+                     <p className="text-sm font-bold uppercase tracking-wider text-brand-700">{plan.name}</p>
+                     <h3 className="mt-3 text-3xl font-display font-extrabold text-stone-950">{plan.price}</h3>
+                     <p className="mt-1 text-sm font-semibold text-stone-500">per month</p>
+                     <div className="mt-5 flex items-center gap-2 rounded-xl bg-stone-50 px-3 py-2 text-sm font-semibold text-stone-700">
+                       <CheckCircle2 className="h-4 w-4 text-brand-600" />
+                       {plan.students}
+                     </div>
+                   </div>
+                 ))}
+               </div>
+
                <div className="flex justify-center">
                  <Button size="lg" className="rounded-full h-14 px-10 text-base font-bold bg-white text-stone-900 hover:bg-stone-100 hover:scale-105 transition-all" asChild>
                    <a href="mailto:Workwithhussnainahmad@gmail.com">Contact Sales: Workwithhussnainahmad@gmail.com</a>
