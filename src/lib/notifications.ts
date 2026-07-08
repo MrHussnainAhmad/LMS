@@ -45,15 +45,34 @@ type PushDeliverySummary = {
 };
 
 export async function createNotification(payload: NotificationPayload) {
+  console.info("Creating single notification", {
+    type: payload.type,
+    userRole: payload.userRole,
+    userId: payload.userId,
+    referenceId: payload.referenceId,
+  });
+
   const [inserted] = await db.insert(notifications).values(payload).returning({ id: notifications.id });
   await sendExpoPushNotifications([{ ...payload, notificationId: inserted?.id }]);
   return inserted;
 }
 
 export async function createBulkNotifications(payloads: NotificationPayload[]) {
+  console.info("Creating bulk notifications", {
+    payloads: payloads.length,
+    types: Array.from(new Set(payloads.map((payload) => payload.type))),
+    studentRecipients: payloads.filter((payload) => payload.userRole === "STUDENT").length,
+    staffRecipients: payloads.filter((payload) => payload.userRole === "STAFF").length,
+  });
+
   if (payloads.length === 0) return;
   
   const insertedRows = await db.insert(notifications).values(payloads).returning({ id: notifications.id });
+  console.info("Bulk notification rows inserted", {
+    requested: payloads.length,
+    inserted: insertedRows.length,
+  });
+
   const deliveries = payloads.map((payload, index) => ({
     ...payload,
     notificationId: insertedRows[index]?.id,
@@ -111,6 +130,13 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]): Prom
       const staffRecords = await db.select({ id: staff.id, token: staff.expoPushToken }).from(staff).where(inArray(staff.id, staffIds));
       staffRecords.forEach(r => { if (r.token) staffTokens.set(r.id, r.token) });
     }
+
+    console.info("Expo push token lookup", {
+      studentRecipients: studentIds.length,
+      studentTokens: studentTokens.size,
+      staffRecipients: staffIds.length,
+      staffTokens: staffTokens.size,
+    });
 
     const targets = payloads.flatMap((payload) => {
       const token = payload.userRole === 'STUDENT'
@@ -298,7 +324,22 @@ export async function processAnnouncementNotification(announcementId: number) {
   const { eq: eqOp, and: andOp } = await import("drizzle-orm");
 
   const [announcement] = await db.select().from(announcements).where(eqOp(announcements.id, announcementId));
-  if (!announcement) return;
+  if (!announcement) {
+    console.warn("Announcement notification skipped: announcement not found", { announcementId });
+    return;
+  }
+
+  console.info("Processing announcement notification", {
+    announcementId: announcement.id,
+    targetType: announcement.targetType,
+    targetCampusId: announcement.targetCampusId,
+    targetClassId: announcement.targetClassId,
+    targetSectionId: announcement.targetSectionId,
+    targetUserRole: announcement.targetUserRole,
+    targetUserId: announcement.targetUserId,
+    senderRole: announcement.senderRole,
+    senderId: announcement.senderId,
+  });
 
   const payloads: NotificationPayload[] = [];
   const type = announcement.title.toLowerCase().includes("timetable") ? 'EXAM_TIMETABLE' : 'ANNOUNCEMENT';
