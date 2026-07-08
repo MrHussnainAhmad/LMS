@@ -67,6 +67,10 @@ yarn-error.log*
 /scripts/create-super-admin.ts
 /scripts/apply-online-tests-schema.mjs
 /scripts/*.local.*
+/scripts/migrate*.ts
+/scripts/apply-*.ts
+/src/db/migrate_*.ts
+/src/db/remove_*.ts
 
 # vercel
 .vercel
