@@ -8,6 +8,38 @@ import { createStudentSchema } from '@/lib/validators/student';
 import { logAudit } from '@/lib/audit';
 import { generateStudentLoginRollNumber } from '@/lib/login-identifiers';
 
+const WHOLE_CLASS_SECTION_NAME = "Whole Class";
+
+async function getOrCreateWholeClassSection(institutionId: number, classId: number) {
+  const [existingSection] = await db.select({
+    id: sections.id,
+    classId: sections.classId,
+    name: sections.name,
+  })
+    .from(sections)
+    .where(and(
+      eq(sections.classId, classId),
+      eq(sections.institutionId, institutionId),
+      eq(sections.name, WHOLE_CLASS_SECTION_NAME)
+    ))
+    .limit(1);
+
+  if (existingSection) return existingSection;
+
+  const [createdSection] = await db.insert(sections).values({
+    institutionId,
+    classId,
+    name: WHOLE_CLASS_SECTION_NAME,
+    classTeacherId: null,
+  }).returning({
+    id: sections.id,
+    classId: sections.classId,
+    name: sections.name,
+  });
+
+  return createdSection;
+}
+
 export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { session }) => {
   try {
     const tenantId = getTenantContext(session);
@@ -20,7 +52,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
 
     const { firstName, lastName, campusId, classId, sectionId, gender, yearOfJoining, classRollNumber, phone, age } = parsed.data;
 
-    const [[inst], [classObj], [sectionObj]] = await Promise.all([
+    const [[inst], [classObj], sectionRows] = await Promise.all([
       db.select({
         id: institutions.id,
         type: institutions.type,
@@ -30,11 +62,11 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
         id: classes.id,
         name: classes.name,
       }).from(classes).where(and(eq(classes.id, classId), eq(classes.institutionId, tenantId))).limit(1),
-      db.select({
+      sectionId ? db.select({
         id: sections.id,
         classId: sections.classId,
         name: sections.name,
-      }).from(sections).where(and(eq(sections.id, sectionId), eq(sections.institutionId, tenantId))).limit(1),
+      }).from(sections).where(and(eq(sections.id, sectionId), eq(sections.institutionId, tenantId))).limit(1) : Promise.resolve([]),
     ]);
 
     if (!inst) {
@@ -44,6 +76,8 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
     if (!classObj) {
       return NextResponse.json({ error: "Class not found" }, { status: 400 });
     }
+
+    const sectionObj = sectionRows[0] ?? await getOrCreateWholeClassSection(tenantId, classId);
 
     if (!sectionObj || sectionObj.classId !== classId) {
       return NextResponse.json({ error: "Section not found for selected class" }, { status: 400 });
@@ -69,7 +103,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
       loginRollNumber,
       passwordHash,
       classId,
-      sectionId,
+      sectionId: sectionObj.id,
       yearOfJoining,
       classRollNumber,
       phone,

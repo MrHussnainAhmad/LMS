@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { classes, sections, staffAssignments, subjects, staff, tests } from "@/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { classes, sections, staffAssignments, subjects, staff } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -8,7 +8,6 @@ import { Calendar, Plus, User } from "lucide-react";
 import { SectionSelector } from "./SectionSelector";
 import { AssignmentForm } from "./AssignmentForm";
 import { InchargeForm } from "./InchargeForm";
-import { InstitutionExamForm } from "@/components/exams/InstitutionExamForm";
 import { WeeklyTimetable, type TimetableEntry } from "@/components/timetable/ScheduleViews";
 
 type TimetableRow = {
@@ -80,15 +79,6 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
   const selectedClassId = selectedTarget?.classId || null;
 
   let assignments: TimetableRow[] = [];
-  let examRows: {
-    id: number;
-    title: string;
-    type: string;
-    date: string;
-    endDate: string | null;
-    maxMarks: number;
-    subject: string | null;
-  }[] = [];
   if (selectedSectionId) {
     assignments = await db.select({
       assignment: staffAssignments,
@@ -99,28 +89,6 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
       .leftJoin(staff, eq(staffAssignments.staffId, staff.id))
       .where(and(eq(staffAssignments.sectionId, selectedSectionId), eq(staffAssignments.institutionId, institutionId)))
       .orderBy(staffAssignments.startTime);
-  }
-
-  const selectedClass = allClasses.find((classRow) => classRow.id === selectedClassId);
-  if (selectedClass) {
-    examRows = await db.select({
-      id: tests.id,
-      title: tests.title,
-      type: tests.type,
-      date: tests.date,
-      endDate: tests.endDate,
-      maxMarks: tests.maxMarks,
-      subject: subjects.name,
-    })
-      .from(tests)
-      .leftJoin(subjects, eq(tests.subjectId, subjects.id))
-      .where(and(
-        eq(tests.institutionId, institutionId),
-        eq(tests.classId, selectedClass.id),
-        eq(tests.createdByRole, "INSTITUTION"),
-        inArray(tests.type, ["MONTHLY", "MID", "FINAL"])
-      ))
-      .orderBy(tests.date);
   }
 
   const timetableEntries: TimetableEntry[] = assignments.map((row) => ({
@@ -204,49 +172,8 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
                 />
               </CardContent>
             </Card>
-
-            <Card className="mt-6">
-              <CardHeader className="border-b border-border bg-stone-50/50">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-brand-600" />
-                  Schedule Exam
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <InstitutionExamForm
-                  classes={allClasses.map((classRow) => ({ id: classRow.id, name: classRow.name }))}
-                  subjects={allSubjects.map((subject) => ({ id: subject.id, name: subject.name }))}
-                  submitLabel="Add Exam Dates"
-                />
-              </CardContent>
-            </Card>
           </div>
         </div>
-      )}
-
-      {examRows.length > 0 && (
-        <Card>
-          <CardHeader className="border-b border-border bg-stone-50/50">
-            <CardTitle className="text-lg">Exam Timetable</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {examRows.map((exam) => (
-                <div key={exam.id} className="p-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="font-semibold text-brand-950">{exam.title}</h3>
-                    <p className="text-sm text-stone-500">{exam.subject || "Subject"} - {exam.type}</p>
-                  </div>
-                  <div className="text-sm text-stone-600">
-                    {new Date(exam.date).toLocaleDateString()}
-                    {exam.endDate ? ` to ${new Date(exam.endDate).toLocaleDateString()}` : ""}
-                    {" - "}{exam.maxMarks} marks
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       )}
     </div>
   );

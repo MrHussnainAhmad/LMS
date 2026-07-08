@@ -38,7 +38,7 @@ export default async function TakeStudentTestPage({ params }: PageProps) {
     eq(onlineTestSubmissions.onlineTestId, onlineTestId),
     eq(onlineTestSubmissions.studentId, session.userId)
   )).limit(1);
-  if (submission && submission.status !== "IN_PROGRESS") redirect("/student/tests");
+  const isFinished = submission && submission.status !== "IN_PROGRESS";
   const nowMs = new Date().getTime();
   if (!submission && row.onlineTest.createdAt.getTime() + row.onlineTest.durationMinutes * 60 * 1000 <= nowMs) redirect("/student/tests");
 
@@ -49,6 +49,7 @@ export default async function TakeStudentTestPage({ params }: PageProps) {
     prompt: question.prompt,
     options: Array.isArray(question.options) ? question.options.map(String) : null,
     marks: Number(question.marks),
+    correctOptionIndex: isFinished ? question.correctOptionIndex : undefined,
   }));
 
   return (
@@ -56,7 +57,7 @@ export default async function TakeStudentTestPage({ params }: PageProps) {
       <div className="border-b border-border pb-6">
         <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">{row.subjectName || "Online test"}</p>
         <h1 className="mt-2 text-3xl font-display font-bold text-brand-950">{row.test.title}</h1>
-        <p className="mt-1 text-stone-500">Answer all questions before submitting.</p>
+        <p className="mt-1 text-stone-500">{isFinished ? "Review your answers and score." : "Answer all questions before submitting."}</p>
       </div>
 
       <StudentTestTaker
@@ -65,6 +66,9 @@ export default async function TakeStudentTestPage({ params }: PageProps) {
         durationMinutes={row.onlineTest.durationMinutes}
         mode={row.onlineTest.mode}
         questions={questions}
+        isReviewing={!!isFinished}
+        answers={(submission?.answers as Record<string, string | number>) || {}}
+        totalScore={submission?.totalScore ?? undefined}
       />
     </div>
   );

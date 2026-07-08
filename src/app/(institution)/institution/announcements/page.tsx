@@ -9,6 +9,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createAnnouncementAction, deleteAnnouncementAction } from "@/app/actions/institution-actions";
 import { AnnouncementFormClient } from "./AnnouncementFormClient";
+import { PaginationNav } from "@/components/ui/pagination-nav";
+
+const ANNOUNCEMENTS_PER_PAGE = 10;
 
 function audienceLabel(announcement: typeof announcements.$inferSelect) {
   if (announcement.targetType === "USER" && announcement.targetUserRole && !announcement.targetUserId) {
@@ -17,11 +20,13 @@ function audienceLabel(announcement: typeof announcements.$inferSelect) {
   return announcement.targetType;
 }
 
-export default async function InstitutionAnnouncementsPage() {
+export default async function InstitutionAnnouncementsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const session = await getSession();
   if (!session || session.role !== "INSTITUTION") {
     redirect("/login");
   }
+  const params = await searchParams;
+  const currentPage = Math.max(1, Number(params.page) || 1);
 
   const institutionId = session.userId;
 
@@ -29,6 +34,11 @@ export default async function InstitutionAnnouncementsPage() {
     .from(announcements)
     .where(eq(announcements.institutionId, institutionId))
     .orderBy(desc(announcements.createdAt));
+  const totalPages = Math.max(1, Math.ceil(allAnnouncements.length / ANNOUNCEMENTS_PER_PAGE));
+  const paginatedAnnouncements = allAnnouncements.slice(
+    (currentPage - 1) * ANNOUNCEMENTS_PER_PAGE,
+    currentPage * ANNOUNCEMENTS_PER_PAGE
+  );
 
   const allCampuses = await db.select().from(campuses).where(eq(campuses.institutionId, institutionId));
   const allClasses = await db.select().from(classes).where(eq(classes.institutionId, institutionId));
@@ -83,7 +93,7 @@ export default async function InstitutionAnnouncementsPage() {
                         </td>
                       </tr>
                     )}
-                    {allAnnouncements.map((ann) => (
+                    {paginatedAnnouncements.map((ann) => (
                       <tr key={ann.id} className="hover:bg-stone-50/50 transition-colors">
                         <td className="px-6 py-4 font-semibold text-brand-950">
                           <Link href={`/announcements/${ann.id}`} className="hover:text-brand-700 hover:underline">
@@ -115,6 +125,7 @@ export default async function InstitutionAnnouncementsPage() {
                   </tbody>
                 </table>
               </div>
+              <PaginationNav currentPage={Math.min(currentPage, totalPages)} totalPages={totalPages} basePath="/institution/announcements" />
             </CardContent>
           </Card>
         </div>

@@ -13,6 +13,7 @@ type Question = {
   prompt: string;
   options: string[] | null;
   marks: number;
+  correctOptionIndex?: number | null;
 };
 
 export function StudentTestTaker({
@@ -21,14 +22,20 @@ export function StudentTestTaker({
   durationMinutes,
   mode,
   questions,
+  isReviewing = false,
+  answers = {},
+  totalScore,
 }: {
   onlineTestId: number;
   title: string;
   durationMinutes: number;
   mode: "MCQ" | "MIX";
   questions: Question[];
+  isReviewing?: boolean;
+  answers?: Record<string, string | number>;
+  totalScore?: number;
 }) {
-  const [started, setStarted] = useState(false);
+  const [started, setStarted] = useState(isReviewing || false);
   const [failed, setFailed] = useState(false);
   const [failureReason, setFailureReason] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
@@ -73,7 +80,7 @@ export function StudentTestTaker({
   };
 
   useEffect(() => {
-    if (!started || failed) return;
+    if (!started || failed || isReviewing) return;
 
     const onVisibilityChange = () => {
       if (document.hidden) failTest("tab_switch");
@@ -83,10 +90,10 @@ export function StudentTestTaker({
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [failed, failTest, started]);
+  }, [failed, failTest, started, isReviewing]);
 
   useEffect(() => {
-    if (!started || failed) return;
+    if (!started || failed || isReviewing) return;
     if (!expiresAtMs) return;
     const timer = window.setInterval(() => {
       const nextRemaining = Math.max(0, Math.ceil((expiresAtMs - Date.now()) / 1000));
@@ -94,10 +101,10 @@ export function StudentTestTaker({
       if (nextRemaining <= 0) failTest("timeout");
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [expiresAtMs, failed, failTest, started]);
+  }, [expiresAtMs, failed, failTest, started, isReviewing]);
 
   useEffect(() => {
-    if (!started || failed) return;
+    if (!started || failed || isReviewing) return;
     const heartbeat = window.setInterval(() => {
       fetch("/api/student/tests/heartbeat", {
         method: "POST",
@@ -110,7 +117,7 @@ export function StudentTestTaker({
       }).catch(() => {});
     }, 10_000);
     return () => window.clearInterval(heartbeat);
-  }, [failed, failTest, onlineTestId, started]);
+  }, [failed, failTest, onlineTestId, started, isReviewing]);
 
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
@@ -206,10 +213,17 @@ export function StudentTestTaker({
           <h2 className="font-semibold text-brand-950">{title}</h2>
           <p className="text-sm text-stone-500">{mode === "MCQ" ? "MCQs only" : "Mix"} - {totalMarks} marks</p>
         </div>
-        <div className="flex items-center gap-2 rounded-md bg-brand-950 px-3 py-2 font-mono text-sm font-bold text-white">
-          <Clock className="h-4 w-4" />
-          {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
-        </div>
+        {isReviewing ? (
+          <div className="flex items-center gap-2 rounded-md bg-green-100 px-3 py-2 font-mono text-sm font-bold text-green-800">
+            <CheckCircle2 className="h-4 w-4" />
+            Score: {totalScore !== undefined ? totalScore : totalMarks}/{totalMarks}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 rounded-md bg-brand-950 px-3 py-2 font-mono text-sm font-bold text-white">
+            <Clock className="h-4 w-4" />
+            {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -221,21 +235,39 @@ export function StudentTestTaker({
             </div>
             {question.questionType === "MCQ" ? (
               <div className="grid gap-2">
-                {(question.options || []).map((option, optionIndex) => (
-                  <label key={optionIndex} className="flex cursor-pointer items-center gap-3 rounded-md border border-border px-3 py-2 hover:bg-stone-50">
-                    <input type="radio" name={`answer-${question.id}`} value={optionIndex} required />
-                    <span className="text-sm text-stone-700">{option}</span>
-                  </label>
-                ))}
+                {(question.options || []).map((option, optionIndex) => {
+                  const isSelected = isReviewing ? String(answers[question.id]) === String(optionIndex) : false;
+                  const isCorrect = isReviewing && question.correctOptionIndex === optionIndex;
+                  const isWrong = isReviewing && isSelected && question.correctOptionIndex !== optionIndex;
+                  
+                  let bgClass = "hover:bg-stone-50";
+                  let borderClass = "border-border";
+                  if (isCorrect) {
+                    bgClass = "bg-green-50"; borderClass = "border-green-500";
+                  } else if (isWrong) {
+                    bgClass = "bg-red-50"; borderClass = "border-red-500";
+                  } else if (isSelected && !isReviewing) {
+                    bgClass = "bg-brand-50"; borderClass = "border-brand-500";
+                  }
+
+                  return (
+                    <label key={optionIndex} className={`flex ${isReviewing ? "" : "cursor-pointer"} items-center gap-3 rounded-md border ${borderClass} ${bgClass} px-3 py-2`}>
+                      <input type="radio" name={`answer-${question.id}`} value={optionIndex} defaultChecked={isSelected} disabled={isReviewing} required={!isReviewing} />
+                      <span className={`text-sm ${isCorrect ? "text-green-800 font-bold" : isWrong ? "text-red-800 font-bold" : "text-stone-700"}`}>
+                        {option}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
             ) : (
-              <textarea name={`answer-${question.id}`} required rows={5} className="w-full rounded-md border border-border px-3 py-2 text-sm" placeholder="Write your answer..." />
+              <textarea name={`answer-${question.id}`} disabled={isReviewing} defaultValue={(answers[question.id] as string) || ""} required={!isReviewing} rows={5} className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm disabled:opacity-75" placeholder={isReviewing ? "No answer provided" : "Write your answer..."} />
             )}
           </div>
         ))}
       </div>
 
-      <SubmitButton className="w-full">Submit Test</SubmitButton>
+      {!isReviewing && <SubmitButton className="w-full">Submit Test</SubmitButton>}
     </form>
   );
 }

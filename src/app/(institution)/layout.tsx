@@ -13,6 +13,7 @@ const SIDEBAR_ITEMS = [
   { label: "Academics", href: "/institution/academics", icon: BookOpen },
   { label: "Timetable", href: "/institution/timetable", icon: Calendar },
   { label: "Exams", href: "/institution/exams", icon: ClipboardList },
+  { label: "Publish Results", href: "/institution/publish-results", icon: ClipboardList },
   { label: "Announcements", href: "/institution/announcements", icon: Megaphone },
   { label: "Settings", href: "/institution/settings", icon: Settings },
 ];

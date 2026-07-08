@@ -9,12 +9,17 @@ import { getVisibleAnnouncements } from "@/lib/announcements";
 import { redirect } from "next/navigation";
 import { StaffAnnouncementForm } from "./StaffAnnouncementForm";
 import { createStaffAnnouncementAction } from "@/app/actions/staff-actions";
+import { PaginationNav } from "@/components/ui/pagination-nav";
 
-export default async function StaffAnnouncementsPage() {
+const ANNOUNCEMENTS_PER_PAGE = 10;
+
+export default async function StaffAnnouncementsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const session = await getSession();
   if (!session || session.role !== "STAFF") {
     redirect("/login");
   }
+  const params = await searchParams;
+  const currentPage = Math.max(1, Number(params.page) || 1);
 
   const staffId = session.userId;
   const institutionId = session.institutionId || 0;
@@ -61,6 +66,11 @@ export default async function StaffAnnouncementsPage() {
   const recentAnnouncements = Array.from(announcementMap.values())
     .sort((a, b) => new Date(b.createdAtIso).getTime() - new Date(a.createdAtIso).getTime())
     .slice(0, 30);
+  const totalPages = Math.max(1, Math.ceil(recentAnnouncements.length / ANNOUNCEMENTS_PER_PAGE));
+  const paginatedAnnouncements = recentAnnouncements.slice(
+    (currentPage - 1) * ANNOUNCEMENTS_PER_PAGE,
+    currentPage * ANNOUNCEMENTS_PER_PAGE
+  );
 
   // Get distinct classes and sections assigned to this staff member
   const assignments = await db.selectDistinct({
@@ -118,7 +128,7 @@ export default async function StaffAnnouncementsPage() {
                     <p className="text-sm mt-1">You are all caught up!</p>
                   </div>
                 )}
-                {recentAnnouncements.map((ann) => (
+                {paginatedAnnouncements.map((ann) => (
                   <div key={ann.id} className="p-6 hover:bg-stone-50/50 transition-colors">
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="font-semibold text-brand-950 text-lg">{ann.title}</h3>
@@ -145,6 +155,7 @@ export default async function StaffAnnouncementsPage() {
                   </div>
                 ))}
               </div>
+              <PaginationNav currentPage={Math.min(currentPage, totalPages)} totalPages={totalPages} basePath="/staff/announcements" />
             </CardContent>
           </Card>
         </div>

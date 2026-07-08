@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/db";
-import { marks, subjects, tests } from "@/db/schema";
+import { marks, subjects, tests, onlineTests } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { and, desc, eq } from "drizzle-orm";
 import { FileText, Trophy } from "lucide-react";
@@ -14,10 +14,12 @@ export default async function StudentMarksPage() {
     mark: marks,
     test: tests,
     subjectName: subjects.name,
+    onlineTestId: onlineTests.id,
   })
     .from(marks)
     .innerJoin(tests, eq(marks.testId, tests.id))
     .leftJoin(subjects, eq(tests.subjectId, subjects.id))
+    .leftJoin(onlineTests, eq(tests.id, onlineTests.testId))
     .where(and(eq(marks.studentId, session.userId), eq(marks.institutionId, session.institutionId)))
     .orderBy(desc(marks.createdAt));
 
@@ -50,12 +52,25 @@ export default async function StudentMarksPage() {
             </div>
           ) : (
             <div className="divide-y divide-border">
-              {rows.map(({ mark, test, subjectName }) => {
+              {rows.map(({ mark, test, subjectName, onlineTestId }) => {
                 const percentage = mark.totalMarks > 0 ? Math.round((mark.marksObtained / mark.totalMarks) * 100) : 0;
                 return (
                   <div key={mark.id} className="p-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <h3 className="font-semibold text-brand-950">{test.title}</h3>
+                      <h3 className="font-semibold text-brand-950 flex items-center gap-2">
+                        {onlineTestId ? (
+                          <a href={`/student/tests/${onlineTestId}`} className="hover:underline text-brand-600">
+                            {test.title}
+                          </a>
+                        ) : (
+                          test.title
+                        )}
+                        {onlineTestId && (
+                          <span className="text-[10px] font-bold bg-brand-100 text-brand-700 px-2 py-0.5 rounded uppercase tracking-wider">
+                            Online
+                          </span>
+                        )}
+                      </h3>
                       <p className="text-sm text-stone-500">
                         {test.type} - {subjectName || "Subject"} - {new Date(test.date).toLocaleDateString()}
                       </p>

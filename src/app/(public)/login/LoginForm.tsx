@@ -164,7 +164,12 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
             </div>
 
             {mode === "STUDENT_STAFF" && (
-              <div className="grid gap-3">
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Select Role</p>
+                  <span className="text-[11px] font-medium text-brand-700">Click to switch</span>
+                </div>
+                <div className="grid gap-2">
                 {identityOptions.map((option) => {
                   const Icon = option.icon;
                   const isSelected = selectedIdentity === option.id;
@@ -174,22 +179,30 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
                       key={option.id}
                       type="button"
                       onClick={() => setSelectedIdentity(option.id)}
-                      className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${
+                      aria-pressed={isSelected}
+                      className={`group flex items-start gap-3 rounded-lg border p-3 text-left transition-all ${
                         isSelected
-                          ? "border-brand-800 bg-white shadow-sm"
-                          : "border-stone-200 bg-transparent hover:border-brand-300 hover:bg-white"
+                          ? "border-brand-800 bg-white shadow-md ring-2 ring-brand-100"
+                          : "border-stone-200 bg-white/60 hover:border-brand-400 hover:bg-white hover:shadow-sm"
                       }`}
                     >
                       <span
                         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
-                          isSelected ? "bg-brand-900 text-white" : "bg-white text-stone-500"
+                          isSelected ? "bg-brand-900 text-white" : "bg-stone-100 text-stone-500 group-hover:bg-brand-50 group-hover:text-brand-800"
                         }`}
                       >
                         <Icon className="h-4 w-4" />
                       </span>
-                      <span>
-                        <span className="block text-sm font-semibold text-brand-950">
-                          {option.title}
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-3">
+                          <span className="block text-sm font-semibold text-brand-950">
+                            {option.title}
+                          </span>
+                          {isSelected && (
+                            <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-800">
+                              Active
+                            </span>
+                          )}
                         </span>
                         <span className="mt-1 block text-xs leading-5 text-stone-500">
                           {option.description}
@@ -198,6 +211,7 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
                     </button>
                   );
                 })}
+                </div>
               </div>
             )}
           </div>
@@ -245,9 +259,11 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
             {copy.footer}
           </div>
 
-          <div className="mt-6 flex min-h-[120px] flex-1 items-end justify-center overflow-hidden rounded-lg bg-stone-50 px-4 pt-4 sm:min-h-[150px]">
-            <LoginPanelVector />
-          </div>
+          {mode === "STUDENT_STAFF" && (
+            <div className="mt-4 flex min-h-[78px] items-end justify-center overflow-hidden rounded-lg bg-stone-50 px-3 pt-3 sm:min-h-[95px]">
+              <LoginPanelVector />
+            </div>
+          )}
         </form>
       </div>
     </Card>
@@ -257,7 +273,7 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
 function LoginPanelVector() {
   return (
     <svg
-      className="h-auto w-full max-w-[360px] text-brand-900"
+      className="h-auto w-full max-w-[255px] text-brand-900"
       viewBox="0 0 360 160"
       fill="none"
       role="img"

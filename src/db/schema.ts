@@ -58,6 +58,7 @@ export const institutions = pgTable('institutions', {
   type: instTypeEnum('type').notNull(),
   username: varchar('username', { length: 30 }).notNull().unique(),
   logoKey: varchar('logo_key', { length: 255 }).notNull(),
+  signatureKey: varchar('signature_key', { length: 255 }),
   country: varchar('country', { length: 100 }).notNull(),
   city: varchar('city', { length: 100 }).notNull(),
   address: text('address').notNull(),
@@ -481,3 +482,35 @@ export const featuredInstitutions = pgTable('featured_institutions', {
   logoKey: varchar('logo_key', { length: 255 }), // Cloudinary public_id or URL (optional)
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// --- BATCH EXAMS (TRANSCRIPTS) ---
+export const batchExams = pgTable('batch_exams', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  classId: integer('class_id').notNull().references(() => classes.id, { onDelete: 'cascade' }),
+  sectionId: integer('section_id').references(() => sections.id, { onDelete: 'cascade' }),
+  title: varchar('title', { length: 255 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const batchExamSubjects = pgTable('batch_exam_subjects', {
+  id: serial('id').primaryKey(),
+  batchExamId: integer('batch_exam_id').notNull().references(() => batchExams.id, { onDelete: 'cascade' }),
+  subjectId: integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+  maxMarks: real('max_marks').notNull(),
+  staffId: integer('staff_id').references(() => staff.id, { onDelete: 'set null' }),
+  isPublished: boolean('is_published').default(false).notNull(),
+  reviewDeadline: timestamp('review_deadline').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const batchExamResults = pgTable('batch_exam_results', {
+  id: serial('id').primaryKey(),
+  batchExamSubjectId: integer('batch_exam_subject_id').notNull().references(() => batchExamSubjects.id, { onDelete: 'cascade' }),
+  studentId: integer('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+  marksObtained: real('marks_obtained').notNull(),
+  isEdited: boolean('is_edited').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  studentBatchResultUnique: unique('student_batch_result_unique').on(t.batchExamSubjectId, t.studentId),
+}));

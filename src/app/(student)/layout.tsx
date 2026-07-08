@@ -11,6 +11,7 @@ const SIDEBAR_ITEMS = [
   { label: "Tests", href: "/student/tests", icon: FileQuestion, availabilityKey: "studentTests" as const },
   { label: "Attendance", href: "/student/attendance", icon: CheckSquare },
   { label: "Marks", href: "/student/marks", icon: FileText },
+  { label: "Transcripts", href: "/student/transcripts", icon: FileText },
   { label: "Submissions", href: "/student/submissions", icon: UploadCloud },
 ];
 

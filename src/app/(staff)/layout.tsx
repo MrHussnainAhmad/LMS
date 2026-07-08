@@ -11,6 +11,7 @@ const SIDEBAR_ITEMS = [
   { label: "Host Tests", href: "/staff/tests", icon: FileQuestion },
   { label: "Attendance", href: "/staff/attendance", icon: CheckSquare },
   { label: "Marks Entry", href: "/staff/marks", icon: FileEdit },
+  { label: "Batch Results", href: "/batch-results", icon: ClipboardList },
   { label: "Announcements", href: "/staff/announcements", icon: Megaphone },
 ];
 

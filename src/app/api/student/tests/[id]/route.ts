@@ -43,9 +43,9 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session, 
       ))
       .limit(1);
 
-    if (submission && submission.status !== "IN_PROGRESS") {
-      return NextResponse.json({ error: "Test already completed or failed" }, { status: 403 });
-    }
+    // if (submission && submission.status !== "IN_PROGRESS") {
+    //   return NextResponse.json({ error: "Test already completed or failed" }, { status: 403 });
+    // }
 
     const nowMs = new Date().getTime();
     if (!submission && row.onlineTest.createdAt.getTime() + row.onlineTest.durationMinutes * 60 * 1000 <= nowMs) {
@@ -57,12 +57,15 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session, 
       .where(eq(onlineTestQuestions.onlineTestId, onlineTestId))
       .orderBy(onlineTestQuestions.orderIndex);
 
+    const isFinished = submission && submission.status !== "IN_PROGRESS";
+
     const questions = questionRows.map((question) => ({
       id: question.id,
       questionType: question.questionType,
       prompt: question.prompt,
       options: Array.isArray(question.options) ? question.options.map(String) : null,
       marks: Number(question.marks),
+      correctOptionIndex: isFinished ? question.correctOptionIndex : undefined,
     }));
 
     return NextResponse.json({
@@ -75,8 +78,10 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session, 
       },
       questions,
       submission: submission ? {
+        status: submission.status,
         startedAt: submission.startedAt,
         answers: submission.answers,
+        totalScore: submission.totalScore,
       } : null,
     });
   } catch (error) {

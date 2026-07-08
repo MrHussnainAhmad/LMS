@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, UploadCloud } from "lucide-react";
+import { CheckCircle2, UploadCloud, FileText } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -77,7 +77,7 @@ export default async function StudentDashboard() {
         <p className="text-stone-500 mt-1 text-sm lg:text-base">Here is your academic overview.</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card className="bg-gradient-to-br from-brand-800 to-brand-950 text-white border-none shadow-md">
           <CardContent className="p-6">
             <div className="flex justify-between items-start">
@@ -113,6 +113,23 @@ export default async function StudentDashboard() {
             </p>
           </CardContent>
         </Card>
+
+        <a href="/student/transcripts" className="block h-full">
+          <Card className="bg-gradient-to-br from-indigo-500 to-indigo-800 text-white border-none shadow-md hover:shadow-lg transition-shadow h-full">
+            <CardContent className="p-6 h-full flex flex-col justify-center">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-indigo-100 text-sm font-medium mb-1">Term Exams</p>
+                  <h3 className="text-2xl font-display font-bold leading-tight">View Transcripts</h3>
+                </div>
+                <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
+                  <FileText className="h-6 w-6 text-white" />
+                </div>
+              </div>
+              <p className="text-indigo-200 text-xs mt-4">Check your full batch results here.</p>
+            </CardContent>
+          </Card>
+        </a>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6 mt-8">

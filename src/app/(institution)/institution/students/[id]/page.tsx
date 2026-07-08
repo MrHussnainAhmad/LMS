@@ -1,11 +1,11 @@
 import { db } from "@/db";
-import { students, classes, sections, attendances, marks, tests, submissions, assignments } from "@/db/schema";
+import { students, classes, sections, attendances, marks, tests, submissions, assignments, batchExams, batchExamSubjects, batchExamResults } from "@/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Printer, ArrowLeft, User, BookOpen, CheckCircle, FileText } from "lucide-react";
+import { Printer, ArrowLeft, User, BookOpen, CheckCircle, FileText, Award } from "lucide-react";
 import Link from "next/link";
 import { PrintButton } from "./PrintButton";
 import { AttendanceCalendar } from "./AttendanceCalendar";
@@ -77,6 +77,57 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
     .innerJoin(assignments, eq(submissions.assignmentId, assignments.id))
     .where(eq(submissions.studentId, studentId))
     .orderBy(desc(submissions.createdAt));
+
+  // Fetch Batch Results
+  const rawBatchResults = await db.select({
+    examId: batchExams.id,
+    examTitle: batchExams.title,
+    examCreatedAt: batchExams.createdAt,
+    subjectId: batchExamSubjects.id,
+    isPublished: batchExamSubjects.isPublished,
+    reviewDeadline: batchExamSubjects.reviewDeadline,
+    maxMarks: batchExamSubjects.maxMarks,
+    marksObtained: batchExamResults.marksObtained,
+  })
+  .from(batchExamResults)
+  .innerJoin(batchExamSubjects, eq(batchExamResults.batchExamSubjectId, batchExamSubjects.id))
+  .innerJoin(batchExams, eq(batchExamSubjects.batchExamId, batchExams.id))
+  .where(eq(batchExamResults.studentId, studentId));
+
+  const examMap = new Map<number, { id: number, title: string, createdAt: Date, totalMax: number, totalObtained: number, percentage: number, isEffectivelyPublished: boolean }>();
+  const now = new Date();
+  
+  for (const r of rawBatchResults) {
+    if (!examMap.has(r.examId)) {
+      examMap.set(r.examId, {
+        id: r.examId,
+        title: r.examTitle,
+        createdAt: r.examCreatedAt,
+        totalMax: 0,
+        totalObtained: 0,
+        percentage: 0,
+        isEffectivelyPublished: true // will be set to false if any subject is not published
+      });
+    }
+    
+    const exam = examMap.get(r.examId)!;
+    const isEffectivelyPublished = r.isPublished || now > r.reviewDeadline;
+    
+    if (!isEffectivelyPublished) {
+      exam.isEffectivelyPublished = false;
+    }
+    
+    exam.totalMax += r.maxMarks;
+    exam.totalObtained += r.marksObtained;
+  }
+
+  const publishedBatchExams = Array.from(examMap.values())
+    .filter(exam => exam.isEffectivelyPublished)
+    .map(exam => ({
+      ...exam,
+      percentage: exam.totalMax > 0 ? Math.round((exam.totalObtained / exam.totalMax) * 100) : 0
+    }))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
   return (
     <div className="space-y-6 animate-fade-in print:space-y-4">
@@ -159,6 +210,30 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
             </CardContent>
           </Card>
         </div>
+
+        {publishedBatchExams.length > 0 && (
+          <Card>
+            <CardHeader className="bg-stone-50/50 py-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Award className="h-5 w-5 text-amber-500" /> Term Results
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {publishedBatchExams.map((exam) => (
+                  <div key={exam.id} className="p-4 border border-stone-200 rounded-lg flex flex-col gap-2 bg-white">
+                    <h4 className="font-semibold text-stone-800 line-clamp-1" title={exam.title}>{exam.title}</h4>
+                    <p className="text-xs text-stone-500">{new Date(exam.createdAt).toLocaleDateString()}</p>
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-sm font-medium text-stone-700">{exam.totalObtained} / {exam.totalMax}</span>
+                      <span className={`text-sm font-bold ${exam.percentage >= 50 ? 'text-emerald-600' : 'text-red-600'}`}>{exam.percentage}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Submissions */}
         <Card>

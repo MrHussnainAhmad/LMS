@@ -6,16 +6,26 @@ import { cn } from "@/lib/utils";
 import { CalendarClock, CheckCircle2, Megaphone } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PaginationNav } from "@/components/ui/pagination-nav";
+
+const ANNOUNCEMENTS_PER_PAGE = 10;
 
 function roleLabel(role: string) {
   return role.replace("_", " ");
 }
 
-export default async function StudentAnnouncementsPage() {
+export default async function StudentAnnouncementsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const session = await getSession();
   if (!session || session.role !== "STUDENT" || !session.institutionId) redirect("/login");
+  const params = await searchParams;
+  const currentPage = Math.max(1, Number(params.page) || 1);
 
   const announcements = await getVisibleAnnouncements(session, 50);
+  const totalPages = Math.max(1, Math.ceil(announcements.length / ANNOUNCEMENTS_PER_PAGE));
+  const paginatedAnnouncements = announcements.slice(
+    (currentPage - 1) * ANNOUNCEMENTS_PER_PAGE,
+    currentPage * ANNOUNCEMENTS_PER_PAGE
+  );
 
   return (
     <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
@@ -32,7 +42,7 @@ export default async function StudentAnnouncementsPage() {
         />
       ) : (
         <div className="space-y-3">
-          {announcements.map((announcement) => (
+          {paginatedAnnouncements.map((announcement) => (
             <Link
               key={announcement.id}
               href={`/announcements/${announcement.id}`}
@@ -75,6 +85,7 @@ export default async function StudentAnnouncementsPage() {
               </div>
             </Link>
           ))}
+          <PaginationNav currentPage={Math.min(currentPage, totalPages)} totalPages={totalPages} basePath="/student/announcements" />
         </div>
       )}
     </div>
