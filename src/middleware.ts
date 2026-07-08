@@ -14,7 +14,15 @@ export async function middleware(request: NextRequest) {
   const session = await getSessionEdge(request.cookies);
   const path = request.nextUrl.pathname;
 
-  if (session && !session.mustChangePassword && (path === '/' || path === '/login' || path === '/login/super-admin')) {
+  if (
+    session &&
+    !session.mustChangePassword &&
+    (path === '/' ||
+      path === '/login' ||
+      path === '/institution-login' ||
+      path === '/employee-login' ||
+      path === '/login/super-admin')
+  ) {
     return keepWebSessionAlive(
       NextResponse.redirect(new URL(getDashboardPath(session.role), request.url)),
       request
@@ -48,15 +56,15 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (path.startsWith('/employee')) {
+  if (path === '/employee' || path.startsWith('/employee/')) {
     if (!session || session.role !== 'EMPLOYEE') {
-      return NextResponse.redirect(new URL('/login', request.url));
+      return NextResponse.redirect(new URL('/employee-login', request.url));
     }
   }
 
-  if (path.startsWith('/institution')) {
+  if (path === '/institution' || path.startsWith('/institution/')) {
     if (!session || session.role !== 'INSTITUTION') {
-      return NextResponse.redirect(new URL('/login', request.url));
+      return NextResponse.redirect(new URL('/institution-login', request.url));
     }
   }
 

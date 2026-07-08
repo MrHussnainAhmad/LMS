@@ -1,14 +1,7 @@
 "use client";
 
 import { useState, type ComponentType, type FormEvent } from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Building2,
-  GraduationCap,
-  UserCog,
-  Users,
-} from "lucide-react";
+import { ArrowRight, Building2, GraduationCap, UserCog, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -17,10 +10,11 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toaster";
 import { api } from "@/lib/api-client";
 
-type LoginRole = "STUDENT" | "STAFF" | "INSTITUTION" | "EMPLOYEE";
+type LoginMode = "STUDENT_STAFF" | "INSTITUTION" | "EMPLOYEE";
+type LoginIdentity = "STUDENT" | "STAFF";
 
-type RoleOption = {
-  role: LoginRole;
+type IdentityOption = {
+  id: LoginIdentity;
   title: string;
   description: string;
   identifierLabel: string;
@@ -28,61 +22,97 @@ type RoleOption = {
   icon: ComponentType<{ className?: string }>;
 };
 
-const roleOptions: RoleOption[] = [
+type LoginFormProps = {
+  mode?: LoginMode;
+};
+
+const identityOptions: IdentityOption[] = [
   {
-    role: "STUDENT",
+    id: "STUDENT",
     title: "Student",
-    description: "Access classes, attendance, announcements, tests, and academic updates.",
+    description: "Use your roll number to view classes, attendance, marks, tests, and announcements.",
     identifierLabel: "Roll Number",
     identifierPlaceholder: "Enter your roll number",
     icon: GraduationCap,
   },
   {
-    role: "STAFF",
+    id: "STAFF",
     title: "Staff",
-    description: "Manage teaching work, attendance, announcements, and classroom activity.",
+    description: "Use your staff email to manage attendance, tests, assignments, and classroom work.",
     identifierLabel: "Email",
-    identifierPlaceholder: "Enter your email",
+    identifierPlaceholder: "Enter your staff email",
     icon: Users,
-  },
-  {
-    role: "INSTITUTION",
-    title: "Institution",
-    description: "Open the institution dashboard for administration, setup, and oversight.",
-    identifierLabel: "Contact Email",
-    identifierPlaceholder: "Enter your contact email",
-    icon: Building2,
-  },
-  {
-    role: "EMPLOYEE",
-    title: "Employee",
-    description: "Sign in to your operational workspace for assigned responsibilities.",
-    identifierLabel: "Email",
-    identifierPlaceholder: "Enter your email",
-    icon: UserCog,
   },
 ];
 
-export function LoginForm() {
-  const [selectedRole, setSelectedRole] = useState<LoginRole | null>("STUDENT");
+const modeCopy = {
+  STUDENT_STAFF: {
+    eyebrow: "Student and Staff Login",
+    title: "Access your learning workspace",
+    description: "Students can sign in with roll number. Staff can sign in with their assigned email.",
+    icon: Users,
+    identifierLabel: "",
+    identifierPlaceholder: "",
+    footer: (
+      <>
+        <Link href="/institution-login" className="font-medium text-brand-900 hover:underline">
+          Institution login
+        </Link>
+        <span className="text-stone-300">|</span>
+        <Link href="/employee-login" className="font-medium text-brand-900 hover:underline">
+          Employee login
+        </Link>
+      </>
+    ),
+  },
+  INSTITUTION: {
+    eyebrow: "Institution Login",
+    title: "Manage your institution",
+    description: "For institution owners and administrators managing campuses, staff, students, and academics.",
+    icon: Building2,
+    identifierLabel: "Contact Email",
+    identifierPlaceholder: "Enter your institution contact email",
+    footer: (
+      <>
+        <span className="text-stone-500">Need access? </span>
+        <Link href="/register" className="font-medium text-brand-900 hover:underline">
+          Request registration
+        </Link>
+      </>
+    ),
+  },
+  EMPLOYEE: {
+    eyebrow: "Employee Login",
+    title: "Open your operations dashboard",
+    description: "For Taleem360 employees handling platform operations and institution verification.",
+    icon: UserCog,
+    identifierLabel: "Email",
+    identifierPlaceholder: "Enter your employee email",
+    footer: (
+      <Link href="/login" className="font-medium text-brand-900 hover:underline">
+        Student or staff login
+      </Link>
+    ),
+  },
+};
+
+export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
+  const [selectedIdentity, setSelectedIdentity] = useState<LoginIdentity>("STUDENT");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
 
-  const selectedOption = roleOptions.find((option) => option.role === selectedRole) ?? null;
+  const copy = modeCopy[mode];
+  const selectedOption =
+    mode === "STUDENT_STAFF"
+      ? identityOptions.find((option) => option.id === selectedIdentity) ?? identityOptions[0]
+      : null;
+  const PortalIcon = selectedOption?.icon ?? copy.icon;
+  const identifierLabel = selectedOption?.identifierLabel ?? copy.identifierLabel;
+  const identifierPlaceholder = selectedOption?.identifierPlaceholder ?? copy.identifierPlaceholder;
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
-    if (!selectedOption) {
-      toast({
-        title: "Select a portal",
-        description: "Please choose how you want to sign in.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
@@ -114,126 +144,104 @@ export function LoginForm() {
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-      <Card className="p-5">
-        <div className="mb-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
-            Select Portal
-          </p>
-          <h2 className="mt-2 text-xl font-display font-semibold text-brand-950">
-            Sign in with the right workspace
-          </h2>
-          <p className="mt-1 text-sm text-stone-500">
-            Taleem360 keeps each role focused on the tools and information meant for them.
-          </p>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          {roleOptions.map((option) => {
-            const Icon = option.icon;
-            const isSelected = selectedRole === option.role;
-
-            return (
-              <button
-                key={option.role}
-                type="button"
-                onClick={() => setSelectedRole(option.role)}
-                className={`group flex min-h-[136px] flex-col rounded-lg border p-4 text-left transition-all ${
-                  isSelected
-                    ? "border-brand-800 bg-brand-50 shadow-sm"
-                    : "border-border bg-white hover:border-brand-300 hover:bg-stone-50"
-                }`}
-              >
-                <span
-                  className={`mb-4 flex h-10 w-10 items-center justify-center rounded-md ${
-                    isSelected ? "bg-brand-900 text-white" : "bg-stone-100 text-stone-600"
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                </span>
-                <span className="text-base font-semibold text-brand-950">{option.title}</span>
-                <span className="mt-1 text-sm leading-5 text-stone-500">
-                  {option.description}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </Card>
-
-      <Card className="p-5">
-        {selectedOption ? (
-          <form onSubmit={handleSubmit} className="flex h-full flex-col">
-            <div className="mb-5 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-stone-500">Signing in as</p>
-                <h3 className="mt-1 text-2xl font-display font-semibold text-brand-950">
-                  {selectedOption.title}
-                </h3>
+    <Card className="overflow-hidden">
+      <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="border-b border-border bg-stone-50 p-6 lg:border-b-0 lg:border-r">
+          <div className="flex h-full flex-col justify-between gap-8">
+            <div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-900 text-white">
+                <PortalIcon className="h-6 w-6" />
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedRole(null)}
-                className="flex h-9 w-9 items-center justify-center rounded-md border border-border text-stone-500 transition-colors hover:border-brand-300 hover:text-brand-900 lg:hidden"
-                aria-label="Choose another portal"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </button>
+              <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
+                {copy.eyebrow}
+              </p>
+              <h2 className="mt-3 text-2xl font-display font-bold text-brand-950">
+                {copy.title}
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-stone-600">{copy.description}</p>
             </div>
 
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-stone-700">
-                  {selectedOption.identifierLabel}
-                </label>
-                <Input
-                  name="emailOrUsername"
-                  placeholder={selectedOption.identifierPlaceholder}
-                  autoComplete={selectedOption.role === "STUDENT" ? "username" : "email"}
-                  required
-                />
-              </div>
+            {mode === "STUDENT_STAFF" && (
+              <div className="grid gap-3">
+                {identityOptions.map((option) => {
+                  const Icon = option.icon;
+                  const isSelected = selectedIdentity === option.id;
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-stone-700">Password</label>
-                <Input
-                  name="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  autoComplete="current-password"
-                  required
-                />
-              </div>
-            </div>
-
-            <Button type="submit" className="mt-6 w-full" disabled={isLoading}>
-              {isLoading ? "Logging in..." : "Continue"}
-              {!isLoading && <ArrowRight className="ml-2 h-4 w-4" />}
-            </Button>
-
-            {selectedOption.role === "INSTITUTION" && (
-              <div className="mt-4 text-center text-sm">
-                <span className="text-stone-500">Need institution access? </span>
-                <Link href="/register" className="font-medium text-brand-900 hover:underline">
-                  Request registration
-                </Link>
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setSelectedIdentity(option.id)}
+                      className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${
+                        isSelected
+                          ? "border-brand-800 bg-white shadow-sm"
+                          : "border-stone-200 bg-transparent hover:border-brand-300 hover:bg-white"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
+                          isSelected ? "bg-brand-900 text-white" : "bg-white text-stone-500"
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span>
+                        <span className="block text-sm font-semibold text-brand-950">
+                          {option.title}
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-stone-500">
+                          {option.description}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             )}
-          </form>
-        ) : (
-          <div className="flex min-h-[320px] flex-col items-center justify-center text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-md bg-stone-100 text-stone-500">
-              <ArrowLeft className="h-5 w-5" />
-            </div>
-            <h3 className="mt-4 text-xl font-display font-semibold text-brand-950">
-              Choose a portal to continue
-            </h3>
-            <p className="mt-2 max-w-xs text-sm text-stone-500">
-              Select student, staff, institution, or employee access from the left side.
-            </p>
           </div>
-        )}
-      </Card>
-    </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6">
+          <div className="mb-6">
+            <p className="text-sm font-medium text-stone-500">Continue as</p>
+            <h3 className="mt-1 text-2xl font-display font-semibold text-brand-950">
+              {selectedOption?.title ?? (mode === "INSTITUTION" ? "Institution" : "Employee")}
+            </h3>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-stone-700">{identifierLabel}</label>
+              <Input
+                name="emailOrUsername"
+                placeholder={identifierPlaceholder}
+                autoComplete={selectedIdentity === "STUDENT" && mode === "STUDENT_STAFF" ? "username" : "email"}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-stone-700">Password</label>
+              <Input
+                name="password"
+                type="password"
+                placeholder="Enter your password"
+                autoComplete="current-password"
+                required
+              />
+            </div>
+          </div>
+
+          <Button type="submit" className="mt-6 w-full" disabled={isLoading}>
+            {isLoading ? "Logging in..." : "Login"}
+            {!isLoading && <ArrowRight className="ml-2 h-4 w-4" />}
+          </Button>
+
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-sm">
+            {copy.footer}
+          </div>
+        </form>
+      </div>
+    </Card>
   );
 }

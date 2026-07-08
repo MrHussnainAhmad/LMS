@@ -121,7 +121,7 @@ export default async function LandingPage() {
         <nav className="hidden lg:flex items-center gap-8">
           <Link href="#testimonials" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Customers</Link>
           <Link href="#pricing" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Pricing</Link>
-          <Link href="/login" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Login</Link>
+          <Link href="/employee-login" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Employee Login</Link>
         </nav>
 
         <div className="flex items-center gap-4">
@@ -146,13 +146,13 @@ export default async function LandingPage() {
             
             <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
               <Button size="lg" className="rounded-full h-14 px-8 text-base font-semibold shadow-xl shadow-brand-500/25 hover:shadow-brand-500/40 hover:-translate-y-1 transition-all group" asChild>
-                <Link href="/register">
-                  Request as Institution <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                <Link href="/login">
+                  Login <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </Button>
               <Button size="lg" variant="outline" className="rounded-full h-14 px-8 text-base font-semibold bg-white border-stone-200 hover:bg-stone-50 hover:border-stone-300 transition-all group" asChild>
-                <Link href="/login">
-                  Log in
+                <Link href="/institution-login">
+                  Institution Login
                 </Link>
               </Button>
             </div>
