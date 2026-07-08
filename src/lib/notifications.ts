@@ -96,15 +96,30 @@ export async function createAttendanceNotifications({
   const notifyList = records.filter((record) => (
     record.status === "ABSENT" || record.status === "LEAVE" || record.status === "LATE"
   ));
+  const studentIds = Array.from(new Set(notifyList.map((record) => record.studentId)));
+  const studentRows = studentIds.length > 0
+    ? await db
+      .select({ id: students.id, name: students.name })
+      .from(students)
+      .where(and(eq(students.institutionId, institutionId), inArray(students.id, studentIds)))
+    : [];
+  const studentNames = new Map(studentRows.map((student) => [student.id, student.name]));
 
-  await createBulkNotifications(notifyList.map((record) => ({
-    institutionId,
-    userRole: "STUDENT",
-    userId: record.studentId,
-    type: "ATTENDANCE",
-    title: "Attendance Alert",
-    message: `You have been marked ${record.status} for ${dateLabel}.`,
-  })));
+  await createBulkNotifications(notifyList.map((record) => {
+    const studentName = studentNames.get(record.studentId) || "Student";
+    const isAbsent = record.status === "ABSENT";
+
+    return {
+      institutionId,
+      userRole: "STUDENT",
+      userId: record.studentId,
+      type: "ATTENDANCE",
+      title: isAbsent ? `${studentName} was absent from school.` : "Attendance Alert",
+      message: isAbsent
+        ? `Dear Parents/Guardians, please be informed that ${studentName} was absent on ${dateLabel}.`
+        : `You have been marked ${record.status} for ${dateLabel}.`,
+    };
+  }));
 }
 
 async function sendExpoPushNotifications(payloads: NotificationDelivery[]): Promise<PushDeliverySummary> {
