@@ -11,10 +11,12 @@ function getErrorMessage(error: unknown) {
 
 export function InchargeForm({
   sectionId,
+  classId,
   currentInchargeId,
   staff
 }: {
-  sectionId: number;
+  sectionId: number | null;
+  classId?: number | null;
   currentInchargeId: number | null;
   staff: { id: number; name: string }[];
 }) {
@@ -31,7 +33,8 @@ export function InchargeForm({
         toast({ title: "Error", description: getErrorMessage(err), variant: "destructive" });
       }
     }} className="space-y-4">
-      <input type="hidden" name="sectionId" value={sectionId} />
+      <input type="hidden" name="sectionId" value={sectionId || ""} />
+      <input type="hidden" name="classId" value={classId || ""} />
 
       <div>
         <label className="block text-sm font-medium text-stone-700 mb-1">Select Class Incharge</label>

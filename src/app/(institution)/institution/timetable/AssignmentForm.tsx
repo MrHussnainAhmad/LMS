@@ -4,29 +4,39 @@ import { useState } from "react";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { createTimetableAssignmentAction } from "@/app/actions/institution-actions";
 import { useToast } from "@/components/ui/toaster";
+import { useRouter } from "next/navigation";
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Failed to assign time slot";
+}
 
 export function AssignmentForm({
   sectionId,
+  classId,
   subjects,
   staff
 }: {
   sectionId: number | null;
+  classId?: number | null;
   subjects: { id: number; name: string }[];
   staff: { id: number; name: string }[];
 }) {
   const [isBreak, setIsBreak] = useState(false);
   const { toast } = useToast();
+  const router = useRouter();
 
   return (
     <form action={async (formData) => { 
       try {
         await createTimetableAssignmentAction(formData); 
         toast({ title: "Success", description: "Time slot assigned successfully.", variant: "success" });
-      } catch (err: any) {
-        toast({ title: "Error", description: err.message || "Failed to assign time slot", variant: "destructive" });
+        router.refresh();
+      } catch (err: unknown) {
+        toast({ title: "Error", description: getErrorMessage(err), variant: "destructive" });
       }
     }} className="space-y-4">
       <input type="hidden" name="sectionId" value={sectionId || ""} />
+      <input type="hidden" name="classId" value={classId || ""} />
 
       <div className="flex items-center gap-2 mb-4">
         <input 

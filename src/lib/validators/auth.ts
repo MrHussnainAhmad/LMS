@@ -12,4 +12,5 @@ export const changePasswordSchema = z.object({
   newPassword: z.string().min(8).refine(val => val !== '1234567890', {
     message: "Password cannot be the default '1234567890'",
   }),
+  returnTokens: z.boolean().optional(),
 }).strict();

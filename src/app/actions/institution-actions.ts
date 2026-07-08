@@ -9,6 +9,35 @@ import { eq, and, gt, lt, inArray } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 import { generateStaffEmail } from "@/lib/login-identifiers";
 
+const WHOLE_CLASS_SECTION_NAME = "Whole Class";
+
+async function getOrCreateWholeClassSection(institutionId: number, classId: number) {
+  const [classRow] = await db.select({ id: classes.id })
+    .from(classes)
+    .where(and(eq(classes.id, classId), eq(classes.institutionId, institutionId)))
+    .limit(1);
+  if (!classRow) throw new Error("Class not found");
+
+  const [existingSection] = await db.select({ id: sections.id })
+    .from(sections)
+    .where(and(
+      eq(sections.classId, classId),
+      eq(sections.institutionId, institutionId),
+      eq(sections.name, WHOLE_CLASS_SECTION_NAME)
+    ))
+    .limit(1);
+  if (existingSection) return existingSection.id;
+
+  const [createdSection] = await db.insert(sections).values({
+    institutionId,
+    classId,
+    name: WHOLE_CLASS_SECTION_NAME,
+    classTeacherId: null,
+  }).returning({ id: sections.id });
+
+  return createdSection.id;
+}
+
 export async function createCampusAction(formData: FormData) {
   const session = await getSession();
   if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
@@ -271,16 +300,24 @@ export async function updateClassInchargeAction(formData: FormData) {
   if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
 
   const institutionId = session.userId;
-  const sectionId = parseInt(formData.get("sectionId") as string, 10);
+  const sectionIdRaw = formData.get("sectionId") as string;
+  const classIdRaw = formData.get("classId") as string;
+  let sectionId = sectionIdRaw ? parseInt(sectionIdRaw, 10) : null;
+  const classId = classIdRaw ? parseInt(classIdRaw, 10) : null;
   const classTeacherIdRaw = formData.get("classTeacherId") as string;
   const classTeacherId = classTeacherIdRaw ? parseInt(classTeacherIdRaw, 10) : null;
 
-  if (!Number.isInteger(sectionId)) throw new Error("Invalid section ID");
+  if (sectionIdRaw && !Number.isInteger(sectionId)) throw new Error("Invalid section ID");
+  if (!sectionId && (!classId || !Number.isInteger(classId))) throw new Error("Valid section or class is required");
   if (classTeacherIdRaw && !Number.isInteger(classTeacherId)) throw new Error("Invalid staff ID");
+
+  if (!sectionId && classId) {
+    sectionId = await getOrCreateWholeClassSection(institutionId, classId);
+  }
 
   const [sectionRow] = await db.select({ id: sections.id })
     .from(sections)
-    .where(and(eq(sections.id, sectionId), eq(sections.institutionId, institutionId)))
+    .where(and(eq(sections.id, sectionId!), eq(sections.institutionId, institutionId)))
     .limit(1);
   if (!sectionRow) throw new Error("Section not found");
 
@@ -294,7 +331,7 @@ export async function updateClassInchargeAction(formData: FormData) {
 
   await db.update(sections)
     .set({ classTeacherId })
-    .where(eq(sections.id, sectionId));
+    .where(eq(sections.id, sectionId!));
 
   revalidatePath("/institution/timetable");
   revalidatePath("/staff/attendance");
@@ -306,7 +343,10 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
 
   const institutionId = session.userId;
-  const sectionId = parseInt(formData.get("sectionId") as string, 10);
+  const sectionIdRaw = formData.get("sectionId") as string;
+  const classIdRaw = formData.get("classId") as string;
+  let sectionId = sectionIdRaw ? parseInt(sectionIdRaw, 10) : null;
+  const classId = classIdRaw ? parseInt(classIdRaw, 10) : null;
   const dayOfWeek = parseInt(formData.get("dayOfWeek") as string, 10);
   const startTime = formData.get("startTime") as string;
   const endTime = formData.get("endTime") as string;
@@ -319,21 +359,46 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   const staffId = staffIdRaw && !isBreak ? parseInt(staffIdRaw as string, 10) : null;
   const subjectId = subjectIdRaw && !isBreak ? parseInt(subjectIdRaw as string, 10) : null;
 
-  if (!Number.isInteger(sectionId) || !Number.isInteger(dayOfWeek) || !startTime || !endTime || startTime >= endTime) {
+  if (sectionIdRaw && !Number.isInteger(sectionId)) throw new Error("Invalid section ID");
+  if (!sectionId && (!classId || !Number.isInteger(classId))) throw new Error("Valid section or class is required");
+  if (!Number.isInteger(dayOfWeek) || !startTime || !endTime || startTime >= endTime) {
     throw new Error("Valid section, day, start time, and end time are required");
+  }
+  if (!isBreak && (!staffId || !subjectId || !Number.isInteger(staffId) || !Number.isInteger(subjectId))) {
+    throw new Error("Subject and teacher are required for class periods");
+  }
+
+  if (!sectionId && classId) {
+    sectionId = await getOrCreateWholeClassSection(institutionId, classId);
   }
 
   const [sectionRow] = await db.select()
     .from(sections)
-    .where(and(eq(sections.id, sectionId), eq(sections.institutionId, institutionId)))
+    .where(and(eq(sections.id, sectionId!), eq(sections.institutionId, institutionId)))
     .limit(1);
   if (!sectionRow) throw new Error("Section not found");
+
+  if (subjectId) {
+    const [subjectRow] = await db.select({ id: subjects.id })
+      .from(subjects)
+      .where(and(eq(subjects.id, subjectId), eq(subjects.institutionId, institutionId)))
+      .limit(1);
+    if (!subjectRow) throw new Error("Subject not found");
+  }
+
+  if (staffId) {
+    const [staffRow] = await db.select({ id: staff.id })
+      .from(staff)
+      .where(and(eq(staff.id, staffId), eq(staff.institutionId, institutionId)))
+      .limit(1);
+    if (!staffRow) throw new Error("Selected staff member was not found in this institution");
+  }
 
   const sectionConflicts = await db.select()
     .from(staffAssignments)
     .where(and(
       eq(staffAssignments.institutionId, institutionId),
-      eq(staffAssignments.sectionId, sectionId),
+      eq(staffAssignments.sectionId, sectionId!),
       eq(staffAssignments.dayOfWeek, dayOfWeek),
       lt(staffAssignments.startTime, endTime),
       gt(staffAssignments.endTime, startTime)
@@ -358,7 +423,7 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   await db.insert(staffAssignments).values({
     institutionId,
     staffId,
-    sectionId,
+    sectionId: sectionId!,
     subjectId,
     isBreak,
     dayOfWeek,

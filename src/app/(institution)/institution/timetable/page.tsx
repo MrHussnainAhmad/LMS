@@ -17,7 +17,17 @@ type TimetableRow = {
   teacher: string | null;
 };
 
-export default async function InstitutionTimetablePage({ searchParams }: { searchParams: Promise<{ sectionId?: string }> }) {
+const WHOLE_CLASS_SECTION_NAME = "Whole Class";
+
+type TimetableTarget = {
+  value: string;
+  label: string;
+  classId: number;
+  sectionId: number | null;
+  classTeacherId: number | null;
+};
+
+export default async function InstitutionTimetablePage({ searchParams }: { searchParams: Promise<{ sectionId?: string; classId?: string }> }) {
   const session = await getSession();
   if (!session || session.role !== "INSTITUTION") redirect("/login");
   const institutionId = session.userId;
@@ -32,7 +42,42 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
   const allStaff = await db.select().from(staff).where(eq(staff.institutionId, institutionId));
   const allClasses = await db.select().from(classes).where(eq(classes.institutionId, institutionId));
 
-  const selectedSectionId = params.sectionId ? parseInt(params.sectionId, 10) : (allSections[0]?.section.id || null);
+  const timetableTargets: TimetableTarget[] = allClasses.flatMap((classRow) => {
+    const classSections = allSections.filter((row) => row.section.classId === classRow.id);
+    const wholeClassSection = classSections.find((row) => row.section.name === WHOLE_CLASS_SECTION_NAME);
+    const namedSections = classSections.filter((row) => row.section.name !== WHOLE_CLASS_SECTION_NAME);
+
+    if (namedSections.length === 0) {
+      return [{
+        value: `class:${classRow.id}`,
+        label: `${classRow.name} (whole class)`,
+        classId: classRow.id,
+        sectionId: wholeClassSection?.section.id || null,
+        classTeacherId: wholeClassSection?.section.classTeacherId || null,
+      }];
+    }
+
+    return namedSections.map((row) => ({
+      value: `section:${row.section.id}`,
+      label: `${classRow.name} - ${row.section.name}`,
+      classId: classRow.id,
+      sectionId: row.section.id,
+      classTeacherId: row.section.classTeacherId,
+    }));
+  });
+
+  const requestedSectionId = params.sectionId ? parseInt(params.sectionId, 10) : null;
+  const requestedClassId = params.classId ? parseInt(params.classId, 10) : null;
+  const selectedTarget = (
+    Number.isInteger(requestedSectionId)
+      ? timetableTargets.find((target) => target.sectionId === requestedSectionId)
+      : Number.isInteger(requestedClassId)
+        ? timetableTargets.find((target) => target.classId === requestedClassId && target.value.startsWith("class:"))
+        : null
+  ) || timetableTargets[0] || null;
+
+  const selectedSectionId = selectedTarget?.sectionId || null;
+  const selectedClassId = selectedTarget?.classId || null;
 
   let assignments: TimetableRow[] = [];
   let examRows: {
@@ -54,28 +99,28 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
       .leftJoin(staff, eq(staffAssignments.staffId, staff.id))
       .where(and(eq(staffAssignments.sectionId, selectedSectionId), eq(staffAssignments.institutionId, institutionId)))
       .orderBy(staffAssignments.startTime);
+  }
 
-    const selectedSection = allSections.find((row) => row.section.id === selectedSectionId);
-    if (selectedSection) {
-      examRows = await db.select({
-        id: tests.id,
-        title: tests.title,
-        type: tests.type,
-        date: tests.date,
-        endDate: tests.endDate,
-        maxMarks: tests.maxMarks,
-        subject: subjects.name,
-      })
-        .from(tests)
-        .leftJoin(subjects, eq(tests.subjectId, subjects.id))
-        .where(and(
-          eq(tests.institutionId, institutionId),
-          eq(tests.classId, selectedSection.section.classId),
-          eq(tests.createdByRole, "INSTITUTION"),
-          inArray(tests.type, ["MONTHLY", "MID", "FINAL"])
-        ))
-        .orderBy(tests.date);
-    }
+  const selectedClass = allClasses.find((classRow) => classRow.id === selectedClassId);
+  if (selectedClass) {
+    examRows = await db.select({
+      id: tests.id,
+      title: tests.title,
+      type: tests.type,
+      date: tests.date,
+      endDate: tests.endDate,
+      maxMarks: tests.maxMarks,
+      subject: subjects.name,
+    })
+      .from(tests)
+      .leftJoin(subjects, eq(tests.subjectId, subjects.id))
+      .where(and(
+        eq(tests.institutionId, institutionId),
+        eq(tests.classId, selectedClass.id),
+        eq(tests.createdByRole, "INSTITUTION"),
+        inArray(tests.type, ["MONTHLY", "MID", "FINAL"])
+      ))
+      .orderBy(tests.date);
   }
 
   const timetableEntries: TimetableEntry[] = assignments.map((row) => ({
@@ -95,20 +140,20 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
           <h1 className="text-3xl font-display font-bold text-brand-950">Timetable Manager</h1>
           <p className="text-stone-500 mt-1">Assign teachers, subjects, and timeslots for classes.</p>
         </div>
-        {allSections.length > 0 && (
+        {timetableTargets.length > 0 && (
           <SectionSelector 
-            sections={allSections.map(s => ({ id: s.section.id, name: s.section.name, className: s.className }))} 
-            defaultSectionId={selectedSectionId} 
+            sections={timetableTargets.map((target) => ({ value: target.value, label: target.label }))} 
+            defaultSectionId={selectedTarget?.value || null} 
           />
         )}
       </div>
 
-      {allSections.length === 0 ? (
+      {timetableTargets.length === 0 ? (
         <Card className="p-12 text-center">
           <Calendar className="h-12 w-12 text-stone-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-brand-900">No Sections Found</h3>
+          <h3 className="text-lg font-medium text-brand-900">No Classes Found</h3>
           <p className="text-stone-500 mt-2 max-w-md mx-auto">
-            You need to create Classes and Sections in the Academics tab before you can build a timetable.
+            You need to create at least one class in the Academics tab before you can build a timetable.
           </p>
         </Card>
       ) : (
@@ -131,11 +176,12 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
-                {selectedSectionId && (
+                {selectedTarget && (
                   <InchargeForm 
-                    key={selectedSectionId}
+                    key={selectedTarget.value}
                     sectionId={selectedSectionId} 
-                    currentInchargeId={allSections.find(s => s.section.id === selectedSectionId)?.section.classTeacherId || null}
+                    classId={selectedClassId}
+                    currentInchargeId={selectedTarget.classTeacherId}
                     staff={allStaff.map(s => ({ id: s.id, name: s.name }))}
                   />
                 )}
@@ -152,6 +198,7 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
               <CardContent className="p-6">
                 <AssignmentForm 
                   sectionId={selectedSectionId} 
+                  classId={selectedClassId}
                   subjects={allSubjects.map(s => ({ id: s.id, name: s.name }))}
                   staff={allStaff.map(s => ({ id: s.id, name: s.name }))}
                 />
