@@ -133,24 +133,24 @@ export default async function LandingPage() {
 
       <main className="flex-1 flex flex-col items-center w-full">
         {/* Hero Section */}
-        <section className="relative w-full max-w-7xl mx-auto px-6 md:px-12 pt-24 pb-20 md:pt-32 md:pb-32 flex flex-col lg:flex-row items-center gap-16">
+        <section className="relative w-full max-w-7xl mx-auto px-6 md:px-12 pt-12 pb-12 md:pt-16 md:pb-16 flex flex-col lg:flex-row items-center gap-10 lg:min-h-[calc(100vh-73px)]">
           <div className="flex-1 flex flex-col items-start text-left z-10">
             
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-display font-extrabold text-stone-900 mb-6 leading-[1.05] tracking-tight">
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-extrabold text-stone-900 mb-4 leading-[1.06] tracking-tight">
               Manage your entire institution in <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-indigo-600">one place.</span>
             </h1>
             
-            <p className="text-lg md:text-xl text-stone-600 mb-10 leading-relaxed max-w-xl">
+            <p className="text-base md:text-lg text-stone-600 mb-7 leading-relaxed max-w-xl">
               From attendance tracking to advanced gradebooks and seamless parent communication. The modern OS for forward-thinking schools and universities.
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-              <Button size="lg" className="rounded-full h-14 px-8 text-base font-semibold shadow-xl shadow-brand-500/25 hover:shadow-brand-500/40 hover:-translate-y-1 transition-all group" asChild>
+              <Button size="lg" className="rounded-full h-12 px-7 text-base font-semibold shadow-xl shadow-brand-500/25 hover:shadow-brand-500/40 hover:-translate-y-1 transition-all group" asChild>
                 <Link href="/login">
                   Login <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </Button>
-              <Button size="lg" variant="outline" className="rounded-full h-14 px-8 text-base font-semibold bg-white border-stone-200 hover:bg-stone-50 hover:border-stone-300 transition-all group" asChild>
+              <Button size="lg" variant="outline" className="rounded-full h-12 px-7 text-base font-semibold bg-white border-stone-200 hover:bg-stone-50 hover:border-stone-300 transition-all group" asChild>
                 <Link href="/institution-login">
                   Institution Login
                 </Link>
@@ -162,28 +162,28 @@ export default async function LandingPage() {
             <div className="absolute inset-0 bg-gradient-to-tr from-brand-100 to-indigo-50 rounded-[2.5rem] transform rotate-3 scale-105 -z-10"></div>
             <div className="relative bg-white rounded-[2rem] shadow-2xl shadow-stone-900/10 border border-stone-100 overflow-hidden">
                {/* Complex Mockup Right Side */}
-               <div className="h-12 border-b border-stone-100 flex items-center px-6 gap-2 bg-stone-50/80">
+               <div className="h-10 border-b border-stone-100 flex items-center px-5 gap-2 bg-stone-50/80">
                  <div className="w-3 h-3 rounded-full bg-stone-300"></div><div className="w-3 h-3 rounded-full bg-stone-300"></div><div className="w-3 h-3 rounded-full bg-stone-300"></div>
                </div>
-               <div className="p-6">
-                 <div className="flex items-center justify-between mb-8">
+               <div className="p-5">
+                 <div className="flex items-center justify-between mb-5">
                    <div className="h-6 w-32 bg-stone-100 rounded"></div>
                    <div className="flex gap-2"><div className="h-8 w-8 bg-brand-50 rounded-full"></div><div className="h-8 w-8 bg-indigo-50 rounded-full"></div></div>
                  </div>
-                 <div className="grid grid-cols-2 gap-4 mb-6">
-                   <div className="h-24 bg-gradient-to-br from-brand-500 to-brand-600 rounded-xl p-4 flex flex-col justify-end shadow-inner shadow-white/20">
+                 <div className="grid grid-cols-2 gap-4 mb-5">
+                   <div className="h-20 bg-gradient-to-br from-brand-500 to-brand-600 rounded-xl p-4 flex flex-col justify-end shadow-inner shadow-white/20">
                      <div className="h-4 w-16 bg-white/30 rounded mb-2"></div>
                      <div className="h-6 w-24 bg-white/90 rounded"></div>
                    </div>
-                   <div className="h-24 bg-white border border-stone-100 rounded-xl p-4 flex flex-col justify-end shadow-sm">
+                   <div className="h-20 bg-white border border-stone-100 rounded-xl p-4 flex flex-col justify-end shadow-sm">
                      <div className="h-4 w-16 bg-stone-200 rounded mb-2"></div>
                      <div className="h-6 w-24 bg-stone-800 rounded"></div>
                    </div>
                  </div>
-                 <div className="space-y-3">
+                 <div className="space-y-2.5">
                    {[1,2,3].map(i => (
-                     <div key={i} className="h-16 w-full bg-stone-50 rounded-xl border border-stone-100 flex items-center px-4 gap-4">
-                       <div className="w-10 h-10 rounded-full bg-stone-200"></div>
+                     <div key={i} className="h-14 w-full bg-stone-50 rounded-xl border border-stone-100 flex items-center px-4 gap-4">
+                       <div className="w-9 h-9 rounded-full bg-stone-200"></div>
                        <div className="flex-1 space-y-2"><div className="h-3 w-1/3 bg-stone-300 rounded"></div><div className="h-2 w-1/4 bg-stone-200 rounded"></div></div>
                        <div className="h-6 w-16 bg-green-100 rounded-full"></div>
                      </div>
