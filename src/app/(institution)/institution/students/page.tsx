@@ -15,7 +15,17 @@ export default async function StudentsPage() {
   const allClasses = await db.select().from(classes).where(eq(classes.institutionId, institutionId));
   const allSections = await db.select().from(sections).where(eq(sections.institutionId, institutionId));
   
-  const allStudents = await db.select()
+  const allStudents = await db.select({
+    id: students.id,
+    loginRollNumber: students.loginRollNumber,
+    name: students.name,
+    gender: students.gender,
+    yearOfJoining: students.yearOfJoining,
+    classId: students.classId,
+    sectionId: students.sectionId,
+    classRollNumber: students.classRollNumber,
+    phone: students.phone,
+  })
     .from(students)
     .where(eq(students.institutionId, institutionId))
     .orderBy(desc(students.createdAt));
