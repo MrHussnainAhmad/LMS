@@ -36,6 +36,14 @@ type ExpoReceipt = {
   details?: { error?: string };
 };
 
+type PushDeliverySummary = {
+  payloads: number;
+  targets: number;
+  missingTokens: number;
+  tickets: number;
+  ticketErrors: number;
+};
+
 export async function createNotification(payload: NotificationPayload) {
   const [inserted] = await db.insert(notifications).values(payload).returning({ id: notifications.id });
   await sendExpoPushNotifications([{ ...payload, notificationId: inserted?.id }]);
@@ -78,7 +86,15 @@ export async function createAttendanceNotifications({
   })));
 }
 
-async function sendExpoPushNotifications(payloads: NotificationDelivery[]) {
+async function sendExpoPushNotifications(payloads: NotificationDelivery[]): Promise<PushDeliverySummary> {
+  const summary: PushDeliverySummary = {
+    payloads: payloads.length,
+    targets: 0,
+    missingTokens: 0,
+    tickets: 0,
+    ticketErrors: 0,
+  };
+
   try {
     const studentIds = Array.from(new Set(payloads.filter(p => p.userRole === 'STUDENT').map(p => p.userId)));
     const staffIds = Array.from(new Set(payloads.filter(p => p.userRole === 'STAFF').map(p => p.userId)));
@@ -103,7 +119,10 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]) {
           ? staffTokens.get(payload.userId)
           : undefined;
 
-      if (!token) return [];
+      if (!token) {
+        summary.missingTokens++;
+        return [];
+      }
       return [{
         token,
         payload,
@@ -117,7 +136,12 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]) {
       }];
     });
 
-    if (targets.length === 0) return;
+    summary.targets = targets.length;
+
+    if (targets.length === 0) {
+      console.info("Expo push delivery summary", summary);
+      return summary;
+    }
 
     const CHUNK_SIZE = 100;
     const chunks = [];
@@ -142,6 +166,7 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]) {
         if (!target) return [];
 
         if (ticket.status === 'error') {
+          summary.ticketErrors++;
           console.error("Expo Push Ticket Error:", {
             token: target.token,
             reason: ticket.details?.error || ticket.message || 'Unknown error',
@@ -150,6 +175,7 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]) {
         }
 
         if (!ticket.id) return [];
+        summary.tickets++;
         return [{
           ticketId: ticket.id,
           token: target.token,
@@ -163,9 +189,13 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]) {
         await db.insert(expoPushTickets).values(ticketRows).onConflictDoNothing();
       }
     }
+
+    console.info("Expo push delivery summary", summary);
   } catch (err) {
     console.error("Error preparing push notifications:", err);
   }
+
+  return summary;
 }
 
 async function sendExpoChunkWithRetry(messages: unknown[]) {
@@ -274,6 +304,8 @@ export async function processAnnouncementNotification(announcementId: number) {
   const type = announcement.title.toLowerCase().includes("timetable") ? 'EXAM_TIMETABLE' : 'ANNOUNCEMENT';
 
   const pushToPayload = (userId: number, role: 'STUDENT' | 'STAFF') => {
+    if (announcement.senderRole === role && announcement.senderId === userId) return;
+
     payloads.push({
       institutionId: announcement.institutionId,
       userRole: role,
@@ -335,5 +367,13 @@ export async function processAnnouncementNotification(announcementId: number) {
     }
   }
 
-  await createBulkNotifications(payloads);
+  const insertedRows = await createBulkNotifications(payloads);
+  console.info("Announcement notification fan-out", {
+    announcementId: announcement.id,
+    targetType: announcement.targetType,
+    senderRole: announcement.senderRole,
+    senderId: announcement.senderId,
+    recipients: payloads.length,
+    notificationsCreated: insertedRows?.length ?? 0,
+  });
 }

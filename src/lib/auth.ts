@@ -15,6 +15,7 @@ export type { UserRole, JWTPayload };
 
 const ACCESS_TOKEN_EXPIRY = '30d';
 const REFRESH_TOKEN_EXPIRY_DAYS = 30;
+const WEB_SESSION_EXPIRY_DAYS = 5;
 
 export async function createTokens(payload: JWTPayload) {
   const accessToken = await new SignJWT({ ...payload })
@@ -46,7 +47,7 @@ export async function setAuthCookies(accessToken: string, refreshToken: string) 
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: WEB_SESSION_EXPIRY_DAYS * 24 * 60 * 60,
   });
 
   cookieStore.set('refresh_token', refreshToken, {
@@ -54,7 +55,7 @@ export async function setAuthCookies(accessToken: string, refreshToken: string) 
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60,
+    maxAge: WEB_SESSION_EXPIRY_DAYS * 24 * 60 * 60,
   });
 }
 
