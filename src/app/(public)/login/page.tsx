@@ -9,10 +9,10 @@ export default function LoginPage() {
         <ArrowLeft className="h-4 w-4" />
         Back to Home
       </Link>
-      <div className="w-full max-w-[400px]">
+      <div className="w-full max-w-4xl">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-display font-bold text-brand-950 mb-2">Welcome Back</h1>
-          <p className="text-stone-500 text-sm">Select your role to login</p>
+          <p className="text-stone-500 text-sm">Choose how you want to access Taleem360.</p>
         </div>
         <LoginForm />
       </div>
