@@ -64,7 +64,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
       age,
       mustChangePassword: true,
       isActive: true,
-    }).returning();
+    }).returning({ id: students.id });
 
     await logAudit({
       institutionId: tenantId,

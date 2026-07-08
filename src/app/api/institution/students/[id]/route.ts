@@ -23,7 +23,12 @@ export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { par
       return NextResponse.json({ error: "Valid class and section are required" }, { status: 400 });
     }
 
-    const [student] = await db.select()
+    const [student] = await db.select({
+      id: students.id,
+      institutionId: students.institutionId,
+      yearOfJoining: students.yearOfJoining,
+      classRollNumber: students.classRollNumber,
+    })
       .from(students)
       .where(and(eq(students.id, studentId), eq(students.institutionId, tenantId)))
       .limit(1);
@@ -61,7 +66,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { par
         phone: body.phone || null
       })
       .where(eq(students.id, student.id))
-      .returning();
+      .returning({ id: students.id });
 
     if (!updated) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 });
@@ -89,7 +94,7 @@ export const DELETE = requireRole(["INSTITUTION"], async (req: NextRequest, { pa
   try {
     const [deleted] = await db.delete(students)
       .where(and(eq(students.id, studentId), eq(students.institutionId, tenantId)))
-      .returning();
+      .returning({ id: students.id });
 
     if (!deleted) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 });
