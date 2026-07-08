@@ -239,11 +239,52 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
             </Button>
           </div>
 
-          <div className="mt-auto flex flex-wrap items-center justify-center gap-2 pt-5 text-sm">
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-sm">
             {copy.footer}
+          </div>
+
+          <div className="mt-6 flex min-h-[120px] flex-1 items-end justify-center overflow-hidden rounded-lg bg-stone-50 px-4 pt-4 sm:min-h-[150px]">
+            <LoginPanelVector />
           </div>
         </form>
       </div>
     </Card>
+  );
+}
+
+function LoginPanelVector() {
+  return (
+    <svg
+      className="h-auto w-full max-w-[360px] text-brand-900"
+      viewBox="0 0 360 160"
+      fill="none"
+      role="img"
+      aria-label="Taleem360 secure login illustration"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect x="28" y="28" width="224" height="116" rx="16" fill="white" stroke="#E7E5E4" />
+      <rect x="48" y="50" width="94" height="10" rx="5" fill="#D6D3D1" />
+      <rect x="48" y="76" width="160" height="12" rx="6" fill="#F5F5F4" />
+      <rect x="48" y="100" width="128" height="12" rx="6" fill="#F5F5F4" />
+      <rect x="48" y="124" width="72" height="12" rx="6" fill="#0F766E" />
+      <circle cx="257" cy="48" r="38" fill="#ECFDF5" />
+      <path
+        d="M257 19L285 30V51C285 69.5 273.2 81.8 257 87C240.8 81.8 229 69.5 229 51V30L257 19Z"
+        fill="#134E4A"
+      />
+      <path
+        d="M247 52.5L254 59.5L269 43.5"
+        stroke="white"
+        strokeWidth="7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="290" cy="122" r="24" fill="#F0F9FF" />
+      <circle cx="290" cy="113" r="8" fill="#0369A1" />
+      <path d="M274 139C277.5 128.5 282.8 124 290 124C297.2 124 302.5 128.5 306 139" fill="#0369A1" />
+      <path d="M24 154H336" stroke="#D6D3D1" strokeWidth="3" strokeLinecap="round" />
+      <path d="M267 109C275 102.5 286 99.5 298 101" stroke="#A7F3D0" strokeWidth="4" strokeLinecap="round" />
+      <path d="M282 92C292 88 304 89 315 95" stroke="#BFDBFE" strokeWidth="4" strokeLinecap="round" />
+    </svg>
   );
 }
