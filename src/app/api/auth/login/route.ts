@@ -106,11 +106,41 @@ export async function POST(req: NextRequest) {
 
     // Run all database lookups concurrently to drastically improve login speed
     const [adminRes, empRes, instRes, stfRes, stuRes] = await Promise.all([
-      db.select().from(superAdmins).where(sql`lower(${superAdmins.email}) = ${loginIdentifier}`).limit(1),
-      db.select().from(employees).where(sql`lower(${employees.email}) = ${loginIdentifier}`).limit(1),
-      db.select().from(institutions).where(sql`lower(${institutions.contactEmail}) = ${loginIdentifier}`).limit(1),
-      db.select().from(staff).where(sql`lower(${staff.email}) = ${loginIdentifier}`).limit(1),
-      db.select().from(students).where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`).limit(1),
+      db.select({
+        id: superAdmins.id,
+        email: superAdmins.email,
+        passwordHash: superAdmins.passwordHash,
+        securityAnswerHash: superAdmins.securityAnswerHash,
+      }).from(superAdmins).where(sql`lower(${superAdmins.email}) = ${loginIdentifier}`).limit(1),
+      db.select({
+        id: employees.id,
+        email: employees.email,
+        passwordHash: employees.passwordHash,
+        mustChangePassword: employees.mustChangePassword,
+      }).from(employees).where(sql`lower(${employees.email}) = ${loginIdentifier}`).limit(1),
+      db.select({
+        id: institutions.id,
+        contactEmail: institutions.contactEmail,
+        adminPasswordHash: institutions.adminPasswordHash,
+        status: institutions.status,
+      }).from(institutions).where(sql`lower(${institutions.contactEmail}) = ${loginIdentifier}`).limit(1),
+      db.select({
+        id: staff.id,
+        email: staff.email,
+        passwordHash: staff.passwordHash,
+        isActive: staff.isActive,
+        institutionId: staff.institutionId,
+        campusId: staff.campusId,
+        mustChangePassword: staff.mustChangePassword,
+      }).from(staff).where(sql`lower(${staff.email}) = ${loginIdentifier}`).limit(1),
+      db.select({
+        id: students.id,
+        loginRollNumber: students.loginRollNumber,
+        passwordHash: students.passwordHash,
+        isActive: students.isActive,
+        institutionId: students.institutionId,
+        mustChangePassword: students.mustChangePassword,
+      }).from(students).where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`).limit(1),
     ]);
 
     const admin = adminRes[0];
