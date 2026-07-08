@@ -201,43 +201,45 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
-          <div className="mb-6">
-            <p className="text-sm font-medium text-stone-500">Continue as</p>
-            <h3 className="mt-1 text-2xl font-display font-semibold text-brand-950">
-              {selectedOption?.title ?? (mode === "INSTITUTION" ? "Institution" : "Employee")}
-            </h3>
-          </div>
-
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-stone-700">{identifierLabel}</label>
-              <Input
-                name="emailOrUsername"
-                placeholder={identifierPlaceholder}
-                autoComplete={selectedIdentity === "STUDENT" && mode === "STUDENT_STAFF" ? "username" : "email"}
-                required
-              />
+        <form onSubmit={handleSubmit} className="flex h-full flex-col p-6">
+          <div>
+            <div className="mb-6">
+              <p className="text-sm font-medium text-stone-500">Continue as</p>
+              <h3 className="mt-1 text-2xl font-display font-semibold text-brand-950">
+                {selectedOption?.title ?? (mode === "INSTITUTION" ? "Institution" : "Employee")}
+              </h3>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-stone-700">Password</label>
-              <Input
-                name="password"
-                type="password"
-                placeholder="Enter your password"
-                autoComplete="current-password"
-                required
-              />
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-stone-700">{identifierLabel}</label>
+                <Input
+                  name="emailOrUsername"
+                  placeholder={identifierPlaceholder}
+                  autoComplete={selectedIdentity === "STUDENT" && mode === "STUDENT_STAFF" ? "username" : "email"}
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-stone-700">Password</label>
+                <Input
+                  name="password"
+                  type="password"
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
             </div>
+
+            <Button type="submit" className="mt-6 w-full" disabled={isLoading}>
+              {isLoading ? "Logging in..." : "Login"}
+              {!isLoading && <ArrowRight className="ml-2 h-4 w-4" />}
+            </Button>
           </div>
 
-          <Button type="submit" className="mt-6 w-full" disabled={isLoading}>
-            {isLoading ? "Logging in..." : "Login"}
-            {!isLoading && <ArrowRight className="ml-2 h-4 w-4" />}
-          </Button>
-
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-sm">
+          <div className="mt-auto flex flex-wrap items-center justify-center gap-2 pt-5 text-sm">
             {copy.footer}
           </div>
         </form>
