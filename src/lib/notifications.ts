@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import { expoPushTickets, notifications, staff, students } from "@/db/schema";
+import { resolveAnnouncementRecipients } from "@/lib/announcements";
 import { and, eq, inArray, lt } from "drizzle-orm";
 
 type NotificationType = 'ANNOUNCEMENT' | 'EXAM_TIMETABLE' | 'ASSIGNMENT' | 'TEST' | 'MARKS' | 'ATTENDANCE' | 'GENERAL';
@@ -40,6 +41,7 @@ type PushDeliverySummary = {
   payloads: number;
   targets: number;
   missingTokens: number;
+  disabledByPreference: number;
   tickets: number;
   ticketErrors: number;
 };
@@ -110,6 +112,7 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]): Prom
     payloads: payloads.length,
     targets: 0,
     missingTokens: 0,
+    disabledByPreference: 0,
     tickets: 0,
     ticketErrors: 0,
   };
@@ -118,37 +121,89 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]): Prom
     const studentIds = Array.from(new Set(payloads.filter(p => p.userRole === 'STUDENT').map(p => p.userId)));
     const staffIds = Array.from(new Set(payloads.filter(p => p.userRole === 'STAFF').map(p => p.userId)));
 
-    const studentTokens = new Map<number, string>();
-    const staffTokens = new Map<number, string>();
+    const studentPushState = new Map<number, {
+      token: string | null;
+      testNotifications: boolean;
+      announcementNotifications: boolean;
+    }>();
+    const staffPushState = new Map<number, {
+      token: string | null;
+      announcementNotifications: boolean;
+    }>();
 
     if (studentIds.length > 0) {
-      const studentRecords = await db.select({ id: students.id, token: students.expoPushToken }).from(students).where(inArray(students.id, studentIds));
-      studentRecords.forEach(r => { if (r.token) studentTokens.set(r.id, r.token) });
+      const studentRecords = await db
+        .select({
+          id: students.id,
+          token: students.expoPushToken,
+          testNotifications: students.testPushNotificationsEnabled,
+          announcementNotifications: students.announcementPushNotificationsEnabled,
+        })
+        .from(students)
+        .where(inArray(students.id, studentIds));
+
+      studentRecords.forEach((record) => {
+        studentPushState.set(record.id, {
+          token: record.token,
+          testNotifications: record.testNotifications,
+          announcementNotifications: record.announcementNotifications,
+        });
+      });
     }
 
     if (staffIds.length > 0) {
-      const staffRecords = await db.select({ id: staff.id, token: staff.expoPushToken }).from(staff).where(inArray(staff.id, staffIds));
-      staffRecords.forEach(r => { if (r.token) staffTokens.set(r.id, r.token) });
+      const staffRecords = await db
+        .select({
+          id: staff.id,
+          token: staff.expoPushToken,
+          announcementNotifications: staff.announcementPushNotificationsEnabled,
+        })
+        .from(staff)
+        .where(inArray(staff.id, staffIds));
+
+      staffRecords.forEach((record) => {
+        staffPushState.set(record.id, {
+          token: record.token,
+          announcementNotifications: record.announcementNotifications,
+        });
+      });
     }
 
     console.info("Expo push token lookup", {
       studentRecipients: studentIds.length,
-      studentTokens: studentTokens.size,
+      studentTokens: Array.from(studentPushState.values()).filter((state) => Boolean(state.token)).length,
       staffRecipients: staffIds.length,
-      staffTokens: staffTokens.size,
+      staffTokens: Array.from(staffPushState.values()).filter((state) => Boolean(state.token)).length,
     });
 
     const targets = payloads.flatMap((payload) => {
-      const token = payload.userRole === 'STUDENT'
-        ? studentTokens.get(payload.userId)
-        : payload.userRole === 'STAFF'
-          ? staffTokens.get(payload.userId)
-          : undefined;
+      const studentState = payload.userRole === 'STUDENT' ? studentPushState.get(payload.userId) : undefined;
+      const staffState = payload.userRole === 'STAFF' ? staffPushState.get(payload.userId) : undefined;
+      const token = studentState?.token ?? staffState?.token;
 
       if (!token) {
         summary.missingTokens++;
         return [];
       }
+
+      const announcementLike = payload.type === 'ANNOUNCEMENT' || payload.type === 'EXAM_TIMETABLE';
+      const enabled = payload.userRole === 'STUDENT'
+        ? payload.type === 'TEST'
+          ? studentState?.testNotifications
+          : announcementLike
+            ? studentState?.announcementNotifications
+            : true
+        : payload.userRole === 'STAFF'
+          ? announcementLike
+            ? staffState?.announcementNotifications
+            : true
+          : false;
+
+      if (!enabled) {
+        summary.disabledByPreference++;
+        return [];
+      }
+
       return [{
         token,
         payload,
@@ -222,6 +277,47 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]): Prom
   }
 
   return summary;
+}
+
+export async function createOnlineTestNotifications({
+  institutionId,
+  sectionId,
+  onlineTestId,
+  title,
+  className,
+  sectionName,
+  subjectName,
+  durationMinutes,
+}: {
+  institutionId: number;
+  sectionId: number;
+  onlineTestId: number;
+  title: string;
+  className: string;
+  sectionName: string;
+  subjectName: string;
+  durationMinutes: number;
+}) {
+  const recipients = await db
+    .select({ id: students.id })
+    .from(students)
+    .where(and(eq(students.institutionId, institutionId), eq(students.sectionId, sectionId)));
+
+  console.info("Processing online test notification", {
+    onlineTestId,
+    sectionId,
+    studentRecipients: recipients.length,
+  });
+
+  return createBulkNotifications(recipients.map((student) => ({
+    institutionId,
+    userRole: "STUDENT",
+    userId: student.id,
+    type: "TEST",
+    title: "New Online Test",
+    message: `${title} is available for ${className} - ${sectionName} in ${subjectName}. Timer: ${durationMinutes} minutes.`,
+    referenceId: onlineTestId,
+  })));
 }
 
 async function sendExpoChunkWithRetry(messages: unknown[]) {
@@ -320,8 +416,8 @@ export async function checkExpoPushReceipts() {
 }
 
 export async function processAnnouncementNotification(announcementId: number) {
-  const { announcements, students, staff, staffAssignments, sections } = await import("@/db/schema");
-  const { eq: eqOp, and: andOp } = await import("drizzle-orm");
+  const { announcements } = await import("@/db/schema");
+  const { eq: eqOp } = await import("drizzle-orm");
 
   const [announcement] = await db.select().from(announcements).where(eqOp(announcements.id, announcementId));
   if (!announcement) {
@@ -344,69 +440,18 @@ export async function processAnnouncementNotification(announcementId: number) {
   const payloads: NotificationPayload[] = [];
   const type = announcement.title.toLowerCase().includes("timetable") ? 'EXAM_TIMETABLE' : 'ANNOUNCEMENT';
 
-  const pushToPayload = (userId: number, role: 'STUDENT' | 'STAFF') => {
-    if (announcement.senderRole === role && announcement.senderId === userId) return;
-
+  const recipients = await resolveAnnouncementRecipients(announcement);
+  recipients.forEach((recipient) => {
     payloads.push({
       institutionId: announcement.institutionId,
-      userRole: role,
-      userId,
+      userRole: recipient.userRole,
+      userId: recipient.userId,
       type,
       title: announcement.title,
       message: announcement.content.substring(0, 100) + (announcement.content.length > 100 ? '...' : ''),
       referenceId: announcement.id,
     });
-  };
-
-  // 1. ALL
-  if (announcement.targetType === 'ALL') {
-    const allStudents = await db.select({ id: students.id }).from(students).where(eqOp(students.institutionId, announcement.institutionId));
-    const allStaff = await db.select({ id: staff.id }).from(staff).where(eqOp(staff.institutionId, announcement.institutionId));
-    allStudents.forEach(s => pushToPayload(s.id, 'STUDENT'));
-    allStaff.forEach(s => pushToPayload(s.id, 'STAFF'));
-  }
-  // 2. CAMPUS
-  else if (announcement.targetType === 'CAMPUS' && announcement.targetCampusId) {
-    const campusStudents = await db.select({ id: students.id }).from(students).where(andOp(eqOp(students.institutionId, announcement.institutionId), eqOp(students.campusId, announcement.targetCampusId)));
-    const campusStaff = await db.select({ id: staff.id }).from(staff).where(andOp(eqOp(staff.institutionId, announcement.institutionId), eqOp(staff.campusId, announcement.targetCampusId)));
-    campusStudents.forEach(s => pushToPayload(s.id, 'STUDENT'));
-    campusStaff.forEach(s => pushToPayload(s.id, 'STAFF'));
-  }
-  // 3. CLASS
-  else if (announcement.targetType === 'CLASS' && announcement.targetClassId) {
-    const classStudents = await db.select({ id: students.id }).from(students).where(andOp(eqOp(students.institutionId, announcement.institutionId), eqOp(students.classId, announcement.targetClassId)));
-    classStudents.forEach(s => pushToPayload(s.id, 'STUDENT'));
-
-    const classStaff = await db.select({ id: staffAssignments.staffId })
-      .from(staffAssignments)
-      .innerJoin(sections, eqOp(staffAssignments.sectionId, sections.id))
-      .where(andOp(eqOp(staffAssignments.institutionId, announcement.institutionId), eqOp(sections.classId, announcement.targetClassId)));
-    Array.from(new Set(classStaff.map(s => s.id).filter((id): id is number => Boolean(id))))
-      .forEach(id => pushToPayload(id, 'STAFF'));
-  }
-  // 4. SECTION
-  else if (announcement.targetType === 'SECTION' && announcement.targetSectionId) {
-    const secStudents = await db.select({ id: students.id }).from(students).where(andOp(eqOp(students.institutionId, announcement.institutionId), eqOp(students.sectionId, announcement.targetSectionId)));
-    secStudents.forEach(s => pushToPayload(s.id, 'STUDENT'));
-
-    const sectionStaff = await db.select({ id: staffAssignments.staffId })
-      .from(staffAssignments)
-      .where(andOp(eqOp(staffAssignments.institutionId, announcement.institutionId), eqOp(staffAssignments.sectionId, announcement.targetSectionId)));
-    Array.from(new Set(sectionStaff.map(s => s.id).filter((id): id is number => Boolean(id))))
-      .forEach(id => pushToPayload(id, 'STAFF'));
-  }
-  // 5. USER
-  else if (announcement.targetType === 'USER' && announcement.targetUserRole) {
-    if (announcement.targetUserId) {
-      pushToPayload(announcement.targetUserId, announcement.targetUserRole as 'STUDENT' | 'STAFF');
-    } else if (announcement.targetUserRole === 'STAFF') {
-      const roleStaff = await db.select({ id: staff.id }).from(staff).where(eqOp(staff.institutionId, announcement.institutionId));
-      roleStaff.forEach(s => pushToPayload(s.id, 'STAFF'));
-    } else if (announcement.targetUserRole === 'STUDENT') {
-      const roleStudents = await db.select({ id: students.id }).from(students).where(eqOp(students.institutionId, announcement.institutionId));
-      roleStudents.forEach(s => pushToPayload(s.id, 'STUDENT'));
-    }
-  }
+  });
 
   const insertedRows = await createBulkNotifications(payloads);
   console.info("Announcement notification fan-out", {

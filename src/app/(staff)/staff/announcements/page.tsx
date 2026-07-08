@@ -5,6 +5,7 @@ import { LocalDateTime } from "@/components/LocalDateTime";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Megaphone, Bell } from "lucide-react";
 import { getSession } from "@/lib/auth";
+import { getVisibleAnnouncements } from "@/lib/announcements";
 import { redirect } from "next/navigation";
 import { StaffAnnouncementForm } from "./StaffAnnouncementForm";
 import { createStaffAnnouncementAction } from "@/app/actions/staff-actions";
@@ -18,11 +19,48 @@ export default async function StaffAnnouncementsPage() {
   const staffId = session.userId;
   const institutionId = session.institutionId || 0;
 
-  const recentAnnouncements = await db.select()
+  const receivedAnnouncements = await getVisibleAnnouncements(session, 30);
+  const sentAnnouncements = await db.select()
     .from(announcements)
-    .where(eq(announcements.institutionId, institutionId))
+    .where(and(
+      eq(announcements.institutionId, institutionId),
+      eq(announcements.senderRole, "STAFF"),
+      eq(announcements.senderId, staffId)
+    ))
     .orderBy(desc(announcements.createdAt))
     .limit(30);
+
+  const announcementMap = new Map<number, {
+    id: number;
+    title: string;
+    content: string;
+    targetType: string;
+    senderRole: string;
+    createdAtIso: string;
+    sentByYou: boolean;
+  }>();
+
+  receivedAnnouncements.forEach((announcement) => {
+    announcementMap.set(announcement.id, { ...announcement, sentByYou: false });
+  });
+
+  sentAnnouncements.forEach((announcement) => {
+    if (!announcementMap.has(announcement.id)) {
+      announcementMap.set(announcement.id, {
+        id: announcement.id,
+        title: announcement.title,
+        content: announcement.content,
+        targetType: announcement.targetType,
+        senderRole: announcement.senderRole,
+        createdAtIso: announcement.createdAt.toISOString(),
+        sentByYou: true,
+      });
+    }
+  });
+
+  const recentAnnouncements = Array.from(announcementMap.values())
+    .sort((a, b) => new Date(b.createdAtIso).getTime() - new Date(a.createdAtIso).getTime())
+    .slice(0, 30);
 
   // Get distinct classes and sections assigned to this staff member
   const assignments = await db.selectDistinct({
@@ -85,7 +123,7 @@ export default async function StaffAnnouncementsPage() {
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="font-semibold text-brand-950 text-lg">{ann.title}</h3>
                       <span className="text-xs text-stone-500 bg-stone-100 px-2 py-1 rounded-md whitespace-nowrap">
-                        <LocalDateTime value={ann.createdAt.toISOString()} compact />
+                        <LocalDateTime value={ann.createdAtIso} compact />
                       </span>
                     </div>
                     <p className="text-stone-600 whitespace-pre-wrap text-sm leading-relaxed">
@@ -98,6 +136,11 @@ export default async function StaffAnnouncementsPage() {
                       <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-600 rounded-md">
                         From: {ann.senderRole}
                       </span>
+                      {ann.sentByYou && (
+                        <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-md">
+                          Sent by you
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}

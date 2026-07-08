@@ -1,7 +1,14 @@
 import { db } from "@/db";
-import { announcementReads, announcements, staffAssignments, students, sections } from "@/db/schema";
+import { announcementReads, announcements, staff, staffAssignments, students, sections } from "@/db/schema";
 import type { JWTPayload } from "@/lib/auth-types";
 import { and, desc, eq, inArray } from "drizzle-orm";
+
+export type AnnouncementRecipientRole = "STUDENT" | "STAFF";
+
+export type AnnouncementRecipient = {
+  userRole: AnnouncementRecipientRole;
+  userId: number;
+};
 
 export type VisibleAnnouncement = {
   id: number;
@@ -13,70 +20,179 @@ export type VisibleAnnouncement = {
   isRead: boolean;
 };
 
-async function getStudentScope(userId: number, institutionId: number) {
-  const [student] = await db.select().from(students).where(and(eq(students.id, userId), eq(students.institutionId, institutionId))).limit(1);
-  return student
-    ? { campusId: student.campusId, classIds: [student.classId], sectionIds: [student.sectionId] }
-    : { campusId: null, classIds: [], sectionIds: [] };
+type AnnouncementRow = typeof announcements.$inferSelect;
+
+function getSessionInstitutionId(session: JWTPayload) {
+  return session.role === "INSTITUTION" ? session.userId : session.institutionId;
 }
 
-async function getStaffScope(userId: number, institutionId: number, campusId?: number | null) {
-  const rows = await db.select({
-    classId: sections.classId,
-    sectionId: sections.id,
-  })
-    .from(staffAssignments)
-    .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
-    .where(and(eq(staffAssignments.staffId, userId), eq(staffAssignments.institutionId, institutionId)));
+function addRecipient(
+  recipients: Map<string, AnnouncementRecipient>,
+  announcement: AnnouncementRow,
+  userRole: AnnouncementRecipientRole,
+  userId: number | null
+) {
+  if (!userId) return;
+  if (announcement.senderRole === userRole && announcement.senderId === userId) return;
+  recipients.set(`${userRole}:${userId}`, { userRole, userId });
+}
 
+export async function resolveAnnouncementRecipients(announcement: AnnouncementRow): Promise<AnnouncementRecipient[]> {
+  const recipients = new Map<string, AnnouncementRecipient>();
+  const includeStaffAudience = announcement.senderRole === "INSTITUTION";
+
+  if (announcement.targetType === "ALL") {
+    const allStudents = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(eq(students.institutionId, announcement.institutionId));
+
+    allStudents.forEach((student) => addRecipient(recipients, announcement, "STUDENT", student.id));
+
+    if (includeStaffAudience) {
+      const allStaff = await db
+        .select({ id: staff.id })
+        .from(staff)
+        .where(eq(staff.institutionId, announcement.institutionId));
+
+      allStaff.forEach((staffMember) => addRecipient(recipients, announcement, "STAFF", staffMember.id));
+    }
+  } else if (announcement.targetType === "CAMPUS" && announcement.targetCampusId) {
+    const campusStudents = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(and(
+        eq(students.institutionId, announcement.institutionId),
+        eq(students.campusId, announcement.targetCampusId)
+      ));
+
+    campusStudents.forEach((student) => addRecipient(recipients, announcement, "STUDENT", student.id));
+
+    if (includeStaffAudience) {
+      const campusStaff = await db
+        .select({ id: staff.id })
+        .from(staff)
+        .where(and(
+          eq(staff.institutionId, announcement.institutionId),
+          eq(staff.campusId, announcement.targetCampusId)
+        ));
+
+      campusStaff.forEach((staffMember) => addRecipient(recipients, announcement, "STAFF", staffMember.id));
+    }
+  } else if (announcement.targetType === "CLASS" && announcement.targetClassId) {
+    const classStudents = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(and(
+        eq(students.institutionId, announcement.institutionId),
+        eq(students.classId, announcement.targetClassId)
+      ));
+
+    classStudents.forEach((student) => addRecipient(recipients, announcement, "STUDENT", student.id));
+
+    if (includeStaffAudience) {
+      const classStaff = await db
+        .select({ id: staffAssignments.staffId })
+        .from(staffAssignments)
+        .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
+        .where(and(
+          eq(staffAssignments.institutionId, announcement.institutionId),
+          eq(sections.institutionId, announcement.institutionId),
+          eq(sections.classId, announcement.targetClassId)
+        ));
+
+      classStaff.forEach((staffMember) => addRecipient(recipients, announcement, "STAFF", staffMember.id));
+    }
+  } else if (announcement.targetType === "SECTION" && announcement.targetSectionId) {
+    const sectionStudents = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(and(
+        eq(students.institutionId, announcement.institutionId),
+        eq(students.sectionId, announcement.targetSectionId)
+      ));
+
+    sectionStudents.forEach((student) => addRecipient(recipients, announcement, "STUDENT", student.id));
+
+    if (includeStaffAudience) {
+      const sectionStaff = await db
+        .select({ id: staffAssignments.staffId })
+        .from(staffAssignments)
+        .where(and(
+          eq(staffAssignments.institutionId, announcement.institutionId),
+          eq(staffAssignments.sectionId, announcement.targetSectionId)
+        ));
+
+      sectionStaff.forEach((staffMember) => addRecipient(recipients, announcement, "STAFF", staffMember.id));
+    }
+  } else if (announcement.targetType === "USER" && announcement.targetUserRole) {
+    if (announcement.targetUserRole === "STUDENT") {
+      if (announcement.targetUserId) {
+        addRecipient(recipients, announcement, "STUDENT", announcement.targetUserId);
+      } else {
+        const roleStudents = await db
+          .select({ id: students.id })
+          .from(students)
+          .where(eq(students.institutionId, announcement.institutionId));
+
+        roleStudents.forEach((student) => addRecipient(recipients, announcement, "STUDENT", student.id));
+      }
+    } else if (announcement.targetUserRole === "STAFF") {
+      if (announcement.targetUserId) {
+        addRecipient(recipients, announcement, "STAFF", announcement.targetUserId);
+      } else {
+        const roleStaff = await db
+          .select({ id: staff.id })
+          .from(staff)
+          .where(eq(staff.institutionId, announcement.institutionId));
+
+        roleStaff.forEach((staffMember) => addRecipient(recipients, announcement, "STAFF", staffMember.id));
+      }
+    }
+  }
+
+  return Array.from(recipients.values());
+}
+
+async function isAnnouncementRecipient(announcement: AnnouncementRow, session: JWTPayload) {
+  if (session.role !== "STUDENT" && session.role !== "STAFF") return false;
+  const recipients = await resolveAnnouncementRecipients(announcement);
+  return recipients.some((recipient) => recipient.userRole === session.role && recipient.userId === session.userId);
+}
+
+function canViewSentOrManagedAnnouncement(announcement: AnnouncementRow, session: JWTPayload) {
+  if (announcement.senderRole === session.role && announcement.senderId === session.userId) return true;
+  return session.role === "INSTITUTION" && announcement.institutionId === session.userId;
+}
+
+function toVisibleAnnouncement(announcement: AnnouncementRow, isRead: boolean): VisibleAnnouncement {
   return {
-    campusId: campusId ?? null,
-    classIds: Array.from(new Set(rows.map((row) => row.classId))),
-    sectionIds: Array.from(new Set(rows.map((row) => row.sectionId))),
+    id: announcement.id,
+    title: announcement.title,
+    content: announcement.content,
+    targetType: announcement.targetType,
+    senderRole: announcement.senderRole,
+    createdAtIso: announcement.createdAt.toISOString(),
+    isRead,
   };
 }
 
-async function getScope(session: JWTPayload) {
-  const institutionId = session.role === "INSTITUTION" ? session.userId : session.institutionId;
-  if (!institutionId) return null;
-
-  if (session.role === "STUDENT") return { institutionId, ...(await getStudentScope(session.userId, institutionId)) };
-  if (session.role === "STAFF") return { institutionId, ...(await getStaffScope(session.userId, institutionId, session.campusId)) };
-  if (session.role === "INSTITUTION") return { institutionId, campusId: null, classIds: [], sectionIds: [] };
-
-  return null;
-}
-
-function canSeeAnnouncement(
-  session: JWTPayload,
-  scope: Awaited<ReturnType<typeof getScope>>,
-  announcement: typeof announcements.$inferSelect
-) {
-  if (!scope) return false;
-  if (session.role === "INSTITUTION") return true;
-  if (announcement.senderRole === session.role && announcement.senderId === session.userId) return true;
-  if (announcement.targetType === "USER") {
-    if (announcement.targetUserRole === session.role && !announcement.targetUserId) return true;
-    return announcement.targetUserRole === session.role && announcement.targetUserId === session.userId;
-  }
-  if (announcement.targetType === "ALL") return true;
-  if (announcement.targetType === "CAMPUS") return Boolean(scope.campusId && announcement.targetCampusId === scope.campusId);
-  if (announcement.targetType === "CLASS") return Boolean(announcement.targetClassId && scope.classIds.includes(announcement.targetClassId));
-  if (announcement.targetType === "SECTION") return Boolean(announcement.targetSectionId && scope.sectionIds.includes(announcement.targetSectionId));
-  return false;
-}
-
 export async function getVisibleAnnouncements(session: JWTPayload, limit = 4) {
-  const scope = await getScope(session);
-  if (!scope) return [];
+  const institutionId = getSessionInstitutionId(session);
+  if (!institutionId) return [];
 
   const rows = await db.select()
     .from(announcements)
-    .where(eq(announcements.institutionId, scope.institutionId))
+    .where(eq(announcements.institutionId, institutionId))
     .orderBy(desc(announcements.createdAt))
     .limit(50);
 
-  const visibleRows = rows.filter((announcement) => canSeeAnnouncement(session, scope, announcement)).slice(0, limit);
+  const visibleRows: AnnouncementRow[] = [];
+  for (const announcement of rows) {
+    if (await isAnnouncementRecipient(announcement, session)) visibleRows.push(announcement);
+    if (visibleRows.length >= limit) break;
+  }
+
   if (visibleRows.length === 0) return [];
 
   const readRows = await db.select()
@@ -90,44 +206,52 @@ export async function getVisibleAnnouncements(session: JWTPayload, limit = 4) {
     );
 
   const readIds = new Set(readRows.map((row) => row.announcementId));
-
-  return visibleRows.map((announcement): VisibleAnnouncement => ({
-    id: announcement.id,
-    title: announcement.title,
-    content: announcement.content,
-    targetType: announcement.targetType,
-    senderRole: announcement.senderRole,
-    createdAtIso: announcement.createdAt.toISOString(),
-    isRead: readIds.has(announcement.id),
-  }));
+  return visibleRows.map((announcement) => toVisibleAnnouncement(announcement, readIds.has(announcement.id)));
 }
 
 export async function getVisibleAnnouncementById(session: JWTPayload, id: number) {
-  const scope = await getScope(session);
-  if (!scope) return null;
+  const institutionId = getSessionInstitutionId(session);
+  if (!institutionId) return null;
 
-  const [announcement] = await db.select().from(announcements).where(and(eq(announcements.id, id), eq(announcements.institutionId, scope.institutionId))).limit(1);
-  if (!announcement || !canSeeAnnouncement(session, scope, announcement)) return null;
+  const [announcement] = await db
+    .select()
+    .from(announcements)
+    .where(and(eq(announcements.id, id), eq(announcements.institutionId, institutionId)))
+    .limit(1);
+
+  if (!announcement) return null;
+
+  const isRecipient = await isAnnouncementRecipient(announcement, session);
+  const canViewSent = canViewSentOrManagedAnnouncement(announcement, session);
+  if (!isRecipient && !canViewSent) return null;
+
+  if (!isRecipient) return toVisibleAnnouncement(announcement, true);
 
   const [read] = await db.select()
     .from(announcementReads)
     .where(and(eq(announcementReads.announcementId, id), eq(announcementReads.userRole, session.role), eq(announcementReads.userId, session.userId)))
     .limit(1);
 
-  return {
-    id: announcement.id,
-    title: announcement.title,
-    content: announcement.content,
-    targetType: announcement.targetType,
-    senderRole: announcement.senderRole,
-    createdAtIso: announcement.createdAt.toISOString(),
-    isRead: Boolean(read),
-  };
+  return toVisibleAnnouncement(announcement, Boolean(read));
 }
 
 export async function markAnnouncementRead(session: JWTPayload, id: number) {
-  const announcement = await getVisibleAnnouncementById(session, id);
+  const institutionId = getSessionInstitutionId(session);
+  if (!institutionId) throw new Error("Announcement not found");
+
+  const [announcement] = await db
+    .select()
+    .from(announcements)
+    .where(and(eq(announcements.id, id), eq(announcements.institutionId, institutionId)))
+    .limit(1);
+
   if (!announcement) throw new Error("Announcement not found");
+
+  const isRecipient = await isAnnouncementRecipient(announcement, session);
+  if (!isRecipient) {
+    if (canViewSentOrManagedAnnouncement(announcement, session)) return;
+    throw new Error("Announcement not found");
+  }
 
   await db.insert(announcementReads).values({
     announcementId: id,

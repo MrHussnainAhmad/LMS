@@ -10,10 +10,11 @@ async function main() {
   
   const m3 = fs.readFileSync(path.join(process.cwd(), 'drizzle/0003_secret_inertia.sql'), 'utf-8');
   const m4 = fs.readFileSync(path.join(process.cwd(), 'drizzle/0004_blue_tyrannus.sql'), 'utf-8');
+  const m5 = fs.readFileSync(path.join(process.cwd(), 'drizzle/0005_push_preferences.sql'), 'utf-8');
   
-  const stmts = [...m3.split('--> statement-breakpoint'), ...m4.split('--> statement-breakpoint')];
+  const stmts = [...m3.split('--> statement-breakpoint'), ...m4.split('--> statement-breakpoint'), ...m5.split('--> statement-breakpoint')];
   
-  console.log('Applying 0003 and 0004 migrations directly...');
+  console.log('Applying 0003, 0004, and 0005 migrations directly...');
   for (let s of stmts) {
     s = s.trim();
     if (s) {

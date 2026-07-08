@@ -117,6 +117,7 @@ export const staff = pgTable('staff', {
   isActive: boolean('is_active').default(true).notNull(),
   mustChangePassword: boolean('must_change_password').default(true).notNull(),
   expoPushToken: varchar('expo_push_token', { length: 255 }),
+  announcementPushNotificationsEnabled: boolean('announcement_push_notifications_enabled').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 });
@@ -180,6 +181,8 @@ export const students = pgTable('students', {
   isActive: boolean('is_active').default(true).notNull(),
   mustChangePassword: boolean('must_change_password').default(true).notNull(),
   expoPushToken: varchar('expo_push_token', { length: 255 }),
+  testPushNotificationsEnabled: boolean('test_push_notifications_enabled').default(false).notNull(),
+  announcementPushNotificationsEnabled: boolean('announcement_push_notifications_enabled').default(false).notNull(),
   emergencyContact: varchar('emergency_contact', { length: 50 }),
   parentalWhatsapp: varchar('parental_whatsapp', { length: 50 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),

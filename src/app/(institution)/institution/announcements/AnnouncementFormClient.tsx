@@ -21,7 +21,9 @@ export function AnnouncementFormClient({
   action: (formData: FormData) => Promise<void>;
 }) {
   const [targetType, setTargetType] = useState<string>("ALL");
+  const [selectedCampusId, setSelectedCampusId] = useState<string>("");
   const [selectedClassId, setSelectedClassId] = useState<string>("");
+  const [selectedSectionId, setSelectedSectionId] = useState<string>("");
 
   const filteredSections = selectedClassId 
     ? sections.filter(s => s.classId === parseInt(selectedClassId)) 
@@ -53,7 +55,12 @@ export function AnnouncementFormClient({
               name="targetType"
               required
               value={targetType}
-              onChange={(e) => setTargetType(e.target.value)}
+              onChange={(e) => {
+                setTargetType(e.target.value);
+                setSelectedCampusId("");
+                setSelectedClassId("");
+                setSelectedSectionId("");
+              }}
               className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
             >
               <option value="ALL">Everyone</option>
@@ -67,7 +74,13 @@ export function AnnouncementFormClient({
           {targetType === "CAMPUS" && (
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1">Select Campus</label>
-              <select name="targetCampusId" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+              <select
+                name="targetCampusId"
+                required
+                value={selectedCampusId}
+                onChange={(e) => setSelectedCampusId(e.target.value)}
+                className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
                 <option value="">Choose Campus...</option>
                 {campuses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
@@ -81,7 +94,10 @@ export function AnnouncementFormClient({
                 name="targetClassId" 
                 required 
                 value={selectedClassId}
-                onChange={e => setSelectedClassId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedClassId(e.target.value);
+                  setSelectedSectionId("");
+                }}
                 className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="">Choose Class...</option>
@@ -93,7 +109,13 @@ export function AnnouncementFormClient({
           {targetType === "SECTION" && (
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1">Select Section</label>
-              <select name="targetSectionId" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+              <select
+                name="targetSectionId"
+                required
+                value={selectedSectionId}
+                onChange={(e) => setSelectedSectionId(e.target.value)}
+                className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
                 <option value="">Choose Section...</option>
                 {filteredSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>

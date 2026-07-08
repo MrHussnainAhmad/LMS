@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { 
   tests, classes, sections, subjects, onlineTests, staffAssignments, 
-  onlineTestSubmissions, onlineTestQuestions, students, announcements
+  onlineTestSubmissions, onlineTestQuestions, students
 } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { eq, and, desc, inArray } from "drizzle-orm";
@@ -203,18 +203,17 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       }
     }
 
-    const [insertedAnnouncement] = await db.insert(announcements).values({
+    const { createOnlineTestNotifications } = await import("@/lib/notifications");
+    await createOnlineTestNotifications({
       institutionId: session.institutionId,
-      senderRole: "STAFF",
-      senderId: session.userId,
-      targetType: "SECTION",
-      targetSectionId: sectionId,
-      title: `Online test hosted: ${title}`,
-      content: `${title} is now available for ${assignment.className} - ${assignment.sectionName} in ${assignment.subjectName}. Timer: ${durationMinutes} minutes. Do not change tabs after starting the test.`,
-    }).returning({ id: announcements.id });
-
-    const { processAnnouncementNotification } = await import("@/lib/notifications");
-    await processAnnouncementNotification(insertedAnnouncement.id);
+      sectionId,
+      onlineTestId: onlineTest.id,
+      title: title.trim(),
+      className: assignment.className,
+      sectionName: assignment.sectionName,
+      subjectName: assignment.subjectName,
+      durationMinutes: Number(durationMinutes),
+    });
 
     return NextResponse.json({ success: true, testId: test.id });
   } catch (error) {

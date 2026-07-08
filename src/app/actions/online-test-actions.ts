@@ -2,7 +2,6 @@
 
 import { db } from "@/db";
 import {
-  announcements,
   classes,
   marks,
   onlineTestQuestions,
@@ -147,18 +146,17 @@ export async function createOnlineTestAction(formData: FormData) {
     });
   }
 
-  const [insertedAnnouncement] = await db.insert(announcements).values({
+  const { createOnlineTestNotifications } = await import("@/lib/notifications");
+  await createOnlineTestNotifications({
     institutionId: session.institutionId,
-    senderRole: "STAFF",
-    senderId: session.userId,
-    targetType: "SECTION",
-    targetSectionId: sectionId,
-    title: `Online test hosted: ${title}`,
-    content: `${title} is now available for ${assignment.className} - ${assignment.sectionName} in ${assignment.subjectName}. Timer: ${durationMinutes} minutes. Do not change tabs after starting the test.`,
-  }).returning({ id: announcements.id });
-
-  const { processAnnouncementNotification } = await import("@/lib/notifications");
-  await processAnnouncementNotification(insertedAnnouncement.id);
+    sectionId,
+    onlineTestId: onlineTest.id,
+    title,
+    className: assignment.className,
+    sectionName: assignment.sectionName,
+    subjectName: assignment.subjectName,
+    durationMinutes,
+  });
 
   revalidatePath("/staff/tests");
   revalidatePath("/student/tests");

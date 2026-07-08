@@ -19,6 +19,7 @@ export function StaffAnnouncementForm({
 }) {
   const [targetType, setTargetType] = useState<string>("CLASS");
   const [selectedClassId, setSelectedClassId] = useState<string>("");
+  const [selectedSectionId, setSelectedSectionId] = useState<string>("");
 
   const filteredSections = selectedClassId 
     ? sections.filter(s => s.classId === parseInt(selectedClassId)) 
@@ -50,7 +51,11 @@ export function StaffAnnouncementForm({
               name="targetType"
               required
               value={targetType}
-              onChange={(e) => setTargetType(e.target.value)}
+              onChange={(e) => {
+                setTargetType(e.target.value);
+                setSelectedClassId("");
+                setSelectedSectionId("");
+              }}
               className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
             >
               <option value="CLASS">Specific Class</option>
@@ -65,7 +70,10 @@ export function StaffAnnouncementForm({
                 name="targetClassId" 
                 required 
                 value={selectedClassId}
-                onChange={e => setSelectedClassId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedClassId(e.target.value);
+                  setSelectedSectionId("");
+                }}
                 className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="">Choose Class...</option>
@@ -77,7 +85,13 @@ export function StaffAnnouncementForm({
           {targetType === "SECTION" && (
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1">Select Section</label>
-              <select name="targetSectionId" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+              <select
+                name="targetSectionId"
+                required
+                value={selectedSectionId}
+                onChange={(e) => setSelectedSectionId(e.target.value)}
+                className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
                 <option value="">Choose Section...</option>
                 {filteredSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
