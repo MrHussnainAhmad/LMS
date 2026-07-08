@@ -6,7 +6,6 @@ import { Building2, Search } from "lucide-react";
 
 import { updateInstitutionStatusAction } from "@/app/actions/sa-actions";
 import { redirect } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/ui/submit-button";
 
 export default async function SAInstitutionsPage() {
@@ -26,8 +25,8 @@ export default async function SAInstitutionsPage() {
     <div className="space-y-8 animate-fade-in">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-brand-950">Institutions</h1>
-          <p className="text-stone-500 mt-1">Manage all registered institutions across the platform.</p>
+          <h1 className="text-3xl font-display font-bold text-brand-950">School Requests</h1>
+          <p className="text-stone-500 mt-1">Review school requests and approve or reject institution applications.</p>
         </div>
       </div>
 
@@ -36,7 +35,7 @@ export default async function SAInstitutionsPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <CardTitle className="text-lg flex items-center gap-2">
               <Building2 className="h-5 w-5 text-brand-600" />
-              Registered Institutions
+              School Requests
             </CardTitle>
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-stone-400" />

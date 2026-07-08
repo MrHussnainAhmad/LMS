@@ -89,7 +89,7 @@ export async function toggleEmployeeStatusAction(employeeId: number, currentlyDi
 
 export async function updateInstitutionStatusAction(institutionId: number, newStatus: "PENDING" | "APPROVED" | "REJECTED") {
   const session = await getSession();
-  if (!session || session.role !== "SUPER_ADMIN") {
+  if (!session || (session.role !== "SUPER_ADMIN" && session.role !== "EMPLOYEE")) {
     throw new Error("Unauthorized");
   }
 
@@ -98,5 +98,8 @@ export async function updateInstitutionStatusAction(institutionId: number, newSt
     .where(eq(institutions.id, institutionId));
 
   revalidatePath("/sa/institutions");
+  revalidatePath("/sa/dashboard");
+  revalidatePath("/employee/institutions");
+  revalidatePath("/employee/dashboard");
   return { success: true };
 }

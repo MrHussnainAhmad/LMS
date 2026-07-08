@@ -5,7 +5,7 @@ import { LayoutDashboard, Building2, Users, Activity, ShieldAlert, FileText, Sta
 
 const SIDEBAR_ITEMS = [
   { label: "Dashboard", href: "/sa/dashboard", icon: LayoutDashboard },
-  { label: "Institutions", href: "/sa/institutions", icon: Building2 },
+  { label: "School Requests", href: "/sa/institutions", icon: Building2 },
   { label: "Featured Logos", href: "/sa/featured-institutions", icon: Star },
   { label: "Employees", href: "/sa/employees", icon: Users },
   { label: "System Admins", href: "/sa/admins", icon: ShieldAlert },

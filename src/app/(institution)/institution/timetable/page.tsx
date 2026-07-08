@@ -123,7 +123,7 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
           </div>
 
           <div>
-            <Card className="sticky top-6">
+            <Card>
               <CardHeader className="border-b border-border bg-stone-50/50 pb-4">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <User className="h-5 w-5 text-brand-600" />

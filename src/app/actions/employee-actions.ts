@@ -34,7 +34,7 @@ import { revalidatePath } from "next/cache";
 
 export async function updateInstitutionStatusAction(institutionId: number, newStatus: "PENDING" | "APPROVED" | "REJECTED") {
   const session = await getSession();
-  if (!session || session.role !== "EMPLOYEE") {
+  if (!session || (session.role !== "SUPER_ADMIN" && session.role !== "EMPLOYEE")) {
     throw new Error("Unauthorized");
   }
 
@@ -43,6 +43,9 @@ export async function updateInstitutionStatusAction(institutionId: number, newSt
     .where(eq(institutions.id, institutionId));
 
   revalidatePath("/employee/institutions");
+  revalidatePath("/employee/dashboard");
+  revalidatePath("/sa/institutions");
+  revalidatePath("/sa/dashboard");
   return { success: true };
 }
 
