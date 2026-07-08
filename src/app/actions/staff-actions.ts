@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { attendances, announcements, sections, students } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { and, eq, inArray } from "drizzle-orm";
+import { createAttendanceNotifications } from "@/lib/notifications";
 
 type AnnouncementTargetType = "ALL" | "CAMPUS" | "CLASS" | "SECTION" | "USER";
 
@@ -54,6 +55,8 @@ export async function submitAttendanceAction(
       set: { status: record.status }
     });
   }
+
+  await createAttendanceNotifications({ institutionId, date, records });
 
   return { success: true };
 }

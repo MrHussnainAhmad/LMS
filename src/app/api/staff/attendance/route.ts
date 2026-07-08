@@ -113,19 +113,12 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       });
     }
 
-    const { createBulkNotifications } = await import("@/lib/notifications");
-    const notifyList = records
-      .filter(r => r.status === "ABSENT" || r.status === "LEAVE" || r.status === "LATE")
-      .map(r => ({ userId: r.studentId, status: r.status }));
-
-    await createBulkNotifications(notifyList.map((n: any) => ({
-      institutionId: session.institutionId!,
-      userRole: "STUDENT",
-      userId: n.userId,
-      type: "ATTENDANCE",
-      title: "Attendance Alert",
-      message: `You have been marked ${n.status} for ${date.split("T")[0]}.`,
-    })));
+    const { createAttendanceNotifications } = await import("@/lib/notifications");
+    await createAttendanceNotifications({
+      institutionId: session.institutionId,
+      date,
+      records,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

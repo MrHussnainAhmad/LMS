@@ -14,6 +14,11 @@ type NotificationPayload = {
   referenceId?: number;
 };
 
+type AttendanceNotificationRecord = {
+  studentId: number;
+  status: "PRESENT" | "ABSENT" | "LATE" | "LEAVE";
+};
+
 type NotificationDelivery = NotificationPayload & {
   notificationId?: number;
 };
@@ -47,6 +52,30 @@ export async function createBulkNotifications(payloads: NotificationPayload[]) {
   }));
   await sendExpoPushNotifications(deliveries);
   return insertedRows;
+}
+
+export async function createAttendanceNotifications({
+  institutionId,
+  date,
+  records,
+}: {
+  institutionId: number;
+  date: Date | string;
+  records: AttendanceNotificationRecord[];
+}) {
+  const dateLabel = date instanceof Date ? date.toISOString().split("T")[0] : date.split("T")[0];
+  const notifyList = records.filter((record) => (
+    record.status === "ABSENT" || record.status === "LEAVE" || record.status === "LATE"
+  ));
+
+  await createBulkNotifications(notifyList.map((record) => ({
+    institutionId,
+    userRole: "STUDENT",
+    userId: record.studentId,
+    type: "ATTENDANCE",
+    title: "Attendance Alert",
+    message: `You have been marked ${record.status} for ${dateLabel}.`,
+  })));
 }
 
 async function sendExpoPushNotifications(payloads: NotificationDelivery[]) {
