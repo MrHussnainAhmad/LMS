@@ -38,6 +38,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Only students and staff can register push tokens" }, { status: 403 });
     }
 
+    console.info("Push token registered", {
+      role: session.role,
+      userId: session.userId,
+      tokenSuffix: token.slice(-8),
+    });
+
     return NextResponse.json({ success: true, message: "Push token registered successfully" });
   } catch (error) {
     console.error("Error registering push token:", error);

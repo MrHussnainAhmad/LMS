@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { attendances, announcements, sections, students } from "@/db/schema";
+import { attendances, announcements, sections, staffAssignments, students } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { and, eq, inArray } from "drizzle-orm";
 import { createAttendanceNotifications } from "@/lib/notifications";
@@ -74,13 +74,38 @@ export async function createStaffAnnouncementAction(formData: FormData) {
   const targetClassId = formData.get("targetClassId") ? parseInt(formData.get("targetClassId") as string) : null;
   const targetSectionId = formData.get("targetSectionId") ? parseInt(formData.get("targetSectionId") as string) : null;
 
+  if (!title.trim() || !content.trim()) throw new Error("Title and content are required");
+  if (targetType !== "CLASS" && targetType !== "SECTION") throw new Error("Invalid target audience");
+  if (!targetClassId || !Number.isInteger(targetClassId)) throw new Error("Class is required");
+
+  const assignedRows = await db.selectDistinct({
+    sectionId: sections.id,
+    classId: sections.classId,
+  })
+    .from(staffAssignments)
+    .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
+    .where(and(
+      eq(staffAssignments.staffId, session.userId),
+      eq(staffAssignments.institutionId, institutionId),
+      eq(sections.institutionId, institutionId),
+      eq(sections.classId, targetClassId),
+    ));
+
+  if (assignedRows.length === 0) throw new Error("This class is not assigned to you");
+
+  if (targetType === "SECTION") {
+    if (!targetSectionId || !Number.isInteger(targetSectionId)) throw new Error("Section is required");
+    const selectedSection = assignedRows.find((row) => row.sectionId === targetSectionId);
+    if (!selectedSection) throw new Error("Section not found for the selected class");
+  }
+
   const [inserted] = await db.insert(announcements).values({
     institutionId,
     senderRole: "STAFF",
     senderId: session.userId,
     targetType,
     targetClassId,
-    targetSectionId,
+    targetSectionId: targetType === "SECTION" ? targetSectionId : null,
     title,
     content
   }).returning({ id: announcements.id });
