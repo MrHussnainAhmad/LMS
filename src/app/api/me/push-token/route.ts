@@ -4,6 +4,40 @@ import { db } from "@/db";
 import { students, staff } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
+export async function GET(req: NextRequest) {
+  try {
+    const session = await getSessionFromRequest(req);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (session.role === "STUDENT") {
+      const [studentData] = await db
+        .select({ token: students.expoPushToken })
+        .from(students)
+        .where(eq(students.id, session.userId))
+        .limit(1);
+
+      return NextResponse.json({ hasPushToken: Boolean(studentData?.token) });
+    }
+
+    if (session.role === "STAFF") {
+      const [staffData] = await db
+        .select({ token: staff.expoPushToken })
+        .from(staff)
+        .where(eq(staff.id, session.userId))
+        .limit(1);
+
+      return NextResponse.json({ hasPushToken: Boolean(staffData?.token) });
+    }
+
+    return NextResponse.json({ error: "Only students and staff can register push tokens" }, { status: 403 });
+  } catch (error) {
+    console.error("Error checking push token:", error);
+    return NextResponse.json({ error: "Failed to check push token" }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getSessionFromRequest(req);
