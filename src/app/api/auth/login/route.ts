@@ -4,6 +4,7 @@ import { accountLockouts, auditLogs, superAdmins, employees, institutions, staff
 import { and, eq, sql } from 'drizzle-orm';
 import { verify } from '@node-rs/argon2';
 import { createTokens, setAuthCookies, UserRole } from '@/lib/auth';
+import { JWTPayload } from '@/lib/auth-types';
 import { withRateLimit } from '@/lib/rate-limit';
 import { logAudit } from '@/lib/audit';
 import { loginSchema } from '@/lib/validators/auth';

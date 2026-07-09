@@ -91,8 +91,6 @@ export default async function SAAdminsPage() {
           </Card>
         </div>
 
-        </div>
-
         {session.isSuperAdmin && (
           <div>
             <Card>
