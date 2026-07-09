@@ -13,7 +13,7 @@ const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-
 export { verifyAccessToken };
 export type { UserRole, JWTPayload };
 
-const ACCESS_TOKEN_EXPIRY = '30d';
+const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY_DAYS = 30;
 const WEB_SESSION_EXPIRY_DAYS = 5;
 

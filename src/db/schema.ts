@@ -73,6 +73,15 @@ export const institutions = pgTable('institutions', {
   deletedAt: timestamp('deleted_at'),
 });
 
+// --- ACCOUNT DELETIONS ---
+export const accountDeletions = pgTable('account_deletions', {
+  id: serial('id').primaryKey(),
+  institutionName: varchar('institution_name', { length: 255 }).notNull(),
+  adminEmail: varchar('admin_email', { length: 255 }).notNull(),
+  reason: text('reason'),
+  deletedAt: timestamp('deleted_at').defaultNow().notNull(),
+});
+
 // --- ACADEMIC SESSIONS ---
 export const academicSessions = pgTable('academic_sessions', {
   id: serial('id').primaryKey(),
@@ -500,6 +509,7 @@ export const batchExamSubjects = pgTable('batch_exam_subjects', {
   maxMarks: real('max_marks').notNull(),
   staffId: integer('staff_id').references(() => staff.id, { onDelete: 'set null' }),
   isPublished: boolean('is_published').default(false).notNull(),
+  publishedAt: timestamp('published_at'),
   reviewDeadline: timestamp('review_deadline').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });

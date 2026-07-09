@@ -30,12 +30,20 @@ export async function GET(req: NextRequest) {
     .where(eq(batchExamSubjects.staffId, session.userId))
     .orderBy(desc(batchExamSubjects.createdAt));
 
-    // Calculate effective publish status
+    // Calculate effective publish status and filter out items older than 36h past deadline
     const now = new Date();
-    const results = assignedSubjects.map(sub => ({
-      ...sub,
-      isEffectivelyPublished: sub.isPublished || now > sub.reviewDeadline
-    }));
+    const THIRTY_SIX_HOURS_MS = 36 * 60 * 60 * 1000;
+
+    const results = assignedSubjects
+      .map(sub => ({
+        ...sub,
+        isEffectivelyPublished: sub.isPublished || now > sub.reviewDeadline
+      }))
+      .filter(sub => {
+        // Disappear items 36 hours after they are effectively guaranteed to be published (the deadline)
+        const expiryTime = new Date(sub.reviewDeadline.getTime() + THIRTY_SIX_HOURS_MS);
+        return now <= expiryTime;
+      });
 
     return NextResponse.json(results);
   } catch (error: any) {

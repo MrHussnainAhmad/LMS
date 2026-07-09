@@ -135,7 +135,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const subjectId = Number(id);
 
     const [subject] = await db.update(batchExamSubjects)
-      .set({ isPublished: true })
+      .set({ isPublished: true, publishedAt: new Date() })
       .where(
         and(
           eq(batchExamSubjects.id, subjectId),

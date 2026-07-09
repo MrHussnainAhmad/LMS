@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { InstitutionLogoUploader } from "./InstitutionLogoUploader";
 import { InstitutionSignatureUploader } from "./InstitutionSignatureUploader";
+import { DangerZone } from "./DangerZone";
 import { PlatformReviewForm } from "@/components/PlatformReviewForm";
 import { Star } from "lucide-react";
 
@@ -188,6 +189,9 @@ export default async function InstitutionSettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Danger Zone */}
+          <DangerZone />
         </div>
       </div>
     </div>
