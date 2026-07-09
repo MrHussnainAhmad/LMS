@@ -4,11 +4,31 @@ import { desc } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Activity, Search } from "lucide-react";
 
-export default async function SAAuditLogsPage() {
-  const allLogs = await db.select()
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { getSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
+
+export default async function SAAuditLogsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const session = await getSession();
+  if (!session || session.role !== "SUPER_ADMIN" || !session.isSuperAdmin) {
+    redirect("/sa/dashboard");
+  }
+
+  const params = await searchParams;
+  const page = parseInt(params.page || "1", 10) || 1;
+  const pageSize = 50;
+  const offset = (page - 1) * pageSize;
+
+  // Fetch one extra to determine if there's a next page
+  const fetchedLogs = await db.select()
     .from(auditLogs)
     .orderBy(desc(auditLogs.timestamp))
-    .limit(100); // Prevent massive payloads
+    .limit(pageSize + 1)
+    .offset(offset);
+
+  const hasNextPage = fetchedLogs.length > pageSize;
+  const allLogs = fetchedLogs.slice(0, pageSize);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -84,6 +104,31 @@ export default async function SAAuditLogsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+          
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-stone-50/30">
+            <div className="text-sm text-stone-500">
+              Showing page {page}
+            </div>
+            <div className="flex gap-2">
+              <Link 
+                href={`/sa/audit?page=${page > 1 ? page - 1 : 1}`}
+                className={`flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md border ${page <= 1 ? 'border-border text-stone-300 pointer-events-none' : 'border-stone-300 text-stone-700 hover:bg-stone-100 transition-colors'}`}
+                aria-disabled={page <= 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Link>
+              <Link 
+                href={`/sa/audit?page=${page + 1}`}
+                className={`flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md border ${!hasNextPage ? 'border-border text-stone-300 pointer-events-none' : 'border-stone-300 text-stone-700 hover:bg-stone-100 transition-colors'}`}
+                aria-disabled={!hasNextPage}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         </CardContent>
       </Card>

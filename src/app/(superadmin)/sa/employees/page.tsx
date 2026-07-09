@@ -2,13 +2,15 @@ import { db } from "@/db";
 import { employees } from "@/db/schema";
 import { desc } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Users, Plus } from "lucide-react";
-import { createEmployeeAction, toggleEmployeeStatusAction } from "@/app/actions/sa-actions";
+import { Users, Plus, Trash2 } from "lucide-react";
+import { createEmployeeAction, toggleEmployeeStatusAction, deleteEmployeeAction } from "@/app/actions/sa-actions";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { getSession } from "@/lib/auth";
 
 export default async function SAEmployeesPage() {
+  const session = await getSession();
   const allEmployees = await db.select()
     .from(employees)
     .orderBy(desc(employees.createdAt));
@@ -24,6 +26,13 @@ export default async function SAEmployeesPage() {
     const id = parseInt(formData.get("id") as string, 10);
     const disabled = formData.get("disabled") === "true";
     await toggleEmployeeStatusAction(id, disabled);
+    redirect("/sa/employees");
+  }
+
+  async function deleteEmployee(formData: FormData) {
+    "use server";
+    const id = parseInt(formData.get("id") as string, 10);
+    await deleteEmployeeAction(id);
     redirect("/sa/employees");
   }
 
@@ -83,18 +92,28 @@ export default async function SAEmployeesPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <form action={toggleStatus}>
-                            <input type="hidden" name="id" value={emp.id} />
-                            <input type="hidden" name="disabled" value={(emp.deletedAt !== null).toString()} />
-                            <SubmitButton 
-                              variant="outline" 
-                              size="sm"
-                              className={emp.deletedAt === null ? "text-danger hover:text-danger hover:bg-danger/10" : "text-success hover:text-success hover:bg-success/10"}
-                              loadingText={emp.deletedAt === null ? 'Disabling...' : 'Enabling...'}
-                            >
-                              {emp.deletedAt === null ? 'Disable' : 'Enable'}
-                            </SubmitButton>
-                          </form>
+                          <div className="flex items-center gap-2">
+                            <form action={toggleStatus}>
+                              <input type="hidden" name="id" value={emp.id} />
+                              <input type="hidden" name="disabled" value={(emp.deletedAt !== null).toString()} />
+                              <SubmitButton 
+                                variant="outline" 
+                                size="sm"
+                                className={emp.deletedAt === null ? "text-danger hover:text-danger hover:bg-danger/10" : "text-success hover:text-success hover:bg-success/10"}
+                                loadingText={emp.deletedAt === null ? 'Disabling...' : 'Enabling...'}
+                              >
+                                {emp.deletedAt === null ? 'Disable' : 'Enable'}
+                              </SubmitButton>
+                            </form>
+                            {session?.isSuperAdmin && (
+                              <form action={deleteEmployee}>
+                                <input type="hidden" name="id" value={emp.id} />
+                                <button type="submit" className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Delete Employee Permanently">
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </form>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

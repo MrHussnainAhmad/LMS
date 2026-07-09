@@ -6,4 +6,5 @@ export interface JWTPayload {
   institutionId?: number;
   campusId?: number | null;
   mustChangePassword?: boolean;
+  isSuperAdmin?: boolean;
 }

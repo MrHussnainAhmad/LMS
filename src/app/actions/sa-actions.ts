@@ -9,8 +9,8 @@ import { revalidatePath } from "next/cache";
 
 export async function createSuperAdminAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "SUPER_ADMIN") {
-    throw new Error("Unauthorized");
+  if (!session || session.role !== "SUPER_ADMIN" || !session.isSuperAdmin) {
+    throw new Error("Unauthorized: Only the Root Super Admin can create other admins");
   }
 
   const email = formData.get("email") as string;
@@ -37,6 +37,26 @@ export async function createSuperAdminAction(formData: FormData) {
     securityAnswerHash,
   });
 
+  revalidatePath("/sa/admins");
+  return { success: true };
+}
+
+export async function deleteSuperAdminAction(adminId: number) {
+  const session = await getSession();
+  if (!session || session.role !== "SUPER_ADMIN" || !session.isSuperAdmin) {
+    throw new Error("Unauthorized: Only the Root Super Admin can delete admins");
+  }
+
+  if (session.userId === adminId) {
+    throw new Error("You cannot delete yourself");
+  }
+
+  // Ensure we don't delete the last super admin or root admin (id = 1)
+  if (adminId === 1) {
+    throw new Error("Cannot delete the primary root super admin");
+  }
+
+  await db.delete(superAdmins).where(eq(superAdmins.id, adminId));
   revalidatePath("/sa/admins");
   return { success: true };
 }
@@ -83,6 +103,17 @@ export async function toggleEmployeeStatusAction(employeeId: number, currentlyDi
     .set({ deletedAt: currentlyDisabled ? null : new Date() })
     .where(eq(employees.id, employeeId));
 
+  revalidatePath("/sa/employees");
+  return { success: true };
+}
+
+export async function deleteEmployeeAction(employeeId: number) {
+  const session = await getSession();
+  if (!session || session.role !== "SUPER_ADMIN" || !session.isSuperAdmin) {
+    throw new Error("Unauthorized: Only the Root Super Admin can completely delete employees");
+  }
+
+  await db.delete(employees).where(eq(employees.id, employeeId));
   revalidatePath("/sa/employees");
   return { success: true };
 }

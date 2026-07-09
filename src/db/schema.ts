@@ -37,6 +37,7 @@ export const superAdmins = pgTable('super_admins', {
   passwordHash: text('password_hash').notNull(),
   securityQuestion: text('security_question').notNull(),
   securityAnswerHash: text('security_answer_hash').notNull(),
+  isSuperAdmin: boolean('is_super_admin').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

@@ -172,6 +172,7 @@ export async function POST(req: NextRequest) {
                 email: superAdmins.email,
                 passwordHash: superAdmins.passwordHash,
                 securityAnswerHash: superAdmins.securityAnswerHash,
+                isSuperAdmin: superAdmins.isSuperAdmin,
               }).from(superAdmins).where(sql`lower(${superAdmins.email}) = ${loginIdentifier}`).limit(1),
             };
           case 'EMPLOYEE':
@@ -300,13 +301,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    const { accessToken, refreshToken } = await createTokens({
+    const payload: JWTPayload = {
       userId: user.id,
       role,
       institutionId,
       campusId,
       mustChangePassword,
-    });
+      isSuperAdmin: role === 'SUPER_ADMIN' ? (user as any).isSuperAdmin : undefined,
+    };
+
+    const { accessToken, refreshToken } = await createTokens(payload);
 
     await setAuthCookies(accessToken, refreshToken);
     await clearFailedLogins(role, user.id);
