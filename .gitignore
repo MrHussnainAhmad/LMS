@@ -51,6 +51,7 @@ yarn-error.log*
 *.sqlite3
 /drizzle/*
 !/drizzle/0006_login_lookup_indexes.sql
+!/drizzle/0007_push_preferences_default_enabled.sql
 
 # local-only operational database scripts
 /check*.js

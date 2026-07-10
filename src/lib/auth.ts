@@ -13,17 +13,20 @@ const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-
 export { verifyAccessToken };
 export type { UserRole, JWTPayload };
 
-const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY_DAYS = 30;
 const WEB_SESSION_EXPIRY_DAYS = 5;
+const ACCESS_TOKEN_EXPIRY = `${WEB_SESSION_EXPIRY_DAYS}d`;
 
-export async function createTokens(payload: JWTPayload) {
-  const accessToken = await new SignJWT({ ...payload })
+export async function createAccessToken(payload: JWTPayload) {
+  return await new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(ACCESS_TOKEN_EXPIRY)
     .sign(JWT_SECRET);
+}
 
+export async function createTokens(payload: JWTPayload) {
+  const accessToken = await createAccessToken(payload);
   const refreshToken = crypto.randomBytes(40).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
   const expiresAt = new Date();
@@ -79,6 +82,11 @@ export async function getSessionFromRequest(req: NextRequest): Promise<JWTPayloa
 
 export async function revokeAllSessions(role: UserRole, userId: number) {
   await db.delete(refreshTokens).where(and(eq(refreshTokens.userRole, role), eq(refreshTokens.userId, userId)));
+}
+
+export async function revokeRefreshToken(refreshToken: string) {
+  const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+  await db.delete(refreshTokens).where(eq(refreshTokens.tokenHash, tokenHash));
 }
 
 export function timingSafeEqual(a: string, b: string) {

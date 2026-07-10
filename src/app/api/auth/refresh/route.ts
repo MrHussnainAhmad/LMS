@@ -1,11 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { refreshTokens } from '@/db/schema';
+import { employees, institutions, refreshTokens, staff, students, superAdmins } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
-import { clearAuthCookies, createTokens, revokeAllSessions, setAuthCookies } from '@/lib/auth';
+import { clearAuthCookies, createAccessToken, setAuthCookies } from '@/lib/auth';
+import type { JWTPayload, UserRole } from '@/lib/auth';
 import { cookies } from 'next/headers';
-import { logAudit } from '@/lib/audit';
+
+async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPayload | null> {
+  switch (role) {
+    case 'SUPER_ADMIN': {
+      const [user] = await db.select({ isSuperAdmin: superAdmins.isSuperAdmin })
+        .from(superAdmins).where(eq(superAdmins.id, userId)).limit(1);
+      return user ? { userId, role, isSuperAdmin: user.isSuperAdmin } : null;
+    }
+    case 'EMPLOYEE': {
+      const [user] = await db.select({ mustChangePassword: employees.mustChangePassword })
+        .from(employees).where(eq(employees.id, userId)).limit(1);
+      return user ? { userId, role, mustChangePassword: user.mustChangePassword } : null;
+    }
+    case 'INSTITUTION': {
+      const [user] = await db.select({ status: institutions.status })
+        .from(institutions).where(eq(institutions.id, userId)).limit(1);
+      return user?.status === 'APPROVED' ? { userId, role, institutionId: userId } : null;
+    }
+    case 'STAFF': {
+      const [user] = await db.select({
+        institutionId: staff.institutionId,
+        campusId: staff.campusId,
+        mustChangePassword: staff.mustChangePassword,
+        isActive: staff.isActive,
+      }).from(staff).where(eq(staff.id, userId)).limit(1);
+      return user?.isActive ? {
+        userId,
+        role,
+        institutionId: user.institutionId,
+        campusId: user.campusId,
+        mustChangePassword: user.mustChangePassword,
+      } : null;
+    }
+    case 'STUDENT': {
+      const [user] = await db.select({
+        institutionId: students.institutionId,
+        mustChangePassword: students.mustChangePassword,
+        isActive: students.isActive,
+      }).from(students).where(eq(students.id, userId)).limit(1);
+      return user?.isActive ? {
+        userId,
+        role,
+        institutionId: user.institutionId,
+        mustChangePassword: user.mustChangePassword,
+      } : null;
+    }
+  }
+}
 
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
@@ -27,22 +75,8 @@ export async function POST(req: NextRequest) {
   }
 
   if (record.revokedAt) {
-    await db.update(refreshTokens)
-      .set({ reuseDetectedAt: new Date() })
-      .where(eq(refreshTokens.id, record.id));
-
-    await logAudit({
-      institutionId: undefined,
-      actorId: record.userId,
-      actorRole: record.userRole,
-      action: 'REFRESH_TOKEN_REUSE_DETECTED',
-      target: `User:${record.userRole}:${record.userId}`,
-      ip: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
-    });
-
-    await revokeAllSessions(record.userRole, record.userId);
     await clearAuthCookies();
-    return NextResponse.json({ error: 'Session revoked. Please log in again.' }, { status: 401 });
+    return NextResponse.json({ error: 'Invalid or expired refresh token' }, { status: 401 });
   }
 
   if (record.expiresAt < new Date()) {
@@ -51,22 +85,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid or expired refresh token' }, { status: 401 });
   }
 
-  const payload = {
-    userId: record.userId,
-    role: record.userRole,
-    // Note: We'd typically fetch latest user state here (like mustChangePassword, institutionId)
-    // For brevity, we assume minimal payload or refetch user.
-  };
+  const payload = await getCurrentPayload(record.userRole, record.userId);
+  if (!payload) {
+    await db.delete(refreshTokens).where(eq(refreshTokens.id, record.id));
+    await clearAuthCookies();
+    return NextResponse.json({ error: 'Account is unavailable' }, { status: 401 });
+  }
 
-  const { accessToken, refreshToken: newRefresh } = await createTokens(payload);
-  const newRefreshHash = crypto.createHash('sha256').update(newRefresh).digest('hex');
-  await db.update(refreshTokens)
-    .set({ revokedAt: new Date(), replacedByHash: newRefreshHash })
-    .where(eq(refreshTokens.id, record.id));
-  await setAuthCookies(accessToken, newRefresh);
+  const accessToken = await createAccessToken(payload);
+  await setAuthCookies(accessToken, refreshToken);
 
   return NextResponse.json({
     message: 'Token refreshed',
-    ...(typeof body.refreshToken === 'string' ? { accessToken, refreshToken: newRefresh } : {}),
+    ...(typeof body.refreshToken === 'string' ? { accessToken, refreshToken } : {}),
   });
 }
