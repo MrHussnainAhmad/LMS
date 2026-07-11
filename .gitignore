@@ -50,6 +50,7 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 /drizzle/*
+!/drizzle/0008_assignment_reference_files.sql
 !/drizzle/0006_login_lookup_indexes.sql
 !/drizzle/0007_push_preferences_default_enabled.sql
 

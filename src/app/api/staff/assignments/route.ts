@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { assignments, classes, sections, subjects, staffAssignments, submissions, students } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { eq, and, desc } from "drizzle-orm";
+import { verifyCloudinarySubmission } from "@/app/actions/assessment-actions";
 
 export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -56,6 +57,8 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
       id: assignments.id,
       title: assignments.title,
       description: assignments.description,
+      referenceFileUrl: assignments.referenceFileUrl,
+      referenceFileName: assignments.referenceFileName,
       dueAt: assignments.dueAt,
       classId: assignments.classId,
       sectionId: assignments.sectionId,
@@ -142,7 +145,8 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
 
   try {
     const body = await req.json();
-    let { sectionId, subjectId, title, description, dueAt } = body;
+    const { title, description, dueAt } = body;
+    let { sectionId, subjectId, referenceFileKey, referenceFileName } = body;
 
     sectionId = Number(sectionId);
     if (!Number.isInteger(sectionId) || sectionId <= 0) {
@@ -156,6 +160,10 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
 
     if (!title || typeof title !== "string") return NextResponse.json({ error: "Title is required" }, { status: 400 });
     if (!dueAt || typeof dueAt !== "string") return NextResponse.json({ error: "Due date is required" }, { status: 400 });
+    referenceFileKey = typeof referenceFileKey === "string" ? referenceFileKey.trim() : "";
+    referenceFileName = typeof referenceFileName === "string" ? referenceFileName.trim() : "";
+    if (referenceFileKey && !referenceFileName) return NextResponse.json({ error: "Reference file name is required" }, { status: 400 });
+    if (referenceFileName.length > 255) return NextResponse.json({ error: "Reference file name is too long" }, { status: 400 });
 
     // Verify staff has access to this section
     const conditions = [
@@ -175,6 +183,8 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       return NextResponse.json({ error: "Invalid class section" }, { status: 400 });
     }
 
+    const referenceResource = referenceFileKey ? await verifyCloudinarySubmission(referenceFileKey) : null;
+
     const [insertedAssignment] = await db.insert(assignments).values({
       institutionId: session.institutionId,
       staffId: session.userId,
@@ -183,12 +193,14 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       subjectId: subjectId || null,
       title: title.trim(),
       description: description ? description.trim() : null,
+      referenceFileUrl: referenceResource?.secure_url || null,
+      referenceFileName: referenceResource ? referenceFileName : null,
       dueAt: new Date(dueAt),
     }).returning({ id: assignments.id });
 
     const sectionStudents = await db.select({ id: students.id }).from(students).where(eq(students.sectionId, sectionId));
     const { createBulkNotifications } = await import("@/lib/notifications");
-    await createBulkNotifications(sectionStudents.map((s: any) => ({
+    await createBulkNotifications(sectionStudents.map((s) => ({
       institutionId: session.institutionId!,
       userRole: "STUDENT",
       userId: s.id,

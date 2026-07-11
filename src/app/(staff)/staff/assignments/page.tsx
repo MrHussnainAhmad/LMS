@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { ClipboardList, ExternalLink, UploadCloud } from "lucide-react";
 import { createStaffAssignmentAction } from "@/app/actions/assessment-actions";
+import { ReferenceFileInput } from "./ReferenceFileInput";
 
 export default async function StaffAssignmentsPage() {
   const session = await getSession();
@@ -146,6 +147,8 @@ export default async function StaffAssignmentsPage() {
                 <input name="dueAt" type="datetime-local" required className="w-full rounded-md border border-border px-3 py-2 text-sm" />
               </div>
 
+              <ReferenceFileInput />
+
               <SubmitButton className="w-full">Create Assignment</SubmitButton>
             </form>
           </CardContent>
@@ -184,6 +187,12 @@ export default async function StaffAssignmentsPage() {
                             {className}{sectionName ? ` - ${sectionName}` : ""}{subjectName ? ` - ${subjectName}` : ""}
                           </p>
                           <p className="text-xs text-stone-500">Due {dueLabel}</p>
+                          {assignment.referenceFileUrl && (
+                            <a href={assignment.referenceFileUrl} download={assignment.referenceFileName || undefined} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-800 hover:underline">
+                              Reference: {assignment.referenceFileName || "Download file"}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
                         </div>
                         <span className="text-sm font-medium text-brand-800">
                           {submissionsByAssignment.get(assignment.id) || 0}/{targetStudents.length} submissions

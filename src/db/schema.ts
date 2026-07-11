@@ -256,6 +256,8 @@ export const assignments = pgTable('assignments', {
   subjectId: integer('subject_id').references(() => subjects.id, { onDelete: 'set null' }),
   title: varchar('title', { length: 255 }).notNull(),
   description: text('description'),
+  referenceFileUrl: text('reference_file_url'),
+  referenceFileName: varchar('reference_file_name', { length: 255 }),
   dueAt: timestamp('due_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });

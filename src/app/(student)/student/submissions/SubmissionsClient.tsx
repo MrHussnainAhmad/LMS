@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { File, UploadCloud, X } from "lucide-react";
+import { Download, File, UploadCloud, X } from "lucide-react";
 import { useToast } from "@/components/ui/toaster";
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -21,6 +21,8 @@ type AssignmentItem = {
   description: string | null;
   dueAtLabel: string;
   subjectName: string | null;
+  referenceFileUrl: string | null;
+  referenceFileName: string | null;
   submittedFileKey: string | null;
 };
 
@@ -116,18 +118,21 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
             <p className="text-sm text-stone-500">No assignment has been created for your class yet.</p>
           ) : (
             assignments.map((assignment) => (
-              <button
+              <div
                 key={assignment.id}
-                type="button"
-                onClick={() => {
-                  setSelectedAssignmentId(assignment.id);
-                  setFile(null);
-                }}
                 className={`w-full text-left p-4 rounded-lg border transition-colors ${
                   assignment.id === selectedAssignmentId ? "border-brand-500 bg-brand-50" : "border-border bg-surface hover:bg-stone-50"
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedAssignmentId(assignment.id);
+                    setFile(null);
+                  }}
+                  className="w-full text-left"
+                >
+                  <div className="flex items-start justify-between gap-3">
                   <div>
                     <h3 className="font-semibold text-brand-950 text-sm">{assignment.title}</h3>
                     <p className="text-xs text-stone-500 mt-1">
@@ -140,8 +145,21 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
                   }`}>
                     {assignment.submittedFileKey ? "Submitted" : "Pending"}
                   </span>
-                </div>
-              </button>
+                  </div>
+                </button>
+                {assignment.referenceFileUrl && (
+                  <a
+                    href={assignment.referenceFileUrl}
+                    download={assignment.referenceFileName || undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-800 hover:underline"
+                  >
+                    <Download className="h-4 w-4" />
+                    {assignment.referenceFileName || "Download reference file"}
+                  </a>
+                )}
+              </div>
             ))
           )}
         </CardContent>

@@ -46,6 +46,8 @@ export default async function StudentSubmissionsPage() {
             timeZone: "UTC",
           }),
           subjectName,
+          referenceFileUrl: assignment.referenceFileUrl,
+          referenceFileName: assignment.referenceFileName,
           submittedFileKey: fileKey,
         }))}
       />

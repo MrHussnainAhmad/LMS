@@ -160,11 +160,19 @@ export async function createStaffAssignmentAction(formData: FormData) {
   const subjectId = toOptionalNumber(formData.get("subjectId"));
   const title = String(formData.get("title") || "").trim();
   const description = String(formData.get("description") || "").trim();
+  const referenceFileKey = String(formData.get("referenceFileKey") || "").trim();
+  const referenceFileName = String(formData.get("referenceFileName") || "").trim();
   const dueAtRaw = String(formData.get("dueAt") || "");
   if (!title || !dueAtRaw) throw new Error("Title and due date are required");
+  if (referenceFileKey && !referenceFileName) throw new Error("Reference file name is missing");
+  if (referenceFileName.length > 255) throw new Error("Reference file name is too long");
 
   const section = await requireStaffSection(session.userId, session.institutionId, sectionId, subjectId ?? undefined);
   if (subjectId) await requireInstitutionSubjects(session.institutionId, [subjectId]);
+
+  const referenceResource = referenceFileKey
+    ? await verifyCloudinarySubmission(referenceFileKey)
+    : null;
 
   await db.insert(assignments).values({
     institutionId: session.institutionId,
@@ -174,6 +182,8 @@ export async function createStaffAssignmentAction(formData: FormData) {
     subjectId,
     title,
     description: description || null,
+    referenceFileUrl: referenceResource?.secure_url || null,
+    referenceFileName: referenceResource ? referenceFileName : null,
     dueAt: new Date(dueAtRaw),
   });
 
@@ -593,7 +603,7 @@ export async function saveStudentSubmission(assignmentId: number, fileKey: strin
   revalidatePath("/student/submissions");
 }
 
-async function verifyCloudinarySubmission(fileKey: string) {
+export async function verifyCloudinarySubmission(fileKey: string) {
   if (!fileKey || fileKey.includes("://") || !fileKey.startsWith("lms-uploads/")) {
     throw new Error("Invalid uploaded file reference");
   }
@@ -608,6 +618,7 @@ async function verifyCloudinarySubmission(fileKey: string) {
   if (!ALLOWED_SUBMISSION_FORMATS.has(format)) {
     throw new Error("Uploaded file type is not allowed");
   }
+  return resource;
 }
 
 async function getCloudinaryResource(publicId: string) {

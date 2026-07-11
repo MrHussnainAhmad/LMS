@@ -3,7 +3,7 @@ import { saveStudentSubmission } from "@/app/actions/assessment-actions";
 import { db } from "@/db";
 import { assignments, submissions, students, subjects } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { eq, and, desc, inArray, or, isNull } from "drizzle-orm";
+import { eq, and, desc, or, isNull } from "drizzle-orm";
 
 export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -37,6 +37,8 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
         id: assignments.id,
         title: assignments.title,
         description: assignments.description,
+        referenceFileUrl: assignments.referenceFileUrl,
+        referenceFileName: assignments.referenceFileName,
         dueAt: assignments.dueAt,
         subjectName: subjects.name,
       })
