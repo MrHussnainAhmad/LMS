@@ -5,7 +5,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { verify } from '@node-rs/argon2';
 import { createTokens, setAuthCookies, UserRole } from '@/lib/auth';
 import { JWTPayload } from '@/lib/auth-types';
-import { withRateLimit } from '@/lib/rate-limit';
+import { PlatformLoginKind, withPlatformLoginRateLimit, withRateLimit } from '@/lib/rate-limit';
 import { logAudit } from '@/lib/audit';
 import { loginSchema } from '@/lib/validators/auth';
 import { sendEmail, LoginNotificationEmail } from '@/lib/email';
@@ -139,11 +139,6 @@ async function runPostLoginSideEffects(params: {
 
 export async function POST(req: NextRequest) {
   try {
-    const rateLimit = await withRateLimit(req, 'auth');
-    if (!rateLimit.success) {
-      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
-    }
-
     const body = await req.json();
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) {
@@ -156,7 +151,7 @@ export async function POST(req: NextRequest) {
     const userAgent = req.headers.get('user-agent') ?? 'Unknown';
     const lookupRoles = getLoginLookupRoles(roleHint);
 
-    let user: { id: number; email?: string; contactEmail?: string } | null = null;
+    let user: { id: number; email?: string; contactEmail?: string; isSuperAdmin?: boolean } | null = null;
     let role: UserRole | null = null;
     let institutionId: number | undefined;
     let campusId: number | undefined;
@@ -230,6 +225,28 @@ export async function POST(req: NextRequest) {
     const inst = lookupResults.find((result) => result.role === 'INSTITUTION')?.rows[0];
     const stf = lookupResults.find((result) => result.role === 'STAFF')?.rows[0];
     const stu = lookupResults.find((result) => result.role === 'STUDENT')?.rows[0];
+
+    let platformLoginKind: PlatformLoginKind | null = null;
+    if (admin) {
+      platformLoginKind = admin.isSuperAdmin ? 'super-admin' : 'mini-admin';
+    } else if (emp || roleHint === 'EMPLOYEE') {
+      platformLoginKind = 'employee';
+    } else if (roleHint === 'SUPER_ADMIN') {
+      // Unknown admin identifiers get the strictest limit to prevent enumeration
+      // from weakening protection on the Super Admin login route.
+      platformLoginKind = 'super-admin';
+    }
+
+    const rateLimit = platformLoginKind
+      ? await withPlatformLoginRateLimit(req, platformLoginKind, loginIdentifier)
+      : await withRateLimit(req, 'auth');
+
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { error: 'Too many login attempts. Please try again in one minute.' },
+        { status: 429 },
+      );
+    }
 
     if (admin) {
       if (!securityAnswer) {
@@ -308,7 +325,7 @@ export async function POST(req: NextRequest) {
       institutionId,
       campusId,
       mustChangePassword,
-      isSuperAdmin: role === 'SUPER_ADMIN' ? (user as any).isSuperAdmin : undefined,
+      isSuperAdmin: role === 'SUPER_ADMIN' ? user.isSuperAdmin : undefined,
     };
 
     const { accessToken, refreshToken } = await createTokens(payload);
