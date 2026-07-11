@@ -11,12 +11,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const [page] = await db.select().from(platformPages).where(eq(platformPages.slug, resolvedParams.slug));
   
   if (!page) {
-    return { title: "Page Not Found | Taleem360" };
+    return { title: "Page Not Found | Nisaab360" };
   }
 
   return {
-    title: `${page.title} | Taleem360`,
-    description: `Read the ${page.title} for Taleem360.`,
+    title: `${page.title} | Nisaab360`,
+    description: `Read the ${page.title} for Nisaab360.`,
   };
 }
 
@@ -36,9 +36,9 @@ export default async function StaticPage({ params }: { params: Promise<{ slug: s
         <Link href="/" className="flex items-center gap-3 group">
           <div className="h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-brand-100 transition-transform group-hover:scale-105">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/Logo.png" alt="Taleem360 logo" className="h-full w-full object-contain" />
+            <img src="/Logo.png" alt="Nisaab360 logo" className="h-full w-full object-contain" />
           </div>
-          <span className="font-display font-extrabold text-xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Taleem360</span>
+          <span className="font-display font-extrabold text-xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Nisaab360</span>
         </Link>
         <Link href="/" className="ml-auto text-sm font-semibold text-stone-500 hover:text-stone-900 flex items-center gap-2">
           <ArrowLeft className="w-4 h-4" /> Back to Home
@@ -56,7 +56,7 @@ export default async function StaticPage({ params }: { params: Promise<{ slug: s
       </main>
 
       <footer className="w-full bg-white border-t border-stone-200 py-10 px-6 text-center">
-        <p className="text-stone-400 text-sm">&copy; {new Date().getFullYear()} Taleem360 Inc. All rights reserved.</p>
+        <p className="text-stone-400 text-sm">&copy; {new Date().getFullYear()} Nisaab360 Inc. All rights reserved.</p>
       </footer>
     </div>
   );

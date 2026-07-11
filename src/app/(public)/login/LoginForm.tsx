@@ -84,7 +84,7 @@ const modeCopy = {
   EMPLOYEE: {
     eyebrow: "Employee Login",
     title: "Open your operations dashboard",
-    description: "For Taleem360 employees handling platform operations and institution verification.",
+    description: "For Nisaab360 employees handling platform operations and institution verification.",
     icon: UserCog,
     identifierLabel: "Email",
     identifierPlaceholder: "Enter your employee email",
@@ -277,7 +277,7 @@ function LoginPanelVector() {
       viewBox="0 0 360 160"
       fill="none"
       role="img"
-      aria-label="Taleem360 secure login illustration"
+      aria-label="Nisaab360 secure login illustration"
       xmlns="http://www.w3.org/2000/svg"
     >
       <rect x="28" y="28" width="224" height="116" rx="16" fill="white" stroke="#E7E5E4" />

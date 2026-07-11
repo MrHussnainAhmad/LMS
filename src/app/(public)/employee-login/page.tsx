@@ -12,7 +12,7 @@ export default function EmployeeLoginPage() {
       <div className="w-full max-w-4xl">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-display font-bold text-brand-950 mb-2">Employee Login</h1>
-          <p className="text-stone-500 text-sm">For Taleem360 employees and platform operations.</p>
+          <p className="text-stone-500 text-sm">For Nisaab360 employees and platform operations.</p>
         </div>
         <LoginForm mode="EMPLOYEE" />
       </div>

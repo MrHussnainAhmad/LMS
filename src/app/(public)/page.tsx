@@ -25,20 +25,20 @@ const pricingPlans = [
 ];
 
 export const metadata: Metadata = {
-  title: "Taleem360 | The Ultimate Platform for Modern Educational Institutions",
-  description: "Taleem360 is the leading multi-tenant learning management system. Streamline administration, boost engagement, and leverage advanced analytics for your school, college, or university.",
-  keywords: ["Learning Management System", "School ERP", "Student Information System", "EdTech", "Taleem360", "Multi-tenant LMS"],
-  authors: [{ name: "Taleem360" }],
+  title: "Nisaab360 | The Ultimate Platform for Modern Educational Institutions",
+  description: "Nisaab360 is the leading multi-tenant learning management system. Streamline administration, boost engagement, and leverage advanced analytics for your school, college, or university.",
+  keywords: ["Learning Management System", "School ERP", "Student Information System", "EdTech", "Nisaab360", "Multi-tenant LMS"],
+  authors: [{ name: "Nisaab360" }],
   openGraph: {
-    title: "Taleem360 | Modern Educational Platform",
+    title: "Nisaab360 | Modern Educational Platform",
     description: "The next-generation platform for modern education. Simplify admin tasks and improve learning outcomes.",
     type: "website",
-    url: "https://taleem360.com",
-    siteName: "Taleem360"
+    url: "https://nisaab360.com",
+    siteName: "Nisaab360"
   },
   twitter: {
     card: "summary_large_image",
-    title: "Taleem360 | Modern Educational Platform",
+    title: "Nisaab360 | Modern Educational Platform",
     description: "Streamline administration and boost engagement.",
   }
 };
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "Taleem360",
+  "name": "Nisaab360",
   "applicationCategory": "EducationalApplication",
   "operatingSystem": "Any",
   "description": "A comprehensive, multi-tenant learning management system built for schools, colleges, and universities.",
@@ -113,9 +113,9 @@ export default async function LandingPage() {
         <div className="flex items-center gap-3 group cursor-pointer">
           <div className="h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-brand-100 transition-transform group-hover:scale-105">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/Logo.png" alt="Taleem360 logo" className="h-full w-full object-contain" />
+            <img src="/Logo.png" alt="Nisaab360 logo" className="h-full w-full object-contain" />
           </div>
-          <span className="font-display font-extrabold text-2xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Taleem360</span>
+          <span className="font-display font-extrabold text-2xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Nisaab360</span>
         </div>
         
         <nav className="hidden lg:flex items-center gap-8">
@@ -364,9 +364,9 @@ export default async function LandingPage() {
              <div className="flex items-center gap-2 mb-6">
                 <div className="h-9 w-9 overflow-hidden rounded-lg bg-white ring-1 ring-white/10">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/Logo.png" alt="Taleem360 logo" className="h-full w-full object-contain" />
+                  <img src="/Logo.png" alt="Nisaab360 logo" className="h-full w-full object-contain" />
                 </div>
-                <span className="font-display font-bold text-2xl">Taleem360</span>
+                <span className="font-display font-bold text-2xl">Nisaab360</span>
              </div>
              <p className="text-stone-400 text-sm max-w-xs mb-6">
                The next-generation platform for modern education. Simplify admin tasks, boost engagement, and leverage advanced analytics.
@@ -394,7 +394,7 @@ export default async function LandingPage() {
         </div>
         
         <div className="max-w-7xl mx-auto pt-8 border-t border-stone-800 flex flex-col md:flex-row justify-between items-center gap-4">
-           <p className="text-stone-400 text-sm">&copy; {new Date().getFullYear()} Taleem360 Inc. All rights reserved.</p>
+           <p className="text-stone-400 text-sm">&copy; {new Date().getFullYear()} Nisaab360 Inc. All rights reserved.</p>
            <div className="text-stone-400 text-sm font-medium">Made with passion for educators.</div>
         </div>
       </footer>

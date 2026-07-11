@@ -49,7 +49,7 @@ export function BrandMark({ brand, className, iconClassName }: BrandMarkProps) {
   return (
     <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white ring-1 ring-brand-100", className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/Logo.png" alt="Taleem360 logo" className={cn("h-full w-full object-contain", iconClassName)} />
+      <img src="/Logo.png" alt="Nisaab360 logo" className={cn("h-full w-full object-contain", iconClassName)} />
     </span>
   );
 }

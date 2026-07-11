@@ -12,7 +12,7 @@ export default function LoginPage() {
       <div className="w-full max-w-4xl">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-display font-bold text-brand-950 mb-2">Student & Staff Login</h1>
-          <p className="text-stone-500 text-sm">Access your Taleem360 classroom workspace.</p>
+          <p className="text-stone-500 text-sm">Access your Nisaab360 classroom workspace.</p>
         </div>
         <LoginForm mode="STUDENT_STAFF" />
       </div>

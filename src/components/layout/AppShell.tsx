@@ -19,7 +19,7 @@ export function AppShell({ children, sidebarItems, userRole }: AppShellProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [navAvailability, setNavAvailability] = useState<NavAvailability>({});
   const [brand, setBrand] = useState<ShellBrand>({
-    name: "Taleem360",
+    name: "Nisaab360",
     logoKey: null,
     href: "/",
     isInstitutionBrand: false,

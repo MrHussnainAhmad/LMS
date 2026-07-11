@@ -103,7 +103,7 @@ export default async function InstitutionDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-stone-500 text-sm mb-4">Your feedback helps us improve Taleem360 and will be featured on our homepage.</p>
+                <p className="text-stone-500 text-sm mb-4">Your feedback helps us improve Nisaab360 and will be featured on our homepage.</p>
                 <PlatformReviewForm />
               </CardContent>
             </Card>
