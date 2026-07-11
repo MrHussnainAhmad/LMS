@@ -51,7 +51,25 @@ export default async function StaticPage({ params }: { params: Promise<{ slug: s
           <div className="text-sm text-stone-500 mb-12 uppercase tracking-wider font-semibold">
             Last updated: {new Date(page.updatedAt).toLocaleDateString()}
           </div>
-          <ReactMarkdown>{page.content}</ReactMarkdown>
+          <ReactMarkdown
+            components={{
+              ul: ({ children, ...props }) => (
+                <ul className="my-5 list-disc space-y-2 pl-7 marker:text-brand-600" {...props}>
+                  {children}
+                </ul>
+              ),
+              ol: ({ children, ...props }) => (
+                <ol className="my-5 list-decimal space-y-2 pl-7 marker:font-semibold marker:text-brand-600" {...props}>
+                  {children}
+                </ol>
+              ),
+              li: ({ children, ...props }) => (
+                <li className="pl-1" {...props}>{children}</li>
+              ),
+            }}
+          >
+            {page.content}
+          </ReactMarkdown>
         </article>
       </main>
 
