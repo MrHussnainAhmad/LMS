@@ -112,7 +112,6 @@ screenshots/
 instituion_settings.png
 
 # local backups and scratchpads
-/backup/
 /k6/
 /insert-sa.sql
 /scripts/create-sa.ts
