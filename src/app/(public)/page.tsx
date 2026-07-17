@@ -145,7 +145,7 @@ export default async function LandingPage() {
         <div className="flex items-center gap-3 group cursor-pointer">
           <div className="h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-brand-100">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <Image src="/Logo.png" alt="Nisaab360 logo" width={40} height={40} className="h-full w-full object-contain" />
+            <Image src="/Logo.png" alt="Nisaab360 logo" width={40} height={40} quality={80} className="h-full w-full object-contain" />
           </div>
           <span className="font-display font-extrabold text-2xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Nisaab360</span>
         </div>
@@ -357,7 +357,7 @@ export default async function LandingPage() {
                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                    <div>
                      <p className="text-sm font-semibold uppercase tracking-wider text-stone-300">One-time setup fee</p>
-                     <p className="mt-1 text-sm text-stone-400">Institution setup, onboarding, and basic configuration.</p>
+                     <p className="mt-1 text-sm text-stone-200">Institution setup, onboarding, and basic configuration.</p>
                    </div>
                    <p className="text-2xl font-display font-bold text-white">PKR 15,000</p>
                  </div>
@@ -379,28 +379,6 @@ export default async function LandingPage() {
 
                <FadeIn direction="up" delay={0.4} className="flex justify-center">
                  <Button size="lg" className="landing-hover h-14 rounded-full bg-white px-10 text-base font-bold text-stone-900 hover:bg-stone-100 shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-100" asChild>
-                   <a href="mailto:Workwithhussnainahmad@gmail.com">Contact Sales: Workwithhussnainahmad@gmail.com</a>
-                 </Button>
-               </FadeIn>
-             </div>
-          </ScaleIn>
-        </section>
-      </main>
-
-      {/* --- Professional Footer --- */}
-      <footer className="w-full bg-stone-950 text-white border-t border-stone-800 pt-20 pb-10 px-6 md:px-12">
-        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-12 mb-16">
-           <div className="col-span-2">
-             <div className="flex items-center gap-2 mb-6">
-                <div className="h-9 w-9 overflow-hidden rounded-lg bg-white ring-1 ring-white/10">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <Image src="/Logo.png" alt="Nisaab360 logo" width={40} height={40} className="h-full w-full object-contain" />
-                </div>
-                <span className="font-display font-bold text-2xl">Nisaab360</span>
-             </div>
-             <p className="text-stone-400 text-sm max-w-xs mb-6">
-               The next-generation platform for modern education. Simplify admin tasks, boost engagement, and leverage advanced analytics.
-             </p>
            </div>
            
            <div>

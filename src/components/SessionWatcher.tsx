@@ -36,7 +36,7 @@ export default function SessionWatcher() {
             } catch (e) {
               // ignore network error on logout
             }
-            router.replace("/login");
+            window.location.href = "/login";
           }
         }
       } catch (err) {

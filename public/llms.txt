@@ -1,0 +1,7 @@
+# Nisaab360 Architecture & Documentation
+
+Welcome to Nisaab360.
+
+- [Home](/)
+- [Login](/login)
+- [Register](/register)

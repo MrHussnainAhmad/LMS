@@ -29,7 +29,7 @@ export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
   const handleLogout = async () => {
     try {
       await api.post("/api/auth/logout", {});
-      router.push("/login");
+      window.location.href = "/login";
     } catch (err) {
       console.error(err);
     }

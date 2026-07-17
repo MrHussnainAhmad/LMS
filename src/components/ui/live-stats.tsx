@@ -23,7 +23,7 @@ export function LiveStats({ stats }: { stats: { institutions: number; students: 
             <div key={label} className="flex flex-col items-center justify-center rounded-3xl border border-stone-100 bg-white p-6 shadow-lg">
               <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><Icon className="h-7 w-7" /></div>
               <div className="mb-2 font-display text-4xl font-extrabold tracking-tight text-stone-900 md:text-5xl">{format(value)}</div>
-              <div className="text-sm font-medium uppercase tracking-widest text-stone-500">{label}</div>
+              <div className="text-sm font-medium uppercase tracking-widest text-stone-700">{label}</div>
             </div>
           ))}
         </div>
