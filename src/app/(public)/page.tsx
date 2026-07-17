@@ -3,7 +3,7 @@ import { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, CheckCircle2, Download, LayoutDashboard, Calendar, Bell, Star, MessageSquareQuote } from "lucide-react";
+import { ArrowRight, CheckCircle2, LayoutDashboard, Calendar, Bell, Star, MessageSquareQuote } from "lucide-react";
 import { FadeIn, HeroFadeIn, StaggerContainer, StaggerItem, ScaleIn } from "@/components/ui/scroll-animation";
 import { AnimatedBackground, FloatingIcons } from "@/components/ui/animated-background";
 import { db } from "@/db";
@@ -114,56 +114,36 @@ const getLandingData = unstable_cache(
 
 export default async function LandingPage() {
   const { featuredLogos, latestReviews, stats } = await getLandingData();
-  const shouldMarqueeLogos = featuredLogos.length > 5;
 
   return (
     <div className="flex flex-col min-h-screen bg-[#FDFCFB] selection:bg-brand-500 selection:text-white font-sans text-stone-900 scroll-smooth overflow-x-hidden">
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes marquee {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
+      <style>{`
+        @keyframes landing-reveal {
+          from { opacity: 0; transform: translate3d(0, 12px, 0); }
+          to { opacity: 1; transform: translate3d(0, 0, 0); }
         }
-        .animate-marquee {
-          animation: marquee 30s linear infinite;
+        .landing-reveal {
+          animation: landing-reveal 420ms cubic-bezier(.2,.8,.2,1) both;
         }
-        .animate-marquee:hover {
-          animation-play-state: paused;
+        .landing-hover {
+          transition: transform 160ms ease, box-shadow 160ms ease;
         }
-        @keyframes blob {
-          0% { transform: translate(0px, 0px) scale(1); }
-          33% { transform: translate(30px, -50px) scale(1.1); }
-          66% { transform: translate(-20px, 20px) scale(0.9); }
-          100% { transform: translate(0px, 0px) scale(1); }
+        .landing-hover:hover {
+          transform: translate3d(0, -3px, 0);
         }
-        .animate-blob {
-          animation: blob 15s infinite;
+        @media (prefers-reduced-motion: reduce) {
+          .landing-reveal { animation: none; }
+          .landing-hover { transition: none; }
+          .landing-hover:hover { transform: none; }
         }
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-        @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-20px); }
-        }
-        .animate-float {
-          animation: float 6s ease-in-out infinite;
-        }
-        @keyframes pulse-glow {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(98, 125, 152, 0.2); }
-          50% { box-shadow: 0 0 40px 10px rgba(98, 125, 152, 0); }
-        }
-        .animate-pulse-glow {
-          animation: pulse-glow 4s infinite;
-        }
-      `}} />
-
+      `}</style>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       <AnimatedBackground />
 
-      <header className="sticky top-0 z-50 flex items-center justify-between px-6 md:px-12 py-4 backdrop-blur-2xl bg-white/60 border-b border-stone-200/50 shadow-sm transition-all duration-300">
+      <header className="sticky top-0 z-50 flex items-center justify-between border-b border-stone-200 bg-white px-6 py-4 shadow-sm md:px-12">
         <div className="flex items-center gap-3 group cursor-pointer">
-          <div className="h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-brand-100 transition-transform group-hover:scale-105">
+          <div className="h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-brand-100">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <Image src="/Logo.png" alt="Nisaab360 logo" width={40} height={40} className="h-full w-full object-contain" />
           </div>
@@ -171,19 +151,14 @@ export default async function LandingPage() {
         </div>
         
         <nav className="hidden lg:flex items-center gap-8">
-          <Link href="#testimonials" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Customers</Link>
-          <Link href="#pricing" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Pricing</Link>
-          <Button asChild size="sm" variant="outline" className="rounded-full font-semibold">
-            <Link href="/download-app">
-              <Download className="mr-1.5 h-3.5 w-3.5" />
-              Download
-            </Link>
-          </Button>
-          <Link href="/employee-login" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Employee Login</Link>
+          <Link href="#testimonials" className="text-sm font-semibold text-stone-600 hover:text-stone-900">Customers</Link>
+          <Link href="#pricing" className="text-sm font-semibold text-stone-600 hover:text-stone-900">Pricing</Link>
+          <Link href="/download-app" className="text-sm font-semibold text-stone-600 hover:text-stone-900">Download</Link>
+          <Link href="/employee-login" className="text-sm font-semibold text-stone-600 hover:text-stone-900">Employee Login</Link>
         </nav>
 
         <div className="flex items-center gap-4">
-          <Button asChild className="rounded-full font-semibold shadow-lg shadow-brand-500/20 hover:shadow-brand-500/40 hover:-translate-y-0.5 transition-all">
+          <Button asChild className="landing-hover rounded-full font-semibold shadow-lg shadow-brand-500/20 active:scale-100">
             <Link href="/register">Request as Institution</Link>
           </Button>
         </div>
@@ -209,12 +184,12 @@ export default async function LandingPage() {
             
             <HeroFadeIn direction="up" delay={0.3} className="w-full">
               <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-                <Button size="lg" className="rounded-full h-12 px-7 text-base font-semibold shadow-xl shadow-brand-500/25 hover:shadow-brand-500/40 hover:-translate-y-1 transition-all group" asChild>
+                <Button size="lg" className="landing-hover h-12 rounded-full px-7 text-base font-semibold shadow-xl shadow-brand-500/25 active:scale-100" asChild>
                   <Link href="/login">
-                    Login <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                    Login <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
                 </Button>
-                <Button size="lg" variant="outline" className="rounded-full h-12 px-7 text-base font-semibold bg-white border-stone-200 hover:bg-stone-50 hover:border-stone-300 transition-all group" asChild>
+                <Button size="lg" variant="outline" className="landing-hover h-12 rounded-full border-stone-200 bg-white px-7 text-base font-semibold hover:bg-stone-50 active:scale-100" asChild>
                   <Link href="/institution-login">
                     Institution Login
                   </Link>
@@ -224,8 +199,8 @@ export default async function LandingPage() {
           </div>
           
           <HeroFadeIn direction="left" delay={0.4} className="flex-1 w-full relative group">
-            <div className="absolute inset-0 bg-gradient-to-tr from-brand-100 to-indigo-50 rounded-[2.5rem] transform rotate-3 scale-105 -z-10 transition-all duration-1000 group-hover:rotate-6 group-hover:scale-110"></div>
-            <div className="relative bg-white rounded-[2rem] shadow-2xl shadow-stone-900/10 border border-stone-100 overflow-hidden animate-float hover:animate-none group-hover:shadow-brand-500/30 transition-all duration-700 hover:-translate-y-4">
+            <div className="absolute inset-0 -z-10 scale-105 rotate-3 rounded-[2.5rem] bg-gradient-to-tr from-brand-100 to-indigo-50"></div>
+            <div className="relative overflow-hidden rounded-[2rem] border border-stone-100 bg-white shadow-2xl shadow-stone-900/10">
                {/* Complex Mockup Right Side */}
                <div className="h-10 border-b border-stone-100 flex items-center px-5 gap-2 bg-stone-50/80">
                  <div className="w-3 h-3 rounded-full bg-stone-300"></div><div className="w-3 h-3 rounded-full bg-stone-300"></div><div className="w-3 h-3 rounded-full bg-stone-300"></div>
@@ -263,10 +238,10 @@ export default async function LandingPage() {
         {featuredLogos.length > 0 && (
            <section className="w-full border-y border-stone-200 bg-white py-10 overflow-hidden relative">
              <div className="max-w-7xl mx-auto px-6 md:px-12 text-center relative">
-               <div className={shouldMarqueeLogos ? "flex w-max animate-marquee" : "flex flex-wrap justify-center"}>
+               <div className="flex flex-wrap justify-center">
                  <div className="flex items-center gap-16 py-4 px-8">
                   {featuredLogos.map((inst, i) => (
-                    <div key={i} className="flex items-center gap-3 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300 shrink-0">
+                    <div key={i} className="flex shrink-0 items-center gap-3 grayscale opacity-60">
                       {inst.logoKey && (
                         <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
                           <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover" />
@@ -276,22 +251,6 @@ export default async function LandingPage() {
                     </div>
                   ))}
                  </div>
-
-                {/* Duplicate for infinite marquee if needed */}
-                {shouldMarqueeLogos && (
-                  <div className="flex items-center gap-16 py-4 px-8" aria-hidden="true">
-                    {featuredLogos.map((inst, i) => (
-                      <div key={`dup-${i}`} className="flex items-center gap-3 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300 shrink-0">
-                        {inst.logoKey && (
-                          <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
-                            <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover" />
-                          </div>
-                        )}
-                        <span className="font-display font-semibold text-stone-700 whitespace-nowrap">{inst.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
                </div>
              </div>
           </section>
@@ -309,8 +268,8 @@ export default async function LandingPage() {
           </FadeIn>
           
           <StaggerContainer className="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-6 h-auto md:h-[600px]">
-             <StaggerItem className="md:col-span-2 md:row-span-2 relative p-8 rounded-3xl bg-stone-50 border border-stone-200 overflow-hidden group hover:shadow-2xl transition-all duration-500 hover:border-brand-200 flex flex-col justify-between">
-                <div className="absolute inset-0 bg-gradient-to-br from-brand-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+             <StaggerItem className="landing-hover relative flex flex-col justify-between overflow-hidden rounded-3xl border border-stone-200 bg-stone-50 p-8 md:col-span-2 md:row-span-2">
+                <div className="absolute inset-0 bg-gradient-to-br from-brand-50/50 to-transparent" />
                 <div className="relative z-10 max-w-md mb-8">
                   <div className="h-12 w-12 rounded-xl bg-brand-100 flex items-center justify-center mb-6 text-brand-700">
                      <LayoutDashboard className="h-6 w-6" />
@@ -318,7 +277,7 @@ export default async function LandingPage() {
                   <h3 className="text-3xl font-display font-bold text-stone-900 mb-4">Unified Command Center</h3>
                   <p className="text-stone-600 text-lg">Manage multiple campuses, staff members, and thousands of students from a single, lightning-fast dashboard.</p>
                 </div>
-                <div className="relative z-10 bg-white rounded-t-2xl shadow-[0_0_40px_-10px_rgba(0,0,0,0.1)] border border-stone-200 border-b-0 h-48 w-full transform group-hover:-translate-y-2 transition-transform duration-500">
+                <div className="relative z-10 h-48 w-full rounded-t-2xl border border-b-0 border-stone-200 bg-white shadow-[0_0_40px_-10px_rgba(0,0,0,0.1)]">
                    <div className="p-4 flex gap-4">
                      <div className="w-48 h-32 bg-stone-50 rounded-lg border border-stone-100"></div>
                      <div className="flex-1 space-y-4 pt-2">
@@ -330,19 +289,19 @@ export default async function LandingPage() {
                 </div>
              </StaggerItem>
 
-             <StaggerItem className="p-8 rounded-3xl bg-indigo-50 border border-indigo-100 overflow-hidden group hover:shadow-xl transition-all duration-500">
-                <div className="h-12 w-12 rounded-xl bg-indigo-100 flex items-center justify-center mb-6 text-indigo-700 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300">
+             <StaggerItem className="landing-hover overflow-hidden rounded-3xl border border-indigo-100 bg-indigo-50 p-8">
+                <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
                    <Calendar className="h-6 w-6" />
                 </div>
-                <h3 className="text-2xl font-display font-bold text-stone-900 mb-3 group-hover:text-indigo-900 transition-colors">Smart Timetables</h3>
+                <h3 className="mb-3 font-display text-2xl font-bold text-stone-900">Smart Timetables</h3>
                 <p className="text-stone-700">Automate conflict resolution and generate optimal schedules instantly.</p>
              </StaggerItem>
 
-             <StaggerItem className="p-8 rounded-3xl bg-stone-900 text-white border border-stone-800 overflow-hidden group hover:shadow-xl hover:shadow-brand-500/20 transition-all duration-500">
-                <div className="h-12 w-12 rounded-xl bg-stone-800 flex items-center justify-center mb-6 text-stone-300 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300">
+             <StaggerItem className="landing-hover overflow-hidden rounded-3xl border border-stone-800 bg-stone-900 p-8 text-white">
+                <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-stone-800 text-stone-300">
                    <Bell className="h-6 w-6" />
                 </div>
-                <h3 className="text-2xl font-display font-bold mb-3 group-hover:text-brand-300 transition-colors">Instant Alerts</h3>
+                <h3 className="mb-3 font-display text-2xl font-bold">Instant Alerts</h3>
                 <p className="text-stone-400">Push notifications for parents, students, and staff. Never miss an update.</p>
              </StaggerItem>
           </StaggerContainer>
@@ -359,7 +318,7 @@ export default async function LandingPage() {
                </FadeIn>
                <StaggerContainer className="grid md:grid-cols-3 gap-8 text-left">
                  {latestReviews.map((review) => (
-                   <StaggerItem key={review.id} className="bg-white p-8 rounded-3xl shadow-sm border border-stone-200 hover:shadow-xl hover:-translate-y-2 transition-all duration-500 flex flex-col group">
+                   <StaggerItem key={review.id} className="landing-hover flex flex-col rounded-3xl border border-stone-200 bg-white p-8 shadow-sm">
                      <div className="flex text-amber-400 mb-6">
                        {Array.from({length: 5}).map((_, i) => (
                           <Star key={i} className={`w-5 h-5 ${i < review.rating ? 'fill-current' : 'text-stone-200'}`} />
@@ -368,9 +327,9 @@ export default async function LandingPage() {
                       <p className="text-lg text-stone-700 mb-8 italic flex-1">&ldquo;{review.content}&rdquo;</p>
                      <div className="flex items-center gap-4 mt-auto">
                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                       {review.logoKey ? <img src={review.logoKey} alt={review.institutionName} className="w-12 h-12 rounded-full border border-stone-200 object-cover group-hover:scale-110 transition-transform duration-300" /> : <div className="w-12 h-12 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-xl group-hover:scale-110 transition-transform duration-300">{review.institutionName.charAt(0)}</div>}
+                       {review.logoKey ? <img src={review.logoKey} alt={review.institutionName} className="h-12 w-12 rounded-full border border-stone-200 object-cover" /> : <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-100 text-xl font-bold text-brand-700">{review.institutionName.charAt(0)}</div>}
                        <div>
-                         <div className="font-bold text-stone-900 line-clamp-1 group-hover:text-brand-600 transition-colors">{review.institutionName}</div>
+                         <div className="line-clamp-1 font-bold text-stone-900">{review.institutionName}</div>
                          <div className="text-sm text-stone-500">{review.city}, {review.country}</div>
                        </div>
                      </div>
@@ -383,9 +342,9 @@ export default async function LandingPage() {
 
         {/* --- Final CTA --- */}
         <section id="pricing" className="w-full py-24 px-6 md:px-12">
-          <ScaleIn className="max-w-6xl mx-auto bg-stone-900 rounded-[3rem] p-8 md:p-14 lg:p-16 text-center relative overflow-hidden shadow-2xl group">
-             <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-500/20 blur-[100px] rounded-full translate-x-1/2 -translate-y-1/2 group-hover:scale-125 transition-transform duration-1000"></div>
-             <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo-500/20 blur-[100px] rounded-full -translate-x-1/2 translate-y-1/2 group-hover:scale-125 transition-transform duration-1000"></div>
+          <ScaleIn className="relative mx-auto max-w-6xl overflow-hidden rounded-[3rem] bg-stone-900 p-8 text-center shadow-2xl md:p-14 lg:p-16">
+             <div className="absolute right-0 top-0 h-[500px] w-[500px] -translate-y-1/2 translate-x-1/2 rounded-full bg-brand-500/20" />
+             <div className="absolute bottom-0 left-0 h-[500px] w-[500px] translate-y-1/2 -translate-x-1/2 rounded-full bg-indigo-500/20" />
              
              <div className="relative z-10">
                <FadeIn direction="up" delay={0.2} className="mb-10">
@@ -394,7 +353,7 @@ export default async function LandingPage() {
                  <p className="text-lg md:text-xl text-stone-300 max-w-2xl mx-auto">Start with a one-time setup, then choose the monthly plan that matches your student strength.</p>
                </FadeIn>
 
-               <FadeIn direction="up" delay={0.3} className="mx-auto mb-6 max-w-xl rounded-2xl border border-white/10 bg-white/10 p-5 text-left backdrop-blur hover:bg-white/20 transition-colors duration-500">
+               <FadeIn direction="up" delay={0.3} className="mx-auto mb-6 max-w-xl rounded-2xl border border-white/10 bg-white/10 p-5 text-left">
                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                    <div>
                      <p className="text-sm font-semibold uppercase tracking-wider text-stone-300">One-time setup fee</p>
@@ -406,7 +365,7 @@ export default async function LandingPage() {
 
                <StaggerContainer className="grid gap-4 md:grid-cols-3 mb-10 text-left">
                  {pricingPlans.map((plan) => (
-                   <StaggerItem key={plan.name} className="rounded-2xl border border-white/10 bg-white p-6 shadow-xl shadow-black/10 hover:shadow-brand-500/30 hover:-translate-y-2 transition-all duration-300">
+                   <StaggerItem key={plan.name} className="landing-hover rounded-2xl border border-white/10 bg-white p-6 shadow-xl shadow-black/10">
                      <p className="text-sm font-bold uppercase tracking-wider text-brand-700">{plan.name}</p>
                      <h3 className="mt-3 text-3xl font-display font-extrabold text-stone-950">{plan.price}</h3>
                      <p className="mt-1 text-sm font-semibold text-stone-500">per month</p>
@@ -419,7 +378,7 @@ export default async function LandingPage() {
                </StaggerContainer>
 
                <FadeIn direction="up" delay={0.4} className="flex justify-center">
-                 <Button size="lg" className="rounded-full h-14 px-10 text-base font-bold bg-white text-stone-900 hover:bg-stone-100 hover:scale-105 transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:shadow-[0_0_30px_rgba(255,255,255,0.4)]" asChild>
+                 <Button size="lg" className="landing-hover h-14 rounded-full bg-white px-10 text-base font-bold text-stone-900 hover:bg-stone-100 shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-100" asChild>
                    <a href="mailto:Workwithhussnainahmad@gmail.com">Contact Sales: Workwithhussnainahmad@gmail.com</a>
                  </Button>
                </FadeIn>
@@ -447,19 +406,19 @@ export default async function LandingPage() {
            <div>
              <h4 className="text-lg font-bold text-white mb-6">Company</h4>
              <ul className="space-y-4">
-                <li><Link href="/about-us" className="text-stone-400 hover:text-white transition-colors">About Us</Link></li>
-                <li><Link href="/careers" className="text-stone-400 hover:text-white transition-colors">Careers</Link></li>
-                <li><Link href="/blog" className="text-stone-400 hover:text-white transition-colors">Blog</Link></li>
-                <li><Link href="/contact" className="text-stone-400 hover:text-white transition-colors">Contact</Link></li>
+                <li><Link href="/about-us" className="text-stone-400 hover:text-white">About Us</Link></li>
+                <li><Link href="/careers" className="text-stone-400 hover:text-white">Careers</Link></li>
+                <li><Link href="/blog" className="text-stone-400 hover:text-white">Blog</Link></li>
+                <li><Link href="/contact" className="text-stone-400 hover:text-white">Contact</Link></li>
               </ul>
             </div>
             <div>
               <h4 className="text-lg font-bold text-white mb-6">Legal</h4>
               <ul className="space-y-4">
-                <li><Link href="/privacy-policy" className="text-stone-400 hover:text-white transition-colors">Privacy Policy</Link></li>
-                <li><Link href="/terms-of-service" className="text-stone-400 hover:text-white transition-colors">Terms of Service</Link></li>
-                <li><Link href="/security" className="text-stone-400 hover:text-white transition-colors">Security</Link></li>
-                <li><Link href="/gdpr" className="text-stone-400 hover:text-white transition-colors">GDPR</Link></li>
+                <li><Link href="/privacy-policy" className="text-stone-400 hover:text-white">Privacy Policy</Link></li>
+                <li><Link href="/terms-of-service" className="text-stone-400 hover:text-white">Terms of Service</Link></li>
+                <li><Link href="/security" className="text-stone-400 hover:text-white">Security</Link></li>
+                <li><Link href="/gdpr" className="text-stone-400 hover:text-white">GDPR</Link></li>
               </ul>
             </div>
         </div>
