@@ -60,24 +60,70 @@ export async function setAuthCookies(accessToken: string, refreshToken: string) 
     path: '/',
     maxAge: WEB_SESSION_EXPIRY_DAYS * 24 * 60 * 60,
   });
+
+  // Non-HttpOnly cookie for client-side session expiration tracking
+  cookieStore.set('session_exp', (Date.now() + WEB_SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toString(), {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: WEB_SESSION_EXPIRY_DAYS * 24 * 60 * 60,
+  });
 }
 
 export async function clearAuthCookies() {
   const cookieStore = await cookies();
   cookieStore.delete('access_token');
   cookieStore.delete('refresh_token');
+  cookieStore.delete('session_exp');
 }
 
 export async function getSession(): Promise<JWTPayload | null> {
-  const cookieStore = await cookies();
-  return await getSessionEdge(cookieStore);
+  let session: JWTPayload | null = null;
+  const { headers } = await import('next/headers');
+  const headersList = await headers();
+  const sessionHeader = headersList.get('x-user-session');
+  
+  if (sessionHeader) {
+    try {
+      session = JSON.parse(sessionHeader) as JWTPayload;
+    } catch {
+      // fallback
+    }
+  }
+
+  if (!session) {
+    const cookieStore = await cookies();
+    session = await getSessionEdge(cookieStore);
+  }
+
+  if (session) {
+    const { verifyUserExists } = await import('./user');
+    const exists = await verifyUserExists(session.role, session.userId);
+    if (!exists) return null;
+  }
+
+  return session;
 }
 
 export async function getSessionFromRequest(req: NextRequest): Promise<JWTPayload | null> {
+  let session: JWTPayload | null = null;
   const authorization = req.headers.get('authorization');
   const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
-  if (bearerToken) return await verifyAccessToken(bearerToken);
-  return await getSessionEdge(req.cookies);
+  
+  if (bearerToken) {
+    session = await verifyAccessToken(bearerToken);
+  } else {
+    session = await getSessionEdge(req.cookies);
+  }
+
+  if (session) {
+    const { verifyUserExists } = await import('./user');
+    const exists = await verifyUserExists(session.role, session.userId);
+    if (!exists) return null;
+  }
+
+  return session;
 }
 
 export async function revokeAllSessions(role: UserRole, userId: number) {

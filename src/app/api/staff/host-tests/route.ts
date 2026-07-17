@@ -54,7 +54,8 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
       .leftJoin(sections, eq(tests.sectionId, sections.id))
       .leftJoin(subjects, eq(tests.subjectId, subjects.id))
       .where(and(eq(tests.staffId, session.userId), eq(tests.institutionId, session.institutionId)))
-      .orderBy(desc(onlineTests.createdAt));
+      .orderBy(desc(onlineTests.createdAt))
+      .limit(20);
 
     const onlineTestIds = hostedTests.map(t => t.onlineTestId);
     
@@ -178,29 +179,26 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
     }).returning();
 
     let orderIndex = 0;
-    
-    for (const q of mcqs) {
-      await db.insert(onlineTestQuestions).values({
+    const allQuestions = [
+      ...mcqs.map((q: any) => ({
         onlineTestId: onlineTest.id,
-        questionType: "MCQ",
+        questionType: 'MCQ' as const,
         prompt: q.prompt,
         options: q.options,
         correctOptionIndex: Number(q.correctOptionIndex),
         marks: Number(q.marks),
         orderIndex: orderIndex++,
-      });
-    }
-
-    if (mode === "MIX") {
-      for (const q of shortQuestions) {
-        await db.insert(onlineTestQuestions).values({
-          onlineTestId: onlineTest.id,
-          questionType: "SHORT",
-          prompt: q.prompt,
-          marks: Number(q.marks),
-          orderIndex: orderIndex++,
-        });
-      }
+      })),
+      ...(mode === "MIX" ? (shortQuestions || []).map((q: any) => ({
+        onlineTestId: onlineTest.id,
+        questionType: 'SHORT' as const,
+        prompt: q.prompt,
+        marks: Number(q.marks),
+        orderIndex: orderIndex++,
+      })) : []),
+    ];
+    if (allQuestions.length > 0) {
+      await db.insert(onlineTestQuestions).values(allQuestions);
     }
 
     const { createOnlineTestNotifications } = await import("@/lib/notifications");

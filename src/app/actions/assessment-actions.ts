@@ -15,7 +15,7 @@ import {
   tests,
 } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import cloudinary from "@/lib/cloudinary";
 
@@ -231,7 +231,7 @@ export async function createStaffAssessmentAction(formData: FormData) {
 
 export async function createInstitutionExamAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
   const institutionId = session.userId;
   const classId = toNumber(formData.get("classId"), "Class");
@@ -292,7 +292,7 @@ function parseExamIds(value: FormDataEntryValue | null) {
 
 export async function updateInstitutionExamAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
   const institutionId = session.userId;
   const examIds = parseExamIds(formData.get("examIds"));
@@ -373,7 +373,7 @@ export async function updateInstitutionExamAction(formData: FormData) {
 
 export async function deleteInstitutionExamAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
   const institutionId = session.userId;
   const examIds = parseExamIds(formData.get("examIds"));
@@ -505,33 +505,28 @@ async function saveMarksForRecords(
     throw new Error(`Marks already exist for roll number(s): ${duplicateRolls}. Enable overwrite to replace them.`);
   }
 
-  for (const record of records) {
+  const insertData = records.map((record) => {
     const student = studentByRoll.get(record.rollNumber);
     if (!student) throw new Error(`Roll number ${record.rollNumber} was not found`);
+    return {
+      institutionId: session.institutionId,
+      testId: test.id,
+      studentId: student.id,
+      marksObtained: record.marksObtained,
+      totalMarks: record.totalMarks,
+    };
+  });
 
-    if (options.overwrite) {
-      await db.insert(marks).values({
-        institutionId: session.institutionId,
-        testId: test.id,
-        studentId: student.id,
-        marksObtained: record.marksObtained,
-        totalMarks: record.totalMarks,
-      }).onConflictDoUpdate({
-        target: [marks.testId, marks.studentId],
-        set: {
-          marksObtained: record.marksObtained,
-          totalMarks: record.totalMarks,
-        },
-      });
-    } else {
-      await db.insert(marks).values({
-        institutionId: session.institutionId,
-        testId: test.id,
-        studentId: student.id,
-        marksObtained: record.marksObtained,
-        totalMarks: record.totalMarks,
-      });
-    }
+  if (options.overwrite) {
+    await db.insert(marks).values(insertData).onConflictDoUpdate({
+      target: [marks.testId, marks.studentId],
+      set: {
+        marksObtained: sql`EXCLUDED.marks_obtained`,
+        totalMarks: sql`EXCLUDED.total_marks`,
+      },
+    });
+  } else {
+    await db.insert(marks).values(insertData);
   }
 
   revalidatePath("/staff/marks");

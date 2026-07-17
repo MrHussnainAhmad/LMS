@@ -10,6 +10,8 @@ import { getVisibleAnnouncements } from "@/lib/announcements";
 import { DashboardAnnouncements } from "@/components/announcements/DashboardAnnouncements";
 import { TodayTimetableCard, type TimetableEntry } from "@/components/timetable/ScheduleViews";
 
+import { StaffLeaveRequestButton } from "./StaffLeaveRequestButton";
+
 export default async function StaffDashboard() {
   const session = await getSession();
   if (!session || session.role !== 'STAFF') {
@@ -20,29 +22,28 @@ export default async function StaffDashboard() {
   if (!session.institutionId) redirect('/login');
   const currentDay = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
 
-  // Get staff name
-  const [currentStaff] = await db.select({ name: staff.name }).from(staff).where(and(eq(staff.id, staffId), eq(staff.institutionId, session.institutionId)));
-
-  // Get today's schedule
-  const scheduleRows = await db.select({
-    id: staffAssignments.id,
-    startTime: staffAssignments.startTime,
-    endTime: staffAssignments.endTime,
-    subject: subjects.name,
-    className: classes.name,
-    sectionName: sections.name,
-  })
-  .from(staffAssignments)
-  .innerJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-  .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
-  .innerJoin(classes, eq(sections.classId, classes.id))
-  .where(
-    and(
-      eq(staffAssignments.staffId, staffId),
-      eq(staffAssignments.institutionId, session.institutionId),
-      eq(staffAssignments.dayOfWeek, currentDay)
-    )
-  );
+  const [staffRows, scheduleRows, recentAnnouncements] = await Promise.all([
+    db.select({ name: staff.name }).from(staff).where(and(eq(staff.id, staffId), eq(staff.institutionId, session.institutionId))).limit(1),
+    db.select({
+      id: staffAssignments.id,
+      startTime: staffAssignments.startTime,
+      endTime: staffAssignments.endTime,
+      subject: subjects.name,
+      className: classes.name,
+      sectionName: sections.name,
+    })
+      .from(staffAssignments)
+      .innerJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
+      .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
+      .innerJoin(classes, eq(sections.classId, classes.id))
+      .where(and(
+        eq(staffAssignments.staffId, staffId),
+        eq(staffAssignments.institutionId, session.institutionId),
+        eq(staffAssignments.dayOfWeek, currentDay)
+      )),
+    getVisibleAnnouncements(session, 4),
+  ]);
+  const currentStaff = staffRows[0];
 
   // Sort by start time manually for simplicity
   scheduleRows.sort((a, b) => a.startTime.localeCompare(b.startTime));
@@ -54,8 +55,6 @@ export default async function StaffDashboard() {
     title: row.subject || "Subject",
     meta: `${row.className}-${row.sectionName}`,
   }));
-  const recentAnnouncements = await getVisibleAnnouncements(session, 4);
-
   return (
     <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
       <div>
@@ -71,7 +70,7 @@ export default async function StaffDashboard() {
         <div className="space-y-4 mt-8 lg:mt-0">
           <h2 className="text-lg font-semibold text-brand-900 px-1">Quick Links</h2>
           <Card>
-            <CardContent className="p-4 grid grid-cols-2 gap-4">
+            <CardContent className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
               <Link href="/staff/attendance" className="flex flex-col items-center justify-center p-4 rounded-lg bg-stone-50 hover:bg-brand-50 hover:text-brand-800 transition-colors text-stone-600 text-center gap-2 border border-transparent hover:border-brand-200">
                 <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center shadow-sm">
                   <CheckSquare className="h-5 w-5" />
@@ -84,6 +83,7 @@ export default async function StaffDashboard() {
                 </div>
                 <span className="text-sm font-medium">Enter Marks</span>
               </Link>
+              <StaffLeaveRequestButton />
             </CardContent>
           </Card>
           <DashboardAnnouncements announcements={recentAnnouncements} />

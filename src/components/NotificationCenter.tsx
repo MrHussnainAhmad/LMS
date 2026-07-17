@@ -27,7 +27,8 @@ export function NotificationCenter() {
       const res = await api.get<{ notifications: Notification[], unreadCount: number }>("/api/me/notifications");
       return res;
     },
-    refetchInterval: 30000, // Poll every 30 seconds
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const markAllReadMutation = useMutation({

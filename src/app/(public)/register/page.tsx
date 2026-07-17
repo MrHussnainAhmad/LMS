@@ -1,6 +1,15 @@
 import { RegistrationForm } from "./RegistrationForm";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Register Your Institution",
+  description: "Join Nisaab360 and modernize your school management.",
+  alternates: {
+    canonical: "/register",
+  },
+};
 
 export default function RegisterPage() {
   return (

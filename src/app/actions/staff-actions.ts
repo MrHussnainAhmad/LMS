@@ -3,8 +3,9 @@
 import { db } from "@/db";
 import { attendances, announcements, sections, staffAssignments, students } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { createAttendanceNotifications } from "@/lib/notifications";
+import { after } from "next/server";
 
 type AnnouncementTargetType = "ALL" | "CAMPUS" | "CLASS" | "SECTION" | "USER";
 
@@ -43,20 +44,27 @@ export async function submitAttendanceAction(
     }
   }
 
-  for (const record of records) {
-    await db.insert(attendances).values({
+  const attendanceDate = date.toISOString().split("T")[0];
+  if (records.length > 0) {
+    await db.insert(attendances).values(records.map((record) => ({
       institutionId,
       sectionId,
       studentId: record.studentId,
-      date: date.toISOString().split("T")[0],
-      status: record.status
-    }).onConflictDoUpdate({
+      date: attendanceDate,
+      status: record.status,
+    }))).onConflictDoUpdate({
       target: [attendances.studentId, attendances.date],
-      set: { status: record.status }
+      set: { status: sql`excluded.status` }
     });
   }
 
-  await createAttendanceNotifications({ institutionId, date, records });
+  after(async () => {
+    try {
+      await createAttendanceNotifications({ institutionId, date, records });
+    } catch (error) {
+      console.error("Attendance notification delivery failed:", error);
+    }
+  });
 
   return { success: true };
 }

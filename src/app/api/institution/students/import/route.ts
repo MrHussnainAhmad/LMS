@@ -1,5 +1,5 @@
 import { after, NextRequest, NextResponse } from "next/server";
-import { hash } from "@node-rs/argon2";
+import { hashPassword as hash } from "@/lib/argon2-pool";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campuses, classes, institutions, sections, students } from "@/db/schema";
@@ -189,6 +189,7 @@ export const POST = requireRole(["INSTITUTION"], async (req: NextRequest, { sess
         classRow: classObj,
         sectionRow: finalSection,
         yearOfJoining: parsed.data.yearOfJoining,
+        gender: parsed.data.gender,
         classRollNumber: parsed.data.classRollNumber,
       });
 

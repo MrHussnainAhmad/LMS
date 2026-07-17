@@ -31,16 +31,19 @@ export function generateStudentLoginRollNumber({
   classRow,
   sectionRow,
   yearOfJoining,
+  gender,
   classRollNumber,
 }: {
   institution: InstitutionLike;
   classRow: ClassLike;
   sectionRow: SectionLike;
   yearOfJoining: number;
+  gender: string;
   classRollNumber: string;
 }) {
   const typeLetter = institution.type.charAt(0).toUpperCase();
   const yearLastTwo = yearOfJoining.toString().slice(-2);
+  const genderCode = gender === "MALE" ? "M" : gender === "FEMALE" ? "F" : "";
   const classNumberMatch = classRow.name.match(/\d+/);
   const classNumber = classNumberMatch ? classNumberMatch[0] : cleanAlphaNumeric(classRow.name).substring(0, 3).toUpperCase();
   const section = sectionCode(sectionRow.name);
@@ -48,8 +51,9 @@ export function generateStudentLoginRollNumber({
   if (!typeLetter) throw new Error("Institution type is required to generate a student login ID");
   if (!classNumber) throw new Error("Class name must contain at least one letter or number");
   if (!section) throw new Error("Section name must contain at least one letter or number");
+  if (!genderCode) throw new Error("Gender must be MALE or FEMALE to generate a student login ID");
 
-  return `${typeLetter}${yearLastTwo}${classNumber}${section}${classRollNumber}@${institution.username}.${appDomain()}`;
+  return `${typeLetter}${yearLastTwo}${genderCode}${classNumber}${section}${classRollNumber}@${institution.username}.${appDomain()}`;
 }
 
 export function generateStaffEmail({

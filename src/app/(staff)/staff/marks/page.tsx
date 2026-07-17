@@ -38,24 +38,27 @@ export default async function StaffMarksPage() {
   const classIds = new Set(assignedSlots.map((slot) => slot.classId));
   const subjectIds = new Set(assignedSlots.map((slot) => slot.subjectId).filter((id): id is number => Boolean(id)));
 
-  const allInstitutionTests = await db.select({
-    test: tests,
-    subjectName: subjects.name,
-    className: classes.name,
-    sectionName: sections.name,
-  })
-    .from(tests)
-    .innerJoin(classes, eq(tests.classId, classes.id))
-    .leftJoin(sections, eq(tests.sectionId, sections.id))
-    .leftJoin(subjects, eq(tests.subjectId, subjects.id))
-    .where(eq(tests.institutionId, session.institutionId));
+  const [allInstitutionTests, markRows, classStudents] = await Promise.all([
+    db.select({
+      test: tests,
+      subjectName: subjects.name,
+      className: classes.name,
+      sectionName: sections.name,
+    })
+      .from(tests)
+      .innerJoin(classes, eq(tests.classId, classes.id))
+      .leftJoin(sections, eq(tests.sectionId, sections.id))
+      .leftJoin(subjects, eq(tests.subjectId, subjects.id))
+      .where(eq(tests.institutionId, session.institutionId)),
+    db.select().from(marks).where(eq(marks.institutionId, session.institutionId)),
+    db.select().from(students).where(eq(students.institutionId, session.institutionId)),
+  ]);
 
   const eligibleTests = allInstitutionTests.filter(({ test }) => {
     if (test.createdByRole === "STAFF") return test.staffId === session.userId;
     return classIds.has(test.classId) && subjectIds.has(test.subjectId);
   });
 
-  const markRows = await db.select().from(marks).where(eq(marks.institutionId, session.institutionId));
   const marksByTest = new Map<number, number>();
   const marksByTestAndStudent = new Map<string, number>();
   for (const row of markRows) {
@@ -63,7 +66,6 @@ export default async function StaffMarksPage() {
     marksByTestAndStudent.set(`${row.testId}:${row.studentId}`, row.marksObtained);
   }
 
-  const classStudents = await db.select().from(students).where(eq(students.institutionId, session.institutionId));
   const studentsByClass = new Map<number, typeof students.$inferSelect[]>();
   for (const student of classStudents) {
     const existing = studentsByClass.get(student.classId) || [];
@@ -72,7 +74,12 @@ export default async function StaffMarksPage() {
   }
 
   for (const list of studentsByClass.values()) {
-    list.sort((a, b) => a.classRollNumber.localeCompare(b.classRollNumber, undefined, { numeric: true }));
+    list.sort((a, b) => {
+      const numA = parseInt(a.classRollNumber, 10);
+      const numB = parseInt(b.classRollNumber, 10);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.classRollNumber.localeCompare(b.classRollNumber);
+    });
   }
 
   return (
@@ -94,7 +101,7 @@ export default async function StaffMarksPage() {
             <form action={createStaffAssessmentAction} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-stone-700 mb-1">Class / Section</label>
-                <select name="sectionId" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white">
+                <select name="sectionId" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-surface">
                   <option value="">Select class...</option>
                   {sectionOptions.map((slot) => (
                     <option key={slot.sectionId} value={slot.sectionId}>{slot.className} - {slot.sectionName}</option>
@@ -104,7 +111,7 @@ export default async function StaffMarksPage() {
 
               <div>
                 <label className="block text-sm font-medium text-stone-700 mb-1">Type</label>
-                <select name="type" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white">
+                <select name="type" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-surface">
                   <option value="DAILY">Daily</option>
                   <option value="WEEKLY">Weekly</option>
                   <option value="QUIZ">Quiz</option>

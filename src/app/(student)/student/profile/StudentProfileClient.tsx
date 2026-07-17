@@ -219,7 +219,7 @@ export function StudentProfileClient({
                     </select>
                   </Field>
                   <Field label="Section">
-                    <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
+                    <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
                       <option value="">No section change</option>
                       {filteredSections.map((section) => (
                         <option key={section.id} value={section.id}>{section.name}</option>

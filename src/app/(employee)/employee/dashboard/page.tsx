@@ -14,15 +14,14 @@ export default async function EmployeeDashboard() {
   const session = await getSession();
   if (!session || session.role !== "EMPLOYEE") redirect("/login");
 
-  const [pendingInsts] = await db.select({ value: count() }).from(institutions).where(eq(institutions.status, "PENDING"));
-  const [approvedInsts] = await db.select({ value: count() }).from(institutions).where(eq(institutions.status, "APPROVED"));
-  const recentAnnouncements = await getVisibleAnnouncements(session, 4);
-
-  const pendingList = await db.select()
-    .from(institutions)
-    .where(eq(institutions.status, "PENDING"))
-    .orderBy(desc(institutions.createdAt))
-    .limit(5);
+  const [pendingRows, approvedRows, recentAnnouncements, pendingList] = await Promise.all([
+    db.select({ value: count() }).from(institutions).where(eq(institutions.status, "PENDING")),
+    db.select({ value: count() }).from(institutions).where(eq(institutions.status, "APPROVED")),
+    getVisibleAnnouncements(session, 4),
+    db.select().from(institutions).where(eq(institutions.status, "PENDING")).orderBy(desc(institutions.createdAt)).limit(5),
+  ]);
+  const pendingInsts = pendingRows[0];
+  const approvedInsts = approvedRows[0];
 
   return (
     <div className="space-y-8 animate-fade-in">

@@ -1,6 +1,15 @@
 import { LoginForm } from "./LoginForm";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Student & Staff Login",
+  description: "Login to your Nisaab360 student or staff account.",
+  alternates: {
+    canonical: "/login",
+  },
+};
 
 export default function LoginPage() {
   return (

@@ -42,6 +42,11 @@ export async function POST(req: Request) {
 
     const { slug, title, content } = result.data;
 
+    // Role Clarification Enforcements
+    if (slug === "pricing" && session.role === "EMPLOYEE") {
+      return NextResponse.json({ error: "Forbidden: Employees cannot edit the pricing page" }, { status: 403 });
+    }
+
     const [existingPage] = await db.select().from(platformPages).where(eq(platformPages.slug, slug));
     const now = new Date();
     

@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     }
 
     // Only INSTITUTION role can submit platform reviews
-    if (session.role !== "INSTITUTION") {
+    if ((session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

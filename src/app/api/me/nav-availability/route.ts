@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import {
+  institutions,
+  leaveRequests,
   onlineTestSubmissions,
   onlineTests,
   sections,
@@ -10,7 +12,6 @@ import {
 } from "@/db/schema";
 import { getSessionFromRequest } from "@/lib/auth";
 import { and, eq, inArray } from "drizzle-orm";
-import { expireStaleOnlineSubmissions } from "@/app/actions/online-test-actions";
 
 function todayDateString() {
   return new Date().toISOString().slice(0, 10);
@@ -29,7 +30,6 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({});
 
   if (session.role === "STUDENT" && session.institutionId) {
-    await expireStaleOnlineSubmissions(session.institutionId);
     const [student] = await db.select()
       .from(students)
       .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 
     if (!student) return NextResponse.json({ studentTests: false, examTimetable: false });
 
-    const [hostedTests, submissions, examRows] = await Promise.all([
+    const [hostedTests, submissions, examRows, instRows] = await Promise.all([
       db.select({
         onlineTestId: onlineTests.id,
         createdAt: onlineTests.createdAt,
@@ -68,12 +68,17 @@ export async function GET(req: NextRequest) {
           eq(tests.createdByRole, "INSTITUTION"),
           inArray(tests.type, ["MONTHLY", "MID", "FINAL"])
         )),
+      db.select({ acceptFeeVouchers: institutions.acceptFeeVouchers })
+        .from(institutions)
+        .where(eq(institutions.id, session.institutionId))
+        .limit(1)
     ]);
 
     const submittedIds = new Set(submissions.map((submission) => submission.onlineTestId));
     return NextResponse.json({
       studentTests: hostedTests.some((test) => !submittedIds.has(test.onlineTestId) && isOnlineTestActive(test.createdAt, test.durationMinutes)),
       examTimetable: examRows.some((exam) => isCurrentOrFutureExam(exam.date, exam.endDate)),
+      feeVouchers: instRows[0]?.acceptFeeVouchers || false,
     });
   }
 
@@ -84,7 +89,20 @@ export async function GET(req: NextRequest) {
       .where(and(eq(staffAssignments.staffId, session.userId), eq(staffAssignments.institutionId, session.institutionId)));
 
     const classIds = Array.from(new Set(assignedRows.map((row) => row.classId)));
-    if (classIds.length === 0) return NextResponse.json({ examTimetable: false });
+    
+    // Check pending leaves for students in this teacher's sections
+    const pendingLeaves = await db.select({ id: leaveRequests.id })
+      .from(leaveRequests)
+      .innerJoin(students, eq(leaveRequests.userId, students.id))
+      .innerJoin(sections, eq(students.sectionId, sections.id))
+      .where(and(
+        eq(leaveRequests.institutionId, session.institutionId),
+        eq(leaveRequests.userRole, "STUDENT"),
+        eq(leaveRequests.status, "PENDING"),
+        eq(sections.classTeacherId, session.userId)
+      )).limit(1);
+
+    if (classIds.length === 0) return NextResponse.json({ examTimetable: false, staffLeaves: pendingLeaves.length > 0 });
 
     const examRows = await db.select({
       date: tests.date,
@@ -100,6 +118,21 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       examTimetable: examRows.some((exam) => isCurrentOrFutureExam(exam.date, exam.endDate)),
+      staffLeaves: pendingLeaves.length > 0,
+    });
+  }
+
+  if (session.role === "INSTITUTION" && session.institutionId) {
+    const pendingStaffLeaves = await db.select({ id: leaveRequests.id })
+      .from(leaveRequests)
+      .where(and(
+        eq(leaveRequests.institutionId, session.institutionId),
+        eq(leaveRequests.userRole, "STAFF"),
+        eq(leaveRequests.status, "PENDING")
+      )).limit(1);
+
+    return NextResponse.json({
+      institutionLeaves: pendingStaffLeaves.length > 0,
     });
   }
 

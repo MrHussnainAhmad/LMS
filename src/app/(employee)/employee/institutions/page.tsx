@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { updateInstitutionStatusAction, deleteInstitutionAction } from "@/app/actions/employee-actions";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import Link from "next/link";
 
 export default async function EmployeeVerificationQueuePage() {
   const session = await getSession();
@@ -62,7 +63,19 @@ export default async function EmployeeVerificationQueuePage() {
                 )}
                 {allInstitutions.map((inst) => (
                   <tr key={inst.id} className="hover:bg-stone-50/50 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-brand-950">{inst.name}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded bg-brand-100 text-brand-800 flex items-center justify-center font-bold text-xs">
+                          {inst.name.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <Link href={`/employee/institutions/${inst.id}`} className="font-semibold text-brand-950 hover:underline">
+                            {inst.name}
+                          </Link>
+                          <p className="text-xs text-stone-500">{inst.username}</p>
+                        </div>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-stone-600">{inst.type}</td>
                     <td className="px-6 py-4 text-stone-600">{inst.city}, {inst.country}</td>
                     <td className="px-6 py-4">

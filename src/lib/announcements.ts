@@ -1,8 +1,9 @@
 import { db } from "@/db";
 import { announcementReads, announcements, staff, staffAssignments, students, sections } from "@/db/schema";
 import type { JWTPayload } from "@/lib/auth-types";
-import { and, desc, eq, inArray, gte } from "drizzle-orm";
+import { and, desc, eq, inArray, gte, isNull, or } from "drizzle-orm";
 import { getUserCreatedAt } from "@/lib/user";
+import { getCachedOrFetch } from "@/lib/redis";
 
 export type AnnouncementRecipientRole = "STUDENT" | "STAFF";
 
@@ -182,24 +183,89 @@ export async function getVisibleAnnouncements(session: JWTPayload, limit = 4) {
   const institutionId = getSessionInstitutionId(session);
   if (!institutionId) return [];
 
-  const userCreatedAt = await getUserCreatedAt(session);
+  let visibleRows: AnnouncementRow[] = [];
+  const cacheKey = `cache:announcements:visible:${institutionId}:${session.role}:${session.userId}`;
 
-  const rows = await db.select()
-    .from(announcements)
-    .where(
-      and(
-        eq(announcements.institutionId, institutionId),
-        gte(announcements.createdAt, userCreatedAt)
-      )
-    )
-    .orderBy(desc(announcements.createdAt))
-    .limit(50);
+  visibleRows = await getCachedOrFetch(cacheKey, 60, async () => {
+    let rows: AnnouncementRow[] = [];
+    if (session.role === "INSTITUTION") {
+      rows = await db.select()
+        .from(announcements)
+        .where(eq(announcements.institutionId, institutionId))
+        .orderBy(desc(announcements.createdAt))
+        .limit(limit);
+    } else if (session.role === "STUDENT") {
+      const [student] = await db.select({
+        campusId: students.campusId,
+        classId: students.classId,
+        sectionId: students.sectionId,
+        createdAt: students.createdAt,
+      }).from(students).where(and(eq(students.id, session.userId), eq(students.institutionId, institutionId))).limit(1);
+      if (!student) return [];
 
-  const visibleRows: AnnouncementRow[] = [];
-  for (const announcement of rows) {
-    if (await isAnnouncementRecipient(announcement, session)) visibleRows.push(announcement);
-    if (visibleRows.length >= limit) break;
-  }
+      rows = await db.select()
+        .from(announcements)
+        .where(and(
+          eq(announcements.institutionId, institutionId),
+          gte(announcements.createdAt, student.createdAt),
+          or(
+            eq(announcements.targetType, "ALL"),
+            student.campusId ? and(eq(announcements.targetType, "CAMPUS"), eq(announcements.targetCampusId, student.campusId)) : undefined,
+            and(eq(announcements.targetType, "CLASS"), eq(announcements.targetClassId, student.classId)),
+            and(eq(announcements.targetType, "SECTION"), eq(announcements.targetSectionId, student.sectionId)),
+            and(
+              eq(announcements.targetType, "USER"),
+              eq(announcements.targetUserRole, "STUDENT"),
+              or(eq(announcements.targetUserId, session.userId), isNull(announcements.targetUserId))
+            )
+          )
+        ))
+        .orderBy(desc(announcements.createdAt))
+        .limit(limit);
+    } else if (session.role === "STAFF") {
+      const [staffMember, assignedScopes] = await Promise.all([
+        db.select({ campusId: staff.campusId, createdAt: staff.createdAt })
+          .from(staff)
+          .where(and(eq(staff.id, session.userId), eq(staff.institutionId, institutionId)))
+          .limit(1),
+        db.select({ sectionId: staffAssignments.sectionId, classId: sections.classId })
+          .from(staffAssignments)
+          .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
+          .where(and(eq(staffAssignments.staffId, session.userId), eq(staffAssignments.institutionId, institutionId))),
+      ]);
+      if (!staffMember[0]) return [];
+      const sectionIds = Array.from(new Set(assignedScopes.map((scope) => scope.sectionId)));
+      const classIds = Array.from(new Set(assignedScopes.map((scope) => scope.classId)));
+
+      rows = await db.select()
+        .from(announcements)
+        .where(and(
+          eq(announcements.institutionId, institutionId),
+          gte(announcements.createdAt, staffMember[0].createdAt),
+          eq(announcements.senderRole, "INSTITUTION"),
+          or(
+            eq(announcements.targetType, "ALL"),
+            staffMember[0].campusId ? and(eq(announcements.targetType, "CAMPUS"), eq(announcements.targetCampusId, staffMember[0].campusId)) : undefined,
+            classIds.length ? and(eq(announcements.targetType, "CLASS"), inArray(announcements.targetClassId, classIds)) : undefined,
+            sectionIds.length ? and(eq(announcements.targetType, "SECTION"), inArray(announcements.targetSectionId, sectionIds)) : undefined,
+            and(
+              eq(announcements.targetType, "USER"),
+              eq(announcements.targetUserRole, "STAFF"),
+              or(eq(announcements.targetUserId, session.userId), isNull(announcements.targetUserId))
+            )
+          )
+        ))
+        .orderBy(desc(announcements.createdAt))
+        .limit(limit);
+    }
+    return rows;
+  });
+
+  // Re-parse createdAt to Date objects since JSON stringifies them
+  visibleRows = visibleRows.map(row => ({
+    ...row,
+    createdAt: new Date(row.createdAt),
+  }));
 
   if (visibleRows.length === 0) return [];
 

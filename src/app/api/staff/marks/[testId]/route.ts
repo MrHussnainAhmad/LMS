@@ -93,15 +93,29 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, p
     }
 
     const { createBulkNotifications } = await import("@/lib/notifications");
-    await createBulkNotifications(records.map((r: any) => ({
-      institutionId: session.institutionId!,
-      userRole: "STUDENT",
-      userId: Number(r.studentId),
-      type: "MARKS",
-      title: "Marks Updated",
-      message: `Your marks for ${test.title} have been updated. You scored ${r.marksObtained}/${expectedTotal}.`,
-      referenceId: test.id,
-    })));
+    import('next/server').then(({ after }) => {
+      after(async () => {
+        try {
+          await createBulkNotifications(records.map((r: any) => ({
+            institutionId: session.institutionId!,
+            userRole: "STUDENT",
+            userId: Number(r.studentId),
+            type: "MARKS",
+            title: "Marks Updated",
+            message: `Your marks for ${test.title} have been updated. You scored ${r.marksObtained}/${expectedTotal}.`,
+            referenceId: test.id,
+          })));
+
+          const { redis } = await import('@/lib/redis');
+          const keys = records.map((r: any) => `cache:student:marks:${r.studentId}`);
+          if (keys.length > 0) {
+            await redis.del(...keys);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      });
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

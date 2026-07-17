@@ -1,8 +1,9 @@
 import { DashboardAnnouncements } from "@/components/announcements/DashboardAnnouncements";
+import { MobileAppVersionUpdater } from "@/components/sa/MobileAppVersionUpdater";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { db } from "@/db";
-import { employees, institutions, students } from "@/db/schema";
+import { employees, institutions, students, systemSettings } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { getVisibleAnnouncements } from "@/lib/announcements";
 import { count, desc, eq, isNull } from "drizzle-orm";
@@ -13,16 +14,20 @@ export default async function SuperAdminDashboard() {
   const session = await getSession();
   if (!session || session.role !== "SUPER_ADMIN") redirect("/login/super-admin");
 
-  const [totalInsts] = await db.select({ value: count() }).from(institutions);
-  const [pendingInsts] = await db.select({ value: count() }).from(institutions).where(eq(institutions.status, "PENDING"));
-  const [activeEmps] = await db.select({ value: count() }).from(employees).where(isNull(employees.deletedAt));
-  const [totalStuds] = await db.select({ value: count() }).from(students);
-  const recentAnnouncements = await getVisibleAnnouncements(session, 4);
-
-  const recentRegistrations = await db.select()
-    .from(institutions)
-    .orderBy(desc(institutions.createdAt))
-    .limit(5);
+  const [totalInstRows, pendingInstRows, activeEmpRows, totalStudRows, recentAnnouncements, recentRegistrations, settingsData] = await Promise.all([
+    db.select({ value: count() }).from(institutions),
+    db.select({ value: count() }).from(institutions).where(eq(institutions.status, "PENDING")),
+    db.select({ value: count() }).from(employees).where(isNull(employees.deletedAt)),
+    db.select({ value: count() }).from(students),
+    getVisibleAnnouncements(session, 4),
+    db.select().from(institutions).orderBy(desc(institutions.createdAt)).limit(5),
+    db.select().from(systemSettings).limit(1),
+  ]);
+  const totalInsts = totalInstRows[0];
+  const pendingInsts = pendingInstRows[0];
+  const activeEmps = activeEmpRows[0];
+  const totalStuds = totalStudRows[0];
+  const currentAppVersion = settingsData[0]?.mobileAppVersion || "1.0.0";
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -30,6 +35,8 @@ export default async function SuperAdminDashboard() {
         <h1 className="text-3xl font-display font-bold text-brand-950">Platform Overview</h1>
         <p className="text-stone-500 mt-1">Monitor all institutions and employees.</p>
       </div>
+
+      <MobileAppVersionUpdater currentVersion={currentAppVersion} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard title="Total Institutions" value={totalInsts.value.toString()} icon={Building2} />

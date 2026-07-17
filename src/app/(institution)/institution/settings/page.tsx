@@ -10,14 +10,15 @@ import { InstitutionSignatureUploader } from "./InstitutionSignatureUploader";
 import { DangerZone } from "./DangerZone";
 import { PlatformReviewForm } from "@/components/PlatformReviewForm";
 import { Star } from "lucide-react";
+import { FeeVoucherSettingsClient } from "./FeeVoucherSettingsClient";
 
 export default async function InstitutionSettingsPage() {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") {
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) {
     redirect("/login");
   }
 
-  const institutionId = session.userId;
+  const institutionId = session.institutionId || session.userId;
 
   const instData = await db.select()
     .from(institutions)
@@ -99,6 +100,22 @@ export default async function InstitutionSettingsPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Fee Voucher Settings */}
+          <Card>
+            <CardHeader className="border-b border-border bg-stone-50/50">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-brand-600"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M2 15h10"/><path d="m9 18 3-3-3-3"/></svg>
+                Fee & Finance Features
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <FeeVoucherSettingsClient acceptFeeVouchers={profile.acceptFeeVouchers} />
+            </CardContent>
+          </Card>
+
+          {/* Danger Zone */}
+          <DangerZone />
         </div>
 
         {/* Right Column */}
@@ -189,9 +206,6 @@ export default async function InstitutionSettingsPage() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Danger Zone */}
-          <DangerZone />
         </div>
       </div>
     </div>

@@ -1,8 +1,8 @@
 import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { accountLockouts, auditLogs, superAdmins, employees, institutions, staff, students } from '@/db/schema';
+import { accountLockouts, auditLogs, superAdmins, employees, institutions, staff, students, institutionAdmins } from '@/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
-import { verify } from '@node-rs/argon2';
+import { verifyPassword as verify } from '@/lib/argon2-pool';
 import { createTokens, setAuthCookies, UserRole } from '@/lib/auth';
 import { JWTPayload } from '@/lib/auth-types';
 import { PlatformLoginKind, withPlatformLoginRateLimit, withRateLimit } from '@/lib/rate-limit';
@@ -13,7 +13,7 @@ import { sendEmail, LoginNotificationEmail } from '@/lib/email';
 const MAX_FAILED_LOGINS = Number(process.env.AUTH_LOCKOUT_MAX_FAILED || 5);
 const LOCKOUT_WINDOW_MINUTES = Number(process.env.AUTH_LOCKOUT_WINDOW_MINUTES || 15);
 const LOCKOUT_COOLDOWN_MINUTES = Number(process.env.AUTH_LOCKOUT_COOLDOWN_MINUTES || 15);
-const LOGIN_LOOKUP_ORDER: UserRole[] = ['SUPER_ADMIN', 'EMPLOYEE', 'INSTITUTION', 'STAFF', 'STUDENT'];
+const LOGIN_LOOKUP_ORDER: UserRole[] = ['STUDENT', 'STAFF', 'INSTITUTION', 'INSTITUTION_ADMIN', 'EMPLOYEE', 'SUPER_ADMIN'];
 
 function addMinutes(value: Date, minutes: number) {
   return new Date(value.getTime() + minutes * 60 * 1000);
@@ -83,6 +83,8 @@ async function rejectFailedLogin(role: UserRole, userId: number, institutionId: 
 }
 
 function getLoginLookupRoles(roleHint?: UserRole) {
+  if (roleHint === 'INSTITUTION') return ['INSTITUTION', 'INSTITUTION_ADMIN'] as UserRole[];
+  if (roleHint === 'STAFF') return ['STAFF', 'INSTITUTION_ADMIN'] as UserRole[];
   return roleHint ? [roleHint] : LOGIN_LOOKUP_ORDER;
 }
 
@@ -157,74 +159,93 @@ export async function POST(req: NextRequest) {
     let campusId: number | undefined;
     let mustChangePassword = false;
 
-    const lookupResults = await Promise.all(
-      lookupRoles.map(async (lookupRole) => {
-        switch (lookupRole) {
-          case 'SUPER_ADMIN':
-            return {
-              role: lookupRole,
-              rows: await db.select({
-                id: superAdmins.id,
-                email: superAdmins.email,
-                passwordHash: superAdmins.passwordHash,
-                securityAnswerHash: superAdmins.securityAnswerHash,
-                isSuperAdmin: superAdmins.isSuperAdmin,
-              }).from(superAdmins).where(sql`lower(${superAdmins.email}) = ${loginIdentifier}`).limit(1),
-            };
-          case 'EMPLOYEE':
-            return {
-              role: lookupRole,
-              rows: await db.select({
-                id: employees.id,
-                email: employees.email,
-                passwordHash: employees.passwordHash,
-                mustChangePassword: employees.mustChangePassword,
-              }).from(employees).where(sql`lower(${employees.email}) = ${loginIdentifier}`).limit(1),
-            };
-          case 'INSTITUTION':
-            return {
-              role: lookupRole,
-              rows: await db.select({
-                id: institutions.id,
-                contactEmail: institutions.contactEmail,
-                adminPasswordHash: institutions.adminPasswordHash,
-                status: institutions.status,
-              }).from(institutions).where(sql`lower(${institutions.contactEmail}) = ${loginIdentifier}`).limit(1),
-            };
-          case 'STAFF':
-            return {
-              role: lookupRole,
-              rows: await db.select({
-                id: staff.id,
-                email: staff.email,
-                passwordHash: staff.passwordHash,
-                isActive: staff.isActive,
-                institutionId: staff.institutionId,
-                campusId: staff.campusId,
-                mustChangePassword: staff.mustChangePassword,
-              }).from(staff).where(sql`lower(${staff.email}) = ${loginIdentifier}`).limit(1),
-            };
-          case 'STUDENT':
-            return {
-              role: lookupRole,
-              rows: await db.select({
-                id: students.id,
-                loginRollNumber: students.loginRollNumber,
-                passwordHash: students.passwordHash,
-                isActive: students.isActive,
-                institutionId: students.institutionId,
-                mustChangePassword: students.mustChangePassword,
-              }).from(students).where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`).limit(1),
-            };
-        }
-      })
-    );
+    const { redis } = await import('@/lib/redis');
+    const cacheKey = `auth:role:${loginIdentifier}`;
+    const cachedRole = await redis.get(cacheKey).catch(() => null);
+    
+    if (cachedRole && lookupRoles.includes(cachedRole as UserRole)) {
+      const idx = lookupRoles.indexOf(cachedRole as UserRole);
+      lookupRoles.splice(idx, 1);
+      lookupRoles.unshift(cachedRole as UserRole);
+    }
 
-    const admin = lookupResults.find((result) => result.role === 'SUPER_ADMIN')?.rows[0];
-    const emp = lookupResults.find((result) => result.role === 'EMPLOYEE')?.rows[0];
-    const inst = lookupResults.find((result) => result.role === 'INSTITUTION')?.rows[0];
-    const stf = lookupResults.find((result) => result.role === 'STAFF')?.rows[0];
-    const stu = lookupResults.find((result) => result.role === 'STUDENT')?.rows[0];
+    let admin, emp, inst, instAdmin, stf, stu;
+    
+    for (const lookupRole of lookupRoles) {
+      if (lookupRole === 'SUPER_ADMIN') {
+        const rows = await db.select({
+          id: superAdmins.id,
+          email: superAdmins.email,
+          passwordHash: superAdmins.passwordHash,
+          securityAnswerHash: superAdmins.securityAnswerHash,
+          isSuperAdmin: superAdmins.isSuperAdmin,
+        }).from(superAdmins).where(sql`lower(${superAdmins.email}) = ${loginIdentifier}`).limit(1);
+        if (rows.length > 0) {
+          admin = rows[0];
+          break;
+        }
+      } else if (lookupRole === 'EMPLOYEE') {
+        const rows = await db.select({
+          id: employees.id,
+          email: employees.email,
+          passwordHash: employees.passwordHash,
+          mustChangePassword: employees.mustChangePassword,
+        }).from(employees).where(sql`lower(${employees.email}) = ${loginIdentifier}`).limit(1);
+        if (rows.length > 0) {
+          emp = rows[0];
+          break;
+        }
+      } else if (lookupRole === 'INSTITUTION') {
+        const rows = await db.select({
+          id: institutions.id,
+          contactEmail: institutions.contactEmail,
+          adminPasswordHash: institutions.adminPasswordHash,
+          status: institutions.status,
+        }).from(institutions).where(sql`lower(${institutions.contactEmail}) = ${loginIdentifier}`).limit(1);
+        if (rows.length > 0) {
+          inst = rows[0];
+          break;
+        }
+      } else if (lookupRole === 'INSTITUTION_ADMIN') {
+        const rows = await db.select({
+          id: institutionAdmins.id,
+          email: institutionAdmins.email,
+          passwordHash: institutionAdmins.passwordHash,
+          institutionId: institutionAdmins.institutionId,
+        }).from(institutionAdmins).where(sql`lower(${institutionAdmins.email}) = ${loginIdentifier}`).limit(1);
+        if (rows.length > 0) {
+          instAdmin = rows[0];
+          break;
+        }
+      } else if (lookupRole === 'STAFF') {
+        const rows = await db.select({
+          id: staff.id,
+          email: staff.email,
+          passwordHash: staff.passwordHash,
+          isActive: staff.isActive,
+          institutionId: staff.institutionId,
+          campusId: staff.campusId,
+          mustChangePassword: staff.mustChangePassword,
+        }).from(staff).where(sql`lower(${staff.email}) = ${loginIdentifier}`).limit(1);
+        if (rows.length > 0) {
+          stf = rows[0];
+          break;
+        }
+      } else if (lookupRole === 'STUDENT') {
+        const rows = await db.select({
+          id: students.id,
+          loginRollNumber: students.loginRollNumber,
+          passwordHash: students.passwordHash,
+          isActive: students.isActive,
+          institutionId: students.institutionId,
+          mustChangePassword: students.mustChangePassword,
+        }).from(students).where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`).limit(1);
+        if (rows.length > 0) {
+          stu = rows[0];
+          break;
+        }
+      }
+    }
 
     let platformLoginKind: PlatformLoginKind | null = null;
     if (admin) {
@@ -284,6 +305,16 @@ export async function POST(req: NextRequest) {
       } else {
         return await rejectFailedLogin('INSTITUTION', inst.id, inst.id, ip);
       }
+    } else if (instAdmin) {
+      await assertNotLocked('INSTITUTION_ADMIN', instAdmin.id);
+      const isValid = await verify(instAdmin.passwordHash, password);
+      if (isValid) {
+        user = instAdmin;
+        role = 'INSTITUTION_ADMIN';
+        institutionId = instAdmin.institutionId;
+      } else {
+        return await rejectFailedLogin('INSTITUTION_ADMIN', instAdmin.id, instAdmin.institutionId, ip);
+      }
     } else if (stf) {
       if (!stf.isActive) {
         return NextResponse.json({ error: 'Account deactivated' }, { status: 403 });
@@ -319,6 +350,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
+    if (redis.status === 'ready') {
+      await redis.setex(cacheKey, 300, role).catch(() => null);
+    }
+
     const payload: JWTPayload = {
       userId: user.id,
       role,
@@ -328,10 +363,12 @@ export async function POST(req: NextRequest) {
       isSuperAdmin: role === 'SUPER_ADMIN' ? user.isSuperAdmin : undefined,
     };
 
-    const { accessToken, refreshToken } = await createTokens(payload);
+    const [{ accessToken, refreshToken }] = await Promise.all([
+      createTokens(payload),
+      clearFailedLogins(role, user.id),
+    ]);
 
     await setAuthCookies(accessToken, refreshToken);
-    await clearFailedLogins(role, user.id);
 
     after(() => runPostLoginSideEffects({
       role,

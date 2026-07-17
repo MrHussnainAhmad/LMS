@@ -5,7 +5,7 @@ import { campuses, staff, classes, sections, subjects, announcements, notificati
 import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { staffAssignments } from "@/db/schema";
-import { eq, and, gt, lt, inArray } from "drizzle-orm";
+import { eq, and, gt, lt, inArray, count } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 import { generateStaffEmail } from "@/lib/login-identifiers";
 
@@ -40,7 +40,7 @@ async function getOrCreateWholeClassSection(institutionId: number, classId: numb
 
 export async function createCampusAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
   
   const institutionId = session.userId;
   const name = formData.get("name") as string;
@@ -58,7 +58,7 @@ export async function createCampusAction(formData: FormData) {
 
 export async function createStaffAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
   
   const institutionId = session.userId;
   const name = formData.get("name") as string;
@@ -104,7 +104,7 @@ export async function createStaffAction(formData: FormData) {
 
 export async function createSubjectAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
   const institutionId = session.userId;
   const name = formData.get("name") as string;
@@ -122,7 +122,7 @@ export async function createSubjectAction(formData: FormData) {
 
 export async function createAnnouncementAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
   const institutionId = session.userId;
   const title = formData.get("title") as string;
@@ -206,7 +206,7 @@ function parseOptionalId(value: FormDataEntryValue | null) {
 
 export async function deleteAnnouncementAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
   const institutionId = session.userId;
   const announcementId = parseOptionalId(formData.get("announcementId"));
@@ -240,17 +240,24 @@ export async function deleteAnnouncementAction(formData: FormData) {
 
 export async function createClassAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
   const institutionId = session.userId;
   const name = formData.get("name") as string;
   const levelRaw = formData.get("level") as string;
   const level = levelRaw ? parseInt(levelRaw, 10) : 0;
 
-  await db.insert(classes).values({
+  const [newClass] = await db.insert(classes).values({
     institutionId,
     name,
     level,
+  }).returning({ id: classes.id });
+
+  // Auto-create default section so sections can be treated as optional
+  await db.insert(sections).values({
+    institutionId,
+    classId: newClass.id,
+    name: "Whole Class",
   });
 
   revalidatePath("/institution/academics");
@@ -259,7 +266,7 @@ export async function createClassAction(formData: FormData) {
 
 export async function createSectionAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
   const institutionId = session.userId;
   const name = formData.get("name") as string;
@@ -297,7 +304,7 @@ export async function createSectionAction(formData: FormData) {
 
 export async function updateClassInchargeAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
   const institutionId = session.userId;
   const sectionIdRaw = formData.get("sectionId") as string;
@@ -340,7 +347,7 @@ export async function updateClassInchargeAction(formData: FormData) {
 
 export async function createTimetableAssignmentAction(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") throw new Error("Unauthorized");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
   const institutionId = session.userId;
   const sectionIdRaw = formData.get("sectionId") as string;
@@ -432,5 +439,96 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   });
 
   revalidatePath("/institution/timetable");
+  return { success: true };
+}
+
+export async function updateFeeVoucherSettingsAction(acceptFeeVouchers: boolean) {
+  const session = await getSession();
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
+  
+  const institutionId = session.userId;
+  
+  await db.update(institutions)
+    .set({ acceptFeeVouchers })
+    .where(eq(institutions.id, institutionId));
+    
+  revalidatePath("/institution/settings");
+  return { success: true };
+}
+
+import { institutionOwners, institutionAdmins } from "@/db/schema";
+
+export async function createInstitutionOwnerAction(formData: FormData) {
+  const session = await getSession();
+  // Only the actual institution (owner) can fill this out, not the admin.
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
+  
+  const institutionId = session.userId;
+  const name = formData.get("name") as string;
+  const gender = formData.get("gender") as 'MALE' | 'FEMALE' | 'OTHER';
+  const email = formData.get("email") as string;
+  const contactNumber = formData.get("contactNumber") as string;
+
+  if (!name || !gender || !email || !contactNumber) {
+    throw new Error("All fields are required");
+  }
+
+  // Check if owner already exists
+  const existing = await db.select().from(institutionOwners).where(eq(institutionOwners.institutionId, institutionId)).limit(1);
+  if (existing.length > 0) {
+    throw new Error("Owner details have already been submitted");
+  }
+
+  await db.insert(institutionOwners).values({
+    institutionId,
+    name,
+    gender,
+    email,
+    contactNumber,
+  });
+
+  revalidatePath("/institution");
+  return { success: true };
+}
+
+export async function createInstitutionAdminAction(formData: FormData) {
+  const session = await getSession();
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
+  
+  const institutionId = session.userId;
+  const name = formData.get("name") as string;
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+
+  if (!name || !email || !password) throw new Error("All fields are required");
+
+  const [existing] = await db.select({ value: count() }).from(institutionAdmins).where(eq(institutionAdmins.institutionId, institutionId));
+  if (existing.value >= 2) {
+    throw new Error("You can only create a maximum of 2 admins");
+  }
+
+  const passwordHash = await hash(password);
+
+  await db.insert(institutionAdmins).values({
+    institutionId,
+    name,
+    email,
+    passwordHash,
+  });
+
+  revalidatePath("/institution/admins");
+  return { success: true };
+}
+
+export async function deleteInstitutionAdminAction(adminId: number) {
+  const session = await getSession();
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
+  
+  const institutionId = session.userId;
+
+  await db.delete(institutionAdmins)
+    .where(and(eq(institutionAdmins.id, adminId), eq(institutionAdmins.institutionId, institutionId)));
+
+  revalidatePath("/institution/admins");
   return { success: true };
 }

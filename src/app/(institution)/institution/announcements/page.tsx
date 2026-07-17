@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { announcements, campuses, classes, sections } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import { LocalDateTime } from "@/components/LocalDateTime";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Megaphone, Trash2 } from "lucide-react";
@@ -22,38 +22,40 @@ function audienceLabel(announcement: typeof announcements.$inferSelect) {
 
 export default async function InstitutionAnnouncementsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") {
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) {
     redirect("/login");
   }
   const params = await searchParams;
   const currentPage = Math.max(1, Number(params.page) || 1);
 
-  const institutionId = session.userId;
+  const institutionId = session.institutionId || session.userId;
 
-  const allAnnouncements = await db.select()
-    .from(announcements)
-    .where(eq(announcements.institutionId, institutionId))
-    .orderBy(desc(announcements.createdAt));
-  const totalPages = Math.max(1, Math.ceil(allAnnouncements.length / ANNOUNCEMENTS_PER_PAGE));
-  const paginatedAnnouncements = allAnnouncements.slice(
-    (currentPage - 1) * ANNOUNCEMENTS_PER_PAGE,
-    currentPage * ANNOUNCEMENTS_PER_PAGE
-  );
-
-  const allCampuses = await db.select().from(campuses).where(eq(campuses.institutionId, institutionId));
-  const allClasses = await db.select().from(classes).where(eq(classes.institutionId, institutionId));
-  const allSections = await db.select().from(sections).where(eq(sections.institutionId, institutionId));
+  const offset = (currentPage - 1) * ANNOUNCEMENTS_PER_PAGE;
+  const [paginatedAnnouncements, announcementCountRows, allCampuses, allClasses, allSections] = await Promise.all([
+    db.select()
+      .from(announcements)
+      .where(eq(announcements.institutionId, institutionId))
+      .orderBy(desc(announcements.createdAt))
+      .limit(ANNOUNCEMENTS_PER_PAGE)
+      .offset(offset),
+    db.select({ value: count() })
+      .from(announcements)
+      .where(eq(announcements.institutionId, institutionId)),
+    db.select().from(campuses).where(eq(campuses.institutionId, institutionId)),
+    db.select().from(classes).where(eq(classes.institutionId, institutionId)),
+    db.select().from(sections).where(eq(sections.institutionId, institutionId)),
+  ]);
+  const announcementCount = announcementCountRows[0]?.value ?? 0;
+  const totalPages = Math.max(1, Math.ceil(announcementCount / ANNOUNCEMENTS_PER_PAGE));
 
   async function createAnnouncement(formData: FormData) {
     "use server";
     await createAnnouncementAction(formData);
-    redirect("/institution/announcements");
   }
 
   async function deleteAnnouncement(formData: FormData) {
     "use server";
     await deleteAnnouncementAction(formData);
-    redirect("/institution/announcements");
   }
 
   return (
@@ -86,7 +88,7 @@ export default async function InstitutionAnnouncementsPage({ searchParams }: { s
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {allAnnouncements.length === 0 && (
+                    {announcementCount === 0 && (
                       <tr>
                         <td colSpan={4} className="px-6 py-8 text-center text-stone-500">
                           No announcements sent yet.

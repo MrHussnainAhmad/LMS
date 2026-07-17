@@ -63,8 +63,12 @@ export async function middleware(request: NextRequest) {
   }
 
   if (path === '/institution' || path.startsWith('/institution/')) {
-    if (!session || session.role !== 'INSTITUTION') {
+    if (!session || (session.role !== 'INSTITUTION' && session.role !== 'INSTITUTION_ADMIN')) {
       return NextResponse.redirect(new URL('/institution-login', request.url));
+    }
+    // Block INSTITUTION_ADMIN from /institution/admins and /institution/settings
+    if (session.role === 'INSTITUTION_ADMIN' && (path === '/institution/admins' || path === '/institution/settings')) {
+      return NextResponse.redirect(new URL('/institution/dashboard', request.url));
     }
   }
 
@@ -80,14 +84,25 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return session ? keepWebSessionAlive(NextResponse.next(), request) : NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  if (session) {
+    requestHeaders.set('x-user-session', JSON.stringify(session));
+  }
+  const nextRes = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+
+  return session ? keepWebSessionAlive(nextRes, request) : nextRes;
 }
 
 function getDashboardPath(role: string) {
   switch (role) {
     case 'SUPER_ADMIN': return '/sa/dashboard';
     case 'EMPLOYEE': return '/employee/dashboard';
-    case 'INSTITUTION': return '/institution/dashboard';
+    case 'INSTITUTION':
+    case 'INSTITUTION_ADMIN': return '/institution/dashboard';
     case 'STAFF': return '/staff/dashboard';
     case 'STUDENT': return '/student/dashboard';
     default: return '/login';

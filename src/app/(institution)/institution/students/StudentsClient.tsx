@@ -57,12 +57,18 @@ export function StudentsClient({
   students,
   campuses,
   classes,
-  sections
+  sections,
+  totalCount,
+  page,
+  limit
 }: {
   students: StudentRow[];
   campuses: { id: number; name: string }[];
   classes: { id: number; name: string }[];
   sections: { id: number; classId: number; name: string }[];
+  totalCount?: number;
+  page?: number;
+  limit?: number;
 }) {
   const { toast } = useToast();
   const router = useRouter();
@@ -306,6 +312,39 @@ export function StudentsClient({
           searchPlaceholder="Search students by name or roll number..."
           pageSize={rowsPerPage}
         />
+        {totalCount !== undefined && page !== undefined && limit !== undefined && (
+          <div className="flex items-center justify-between px-4 py-3 border-t">
+            <div className="text-sm text-stone-500">
+              Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, totalCount)} of {totalCount} results
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={page <= 1} 
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("page", String(page - 1));
+                  router.push(url.pathname + url.search);
+                }}
+              >
+                Previous
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={page * limit >= totalCount} 
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("page", String(page + 1));
+                  router.push(url.pathname + url.search);
+                }}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* IMPORT MODAL */}
@@ -469,7 +508,7 @@ export function StudentsClient({
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-stone-700">Gender</label>
-                <select name="gender" className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
+                <select name="gender" className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
                   <option value="MALE">Male</option>
                   <option value="FEMALE">Female</option>
                   <option value="OTHER">Other</option>
@@ -478,7 +517,7 @@ export function StudentsClient({
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-stone-700">Campus</label>
-                <select name="campusId" required className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
+                <select name="campusId" required className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
                   <option value="">Select Campus</option>
                   {campuses.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -502,7 +541,7 @@ export function StudentsClient({
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-stone-700">Section</label>
-                <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
+                <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
                   <option value="">No section / Whole class</option>
                   {createFilteredSections.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
@@ -552,13 +591,13 @@ export function StudentsClient({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Class</label>
-                  <select name="classId" defaultValue={editStudent.classId} className="w-full h-10 rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
+                  <select name="classId" defaultValue={editStudent.classId} className="w-full h-10 rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Section</label>
-                  <select name="sectionId" defaultValue={editStudent.sectionId} className="w-full h-10 rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
+                  <select name="sectionId" defaultValue={editStudent.sectionId} className="w-full h-10 rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
                     {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>

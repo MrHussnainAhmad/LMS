@@ -7,11 +7,11 @@ import { eq, inArray, and } from "drizzle-orm";
 export async function DELETE(req: NextRequest) {
   try {
     const session = await getSession();
-    if (!session || session.role !== "INSTITUTION" || !session.userId) {
+    if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN") || !session.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const institutionId = session.userId;
+    const institutionId = session.institutionId || session.userId;
     const body = await req.json().catch(() => ({}));
     const reason = body.reason || null;
 

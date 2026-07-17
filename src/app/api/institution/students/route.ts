@@ -2,7 +2,7 @@ import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { students, institutions, classes, sections } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
-import { hash } from '@node-rs/argon2';
+import { hashPassword as hash } from '@/lib/argon2-pool';
 import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStudentSchema } from '@/lib/validators/student';
 import { logAudit } from '@/lib/audit';
@@ -88,6 +88,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
       classRow: classObj,
       sectionRow: sectionObj,
       yearOfJoining,
+      gender,
       classRollNumber,
     });
 
@@ -125,11 +126,17 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
       } catch (auditError) {
         console.error("Create student audit failed:", auditError);
       }
+      try {
+        const { redis } = await import('@/lib/redis');
+        await redis.del(`cache:dashboard:${tenantId}`);
+      } catch (e) {
+        // ignore
+      }
     });
 
     return NextResponse.json({ 
       message: 'Student created successfully', 
-    credentials: { loginRollNumber, initialPassword } 
+      credentials: { loginRollNumber, initialPassword } 
     }, { status: 201 });
   } catch (err: unknown) {
     if (typeof err === 'object' && err && 'code' in err && err.code === '23505') {

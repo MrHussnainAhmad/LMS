@@ -8,22 +8,25 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const studentAttendance = await db
-      .select({
-        id: attendances.id,
-        date: attendances.date,
-        status: attendances.status,
-        sectionName: sections.name,
-      })
-      .from(attendances)
-      .innerJoin(sections, eq(attendances.sectionId, sections.id))
-      .where(
-        and(
-          eq(attendances.studentId, session.userId),
-          eq(attendances.institutionId, session.institutionId)
+    const { getCachedOrFetch } = await import('@/lib/redis');
+    const studentAttendance = await getCachedOrFetch(`cache:student:attendance:${session.userId}`, 120, async () => {
+      return await db
+        .select({
+          id: attendances.id,
+          date: attendances.date,
+          status: attendances.status,
+          sectionName: sections.name,
+        })
+        .from(attendances)
+        .innerJoin(sections, eq(attendances.sectionId, sections.id))
+        .where(
+          and(
+            eq(attendances.studentId, session.userId),
+            eq(attendances.institutionId, session.institutionId!)
+          )
         )
-      )
-      .orderBy(desc(attendances.date));
+        .orderBy(desc(attendances.date));
+    });
 
     return NextResponse.json({ attendance: studentAttendance });
   } catch (error) {

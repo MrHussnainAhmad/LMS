@@ -11,7 +11,9 @@ export interface SidebarItem {
   label: string;
   href: string;
   icon: LucideIcon;
-  availabilityKey?: "studentTests" | "examTimetable";
+  availabilityKey?: "studentTests" | "examTimetable" | "feeVouchers";
+  notificationKey?: "staffLeaves" | "institutionLeaves";
+  hasNotification?: boolean;
 }
 
 interface SidebarProps {
@@ -69,7 +71,15 @@ export function Sidebar({ items, role, brand, onClose, isCollapsed = false, onTo
                   : "text-stone-600 hover:bg-stone-50 hover:text-brand-900"
               )}
             >
-              <item.icon className={cn("h-5 w-5 stroke-[1.5px]", isActive ? "text-brand-700" : "text-stone-400 group-hover:text-brand-600")} />
+              <div className="relative">
+                <item.icon className={cn("h-5 w-5 stroke-[1.5px]", isActive ? "text-brand-700" : "text-stone-400 group-hover:text-brand-600")} />
+                {item.hasNotification && (
+                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border-2 border-white"></span>
+                  </span>
+                )}
+              </div>
               <span className={cn(isCollapsed && "lg:hidden")}>{item.label}</span>
             </Link>
           );

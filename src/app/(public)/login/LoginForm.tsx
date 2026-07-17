@@ -132,7 +132,8 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
       if (res.mustChangePassword) {
         router.push("/force-password-change");
       } else {
-        router.push(`/${res.role.toLowerCase()}/dashboard`);
+        const redirectRole = res.role === "INSTITUTION_ADMIN" ? "institution" : res.role.toLowerCase();
+        router.push(`/${redirectRole}/dashboard`);
       }
     } catch (err: any) {
       toast({

@@ -5,26 +5,44 @@ import { eq } from "drizzle-orm";
 import ReactMarkdown from "react-markdown";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { unstable_cache } from "next/cache";
+
+export const revalidate = 300;
+
+const getPlatformPage = unstable_cache(
+  async (slug: string) => {
+    const [page] = await db.select().from(platformPages).where(eq(platformPages.slug, slug)).limit(1);
+    return page ?? null;
+  },
+  ["platform-page"],
+  { revalidate: 300, tags: ["platform-pages"] }
+);
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = await params;
-  const [page] = await db.select().from(platformPages).where(eq(platformPages.slug, resolvedParams.slug));
+  const page = await getPlatformPage(resolvedParams.slug);
   
   if (!page) {
     return { title: "Page Not Found | Nisaab360" };
   }
 
   return {
-    title: `${page.title} | Nisaab360`,
+    title: page.title,
     description: `Read the ${page.title} for Nisaab360.`,
+    alternates: {
+      canonical: `/${resolvedParams.slug}`,
+    },
+    openGraph: {
+      title: `${page.title} | Nisaab360`,
+      description: `Read the ${page.title} for Nisaab360.`,
+      url: `https://nisaab360.app/${resolvedParams.slug}`,
+    }
   };
 }
 
-export const dynamic = "force-dynamic";
-
 export default async function StaticPage({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = await params;
-  const [page] = await db.select().from(platformPages).where(eq(platformPages.slug, resolvedParams.slug));
+  const page = await getPlatformPage(resolvedParams.slug);
 
   if (!page) {
     notFound();

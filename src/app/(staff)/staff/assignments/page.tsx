@@ -39,40 +39,40 @@ export default async function StaffAssignmentsPage() {
     ).values()
   );
 
-  const createdAssignments = await db.select({
-    assignment: assignments,
-    className: classes.name,
-    sectionName: sections.name,
-    subjectName: subjects.name,
-  })
-    .from(assignments)
-    .innerJoin(classes, eq(assignments.classId, classes.id))
-    .leftJoin(sections, eq(assignments.sectionId, sections.id))
-    .leftJoin(subjects, eq(assignments.subjectId, subjects.id))
-    .where(and(eq(assignments.staffId, session.userId), eq(assignments.institutionId, session.institutionId)))
-    .orderBy(desc(assignments.createdAt));
+  const [createdAssignments, studentRows, detailedSubmissions] = await Promise.all([
+    db.select({
+      assignment: assignments,
+      className: classes.name,
+      sectionName: sections.name,
+      subjectName: subjects.name,
+    })
+      .from(assignments)
+      .innerJoin(classes, eq(assignments.classId, classes.id))
+      .leftJoin(sections, eq(assignments.sectionId, sections.id))
+      .leftJoin(subjects, eq(assignments.subjectId, subjects.id))
+      .where(and(eq(assignments.staffId, session.userId), eq(assignments.institutionId, session.institutionId)))
+      .orderBy(desc(assignments.createdAt)),
+    db.select().from(students).where(eq(students.institutionId, session.institutionId)),
+    db.select({
+      submission: submissions,
+      studentName: students.name,
+      rollNumber: students.classRollNumber,
+      classId: students.classId,
+      sectionId: students.sectionId,
+    })
+      .from(submissions)
+      .innerJoin(students, eq(submissions.studentId, students.id))
+      .where(eq(submissions.institutionId, session.institutionId)),
+  ]);
 
-  const submissionRows = await db.select().from(submissions).where(eq(submissions.institutionId, session.institutionId));
   const submissionsByAssignment = new Map<number, number>();
-  for (const row of submissionRows) {
-    submissionsByAssignment.set(row.assignmentId, (submissionsByAssignment.get(row.assignmentId) || 0) + 1);
-  }
-
-  const studentRows = await db.select().from(students).where(eq(students.institutionId, session.institutionId));
-
-  const detailedSubmissions = await db.select({
-    submission: submissions,
-    studentName: students.name,
-    rollNumber: students.classRollNumber,
-    classId: students.classId,
-    sectionId: students.sectionId,
-  })
-    .from(submissions)
-    .innerJoin(students, eq(submissions.studentId, students.id))
-    .where(eq(submissions.institutionId, session.institutionId));
 
   const submissionsByAssignmentId = new Map<number, typeof detailedSubmissions>();
   for (const row of detailedSubmissions) {
+    submissionsByAssignment.set(
+      row.submission.assignmentId,
+      (submissionsByAssignment.get(row.submission.assignmentId) || 0) + 1
+    );
     const existing = submissionsByAssignmentId.get(row.submission.assignmentId) || [];
     existing.push(row);
     submissionsByAssignmentId.set(row.submission.assignmentId, existing);
@@ -112,7 +112,7 @@ export default async function StaffAssignmentsPage() {
             <form action={createStaffAssignmentAction} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-stone-700 mb-1">Class / Section</label>
-                <select name="sectionId" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white">
+                <select name="sectionId" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-surface">
                   <option value="">Select class...</option>
                   {sectionOptions.map((slot) => (
                     <option key={slot.sectionId} value={slot.sectionId}>
@@ -124,7 +124,7 @@ export default async function StaffAssignmentsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-stone-700 mb-1">Subject</label>
-                <select name="subjectId" className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white">
+                <select name="subjectId" className="w-full rounded-md border border-border px-3 py-2 text-sm bg-surface">
                   <option value="">General assignment</option>
                   {subjectOptions.map((subject) => (
                     <option key={subject.id} value={subject.id}>{subject.name}</option>

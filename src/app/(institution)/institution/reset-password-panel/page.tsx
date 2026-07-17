@@ -4,7 +4,7 @@ import { ResetPasswordForm } from "./ResetPasswordForm";
 
 export default async function ResetPasswordPanelPage() {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") {
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) {
     redirect("/login");
   }
 

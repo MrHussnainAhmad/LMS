@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { employees, staff, students } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { hash, verify } from '@node-rs/argon2';
+import { hashPassword as hash, verifyPassword as verify } from '@/lib/argon2-pool';
 import { requireRole } from '@/lib/rbac';
 import { changePasswordSchema } from '@/lib/validators/auth';
 import { logAudit } from '@/lib/audit';

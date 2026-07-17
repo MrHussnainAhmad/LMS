@@ -2,8 +2,9 @@ import { db } from "@/db";
 import { expoPushTickets, notifications, staff, students } from "@/db/schema";
 import { resolveAnnouncementRecipients } from "@/lib/announcements";
 import { and, eq, inArray, lt } from "drizzle-orm";
+import { after } from "next/server";
 
-type NotificationType = 'ANNOUNCEMENT' | 'EXAM_TIMETABLE' | 'ASSIGNMENT' | 'TEST' | 'MARKS' | 'ATTENDANCE' | 'GENERAL';
+type NotificationType = 'ANNOUNCEMENT' | 'EXAM_TIMETABLE' | 'ASSIGNMENT' | 'TEST' | 'MARKS' | 'ATTENDANCE' | 'GENERAL' | 'LEAVE_REQUEST';
 
 type NotificationPayload = {
   institutionId: number;
@@ -55,7 +56,7 @@ export async function createNotification(payload: NotificationPayload) {
   });
 
   const [inserted] = await db.insert(notifications).values(payload).returning({ id: notifications.id });
-  await sendExpoPushNotifications([{ ...payload, notificationId: inserted?.id }]);
+  scheduleExpoPushNotifications([{ ...payload, notificationId: inserted?.id }]);
   return inserted;
 }
 
@@ -79,8 +80,18 @@ export async function createBulkNotifications(payloads: NotificationPayload[]) {
     ...payload,
     notificationId: insertedRows[index]?.id,
   }));
-  await sendExpoPushNotifications(deliveries);
+  scheduleExpoPushNotifications(deliveries);
   return insertedRows;
+}
+
+function scheduleExpoPushNotifications(deliveries: NotificationDelivery[]) {
+  after(async () => {
+    try {
+      await sendExpoPushNotifications(deliveries);
+    } catch (error) {
+      console.error("Expo push delivery failed:", error);
+    }
+  });
 }
 
 export async function createAttendanceNotifications({

@@ -133,6 +133,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (
       classRow,
       sectionRow,
       yearOfJoining: student.yearOfJoining,
+      gender: student.gender,
       classRollNumber: student.classRollNumber,
     });
   }

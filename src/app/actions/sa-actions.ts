@@ -124,13 +124,73 @@ export async function updateInstitutionStatusAction(institutionId: number, newSt
     throw new Error("Unauthorized");
   }
 
-  await db.update(institutions)
-    .set({ status: newStatus })
-    .where(eq(institutions.id, institutionId));
+  if (newStatus === "REJECTED") {
+    await db.delete(institutions).where(eq(institutions.id, institutionId));
+  } else {
+    await db.update(institutions)
+      .set({ status: newStatus })
+      .where(eq(institutions.id, institutionId));
+  }
 
   revalidatePath("/sa/institutions");
   revalidatePath("/sa/dashboard");
   revalidatePath("/employee/institutions");
   revalidatePath("/employee/dashboard");
+  return { success: true };
+}
+
+export async function updateAppVersionAction(version: string) {
+  const session = await getSession();
+  if (!session || (session.role !== "SUPER_ADMIN" && session.role !== "EMPLOYEE")) {
+    throw new Error("Unauthorized");
+  }
+
+  const { systemSettings } = await import("@/db/schema");
+
+  const settings = await db.select().from(systemSettings).limit(1);
+  if (settings.length === 0) {
+    await db.insert(systemSettings).values({ mobileAppVersion: version });
+  } else {
+    await db.update(systemSettings).set({ mobileAppVersion: version, updatedAt: new Date() }).where(eq(systemSettings.id, settings[0].id));
+  }
+
+  revalidatePath("/sa/dashboard");
+  return { success: true };
+}
+
+import { tickets, ticketHistory } from "@/db/schema";
+import { and } from "drizzle-orm";
+
+export async function updateTicketPlatformStatusAction(ticketId: number, platformStatus: "RECEIVED" | "WORKING" | "RESOLVED") {
+  const session = await getSession();
+  if (!session || (session.role !== "SUPER_ADMIN" && session.role !== "EMPLOYEE")) {
+    throw new Error("Unauthorized");
+  }
+
+  const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId)).limit(1);
+  if (!ticket || !ticket.isForwarded) {
+    throw new Error("Ticket not found or not forwarded");
+  }
+
+  await db.update(tickets)
+    .set({
+      platformStatus,
+      status: platformStatus === "RECEIVED" ? "OPEN" : platformStatus,
+    })
+    .where(eq(tickets.id, ticketId));
+
+  await db.insert(ticketHistory).values({
+    ticketId,
+    actorRole: session.role,
+    actorId: session.userId,
+    action: "PLATFORM_STATUS_CHANGED",
+    notes: `Platform status changed to ${platformStatus}`,
+  });
+
+  revalidatePath("/sa/tickets");
+  revalidatePath("/employee/tickets");
+  revalidatePath("/institution/helpdesk");
+  revalidatePath("/student/tickets");
+  revalidatePath("/staff/tickets");
   return { success: true };
 }

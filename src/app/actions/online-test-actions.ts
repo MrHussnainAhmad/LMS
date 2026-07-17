@@ -124,26 +124,26 @@ export async function createOnlineTestAction(formData: FormData) {
   }).returning();
 
   let orderIndex = 0;
-  for (const question of mcqs) {
-    await db.insert(onlineTestQuestions).values({
+  const allQuestions = [
+    ...mcqs.map((question: { prompt: string; options: string[]; correctOptionIndex: number; marks: number }) => ({
       onlineTestId: onlineTest.id,
-      questionType: "MCQ",
+      questionType: 'MCQ' as const,
       prompt: question.prompt,
       options: question.options,
       correctOptionIndex: question.correctOptionIndex,
       marks: question.marks,
       orderIndex: orderIndex++,
-    });
-  }
-
-  for (const question of shortQuestions) {
-    await db.insert(onlineTestQuestions).values({
+    })),
+    ...shortQuestions.map((question: { prompt: string; marks: number }) => ({
       onlineTestId: onlineTest.id,
-      questionType: "SHORT",
+      questionType: 'SHORT' as const,
       prompt: question.prompt,
       marks: question.marks,
       orderIndex: orderIndex++,
-    });
+    })),
+  ];
+  if (allQuestions.length > 0) {
+    await db.insert(onlineTestQuestions).values(allQuestions);
   }
 
   const { createOnlineTestNotifications } = await import("@/lib/notifications");
@@ -354,24 +354,15 @@ export async function heartbeatOnlineTestAction(onlineTestId: number) {
   const session = await getSession();
   if (!session || session.role !== "STUDENT" || !session.institutionId) throw new Error("Unauthorized");
 
-  const row = await getStudentOnlineTest(session.userId, session.institutionId, onlineTestId);
-  const [submission] = await db.select().from(onlineTestSubmissions).where(and(
-    eq(onlineTestSubmissions.institutionId, session.institutionId),
-    eq(onlineTestSubmissions.onlineTestId, onlineTestId),
-    eq(onlineTestSubmissions.studentId, session.userId)
-  )).limit(1);
-
-  if (!submission || submission.status !== "IN_PROGRESS") return { ok: false };
-  const expiresAt = getAttemptExpiresAt(submission.startedAt, row.onlineTest.durationMinutes);
-  if (expiresAt <= new Date()) {
-    await markOnlineTestFailed(row, session.userId, "timeout", submission.id);
-    return { ok: false, reason: "timeout" };
+  // Use Valkey for ephemeral liveness instead of DB WAL churn
+  const { redis } = await import('@/lib/redis');
+  const key = `test:heartbeat:${session.institutionId}:${onlineTestId}:${session.userId}`;
+  
+  if (redis.status === 'ready') {
+    await redis.setex(key, 35, '1'); // 35s TTL for 10s heartbeat interval
   }
 
-  await db.update(onlineTestSubmissions)
-    .set({ lastHeartbeatAt: new Date() })
-    .where(and(eq(onlineTestSubmissions.id, submission.id), eq(onlineTestSubmissions.institutionId, session.institutionId)));
-  return { ok: true, expiresAt: expiresAt.toISOString() };
+  return { ok: true };
 }
 
 export async function submitOnlineTestAction(formData: FormData) {

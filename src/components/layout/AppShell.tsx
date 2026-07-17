@@ -12,7 +12,7 @@ interface AppShellProps {
   userRole: string;
 }
 
-type NavAvailability = Partial<Record<NonNullable<SidebarItem["availabilityKey"]>, boolean>>;
+type NavAvailability = Partial<Record<NonNullable<SidebarItem["availabilityKey"] | SidebarItem["notificationKey"]>, boolean>>;
 
 export function AppShell({ children, sidebarItems, userRole }: AppShellProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -59,9 +59,14 @@ export function AppShell({ children, sidebarItems, userRole }: AppShellProps) {
     };
   }, []);
 
-  const visibleSidebarItems = sidebarItems.filter((item) => (
-    !item.availabilityKey || navAvailability[item.availabilityKey] === true
-  ));
+  const visibleSidebarItems = sidebarItems
+    .map((item) => ({
+      ...item,
+      hasNotification: item.notificationKey ? navAvailability[item.notificationKey] : item.hasNotification,
+    }))
+    .filter((item) => (
+      !item.availabilityKey || navAvailability[item.availabilityKey] === true
+    ));
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">

@@ -1,4 +1,4 @@
-export type UserRole = 'SUPER_ADMIN' | 'EMPLOYEE' | 'INSTITUTION' | 'STAFF' | 'STUDENT';
+export type UserRole = 'SUPER_ADMIN' | 'EMPLOYEE' | 'INSTITUTION' | 'INSTITUTION_ADMIN' | 'STAFF' | 'STUDENT';
 
 export interface JWTPayload {
   userId: number;

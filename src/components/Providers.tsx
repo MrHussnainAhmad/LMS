@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { ToastProvider, ToastViewport } from '@radix-ui/react-toast';
 
 import { Toaster } from './ui/toaster';
+import SessionWatcher from './SessionWatcher';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
@@ -20,6 +21,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       {children}
       <Toaster />
+      <SessionWatcher />
     </QueryClientProvider>
   );
 }

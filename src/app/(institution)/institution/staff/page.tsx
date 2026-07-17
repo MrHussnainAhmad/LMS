@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { staff, campuses } from "@/db/schema";
+import { staff, campuses, staffProfileChangeRequests } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { UserSquare2, Plus } from "lucide-react";
@@ -7,30 +7,52 @@ import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { createStaffAction } from "@/app/actions/institution-actions";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { DeleteStaffButton } from "./DeleteStaffButton";
+import { StaffRequestsClient } from "./StaffRequestsClient";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default async function InstitutionStaffPage() {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") {
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) {
     redirect("/login");
   }
 
-  const institutionId = session.userId;
+  const institutionId = session.institutionId || session.userId;
 
-  const allStaff = await db.select({
-    staff: staff,
-    campus: campuses.name
-  })
-    .from(staff)
-    .leftJoin(campuses, eq(staff.campusId, campuses.id))
-    .where(eq(staff.institutionId, institutionId))
-    .orderBy(desc(staff.createdAt));
-
-  const allCampuses = await db.select().from(campuses).where(eq(campuses.institutionId, institutionId));
+  const [allStaff, allCampuses, requests] = await Promise.all([
+    db.select({
+      staff: staff,
+      campus: campuses.name
+    })
+      .from(staff)
+      .leftJoin(campuses, eq(staff.campusId, campuses.id))
+      .where(eq(staff.institutionId, institutionId))
+      .orderBy(desc(staff.createdAt)),
+    db.select().from(campuses).where(eq(campuses.institutionId, institutionId)),
+    db.select({
+      id: staffProfileChangeRequests.id,
+      requestedFields: staffProfileChangeRequests.requestedFields,
+      reason: staffProfileChangeRequests.reason,
+      status: staffProfileChangeRequests.status,
+      adminNote: staffProfileChangeRequests.adminNote,
+      createdAt: staffProfileChangeRequests.createdAt,
+      staffId: staff.id,
+      staffName: staff.name,
+      email: staff.email,
+      phone: staff.phone,
+      campusName: campuses.name,
+      isActive: staff.isActive,
+    })
+      .from(staffProfileChangeRequests)
+      .innerJoin(staff, eq(staffProfileChangeRequests.staffId, staff.id))
+      .leftJoin(campuses, eq(staff.campusId, campuses.id))
+      .where(eq(staffProfileChangeRequests.institutionId, institutionId))
+      .orderBy(desc(staffProfileChangeRequests.createdAt)),
+  ]);
 
   async function createStaff(formData: FormData) {
     "use server";
     await createStaffAction(formData);
-    redirect("/institution/staff");
   }
 
   return (
@@ -42,8 +64,14 @@ export default async function InstitutionStaffPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+      <Tabs defaultValue="directory" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="directory">Staff Directory</TabsTrigger>
+          <TabsTrigger value="requests">Staff Requests</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="directory" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader className="border-b border-border bg-stone-50/50">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -60,12 +88,13 @@ export default async function InstitutionStaffPage() {
                       <th className="px-6 py-4 font-medium">Email Address</th>
                       <th className="px-6 py-4 font-medium">Campus</th>
                       <th className="px-6 py-4 font-medium">Status</th>
+                      <th className="px-6 py-4 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {allStaff.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="px-6 py-8 text-center text-stone-500">
+                        <td colSpan={5} className="px-6 py-8 text-center text-stone-500">
                           No staff registered yet.
                         </td>
                       </tr>
@@ -88,6 +117,9 @@ export default async function InstitutionStaffPage() {
                           }`}>
                             {row.staff.isActive ? 'Active' : 'Disabled'}
                           </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <DeleteStaffButton staffId={row.staff.id} staffName={row.staff.name} />
                         </td>
                       </tr>
                     ))}
@@ -159,7 +191,20 @@ export default async function InstitutionStaffPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
+        </TabsContent>
+
+        <TabsContent value="requests">
+          <StaffRequestsClient
+            requests={requests.map((request) => ({
+              ...request,
+              campusName: request.campusName || "Main",
+              requestedFields: request.requestedFields as Record<string, string | number>,
+              createdAt: request.createdAt.toISOString(),
+            }))}
+            campuses={allCampuses}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

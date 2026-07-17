@@ -103,9 +103,33 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
       studentsByClass.set(student.classId, existing);
     }
 
+    for (const list of studentsByClass.values()) {
+      list.sort((a, b) => {
+        const numA = parseInt(a.classRollNumber, 10);
+        const numB = parseInt(b.classRollNumber, 10);
+        if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+        return a.classRollNumber.localeCompare(b.classRollNumber);
+      });
+    }
+
+    const submissionsByAssignment = new Map<number, typeof detailedSubmissions>();
+    for (const sub of detailedSubmissions) {
+      const existing = submissionsByAssignment.get(sub.assignmentId) || [];
+      existing.push(sub);
+      submissionsByAssignment.set(sub.assignmentId, existing);
+    }
+
+    for (const list of submissionsByAssignment.values()) {
+      list.sort((a, b) => {
+        const numA = parseInt(a.rollNumber as any, 10);
+        const numB = parseInt(b.rollNumber as any, 10);
+        if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+        return String(a.rollNumber).localeCompare(String(b.rollNumber));
+      });
+    }
+
     const assignmentsWithDetails = createdAssignments.map(assignment => {
-      const assignmentSubmissions = detailedSubmissions.filter(s => s.assignmentId === assignment.id);
-      assignmentSubmissions.sort((a, b) => String(a.rollNumber).localeCompare(String(b.rollNumber), undefined, { numeric: true }));
+      const assignmentSubmissions = submissionsByAssignment.get(assignment.id) || [];
       
       const submittedStudentIds = new Set(assignmentSubmissions.map(s => s.studentId));
       
@@ -113,7 +137,6 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
         .filter(student => !assignment.sectionId || student.sectionId === assignment.sectionId);
       
       const pendingStudents = targetStudents.filter(student => !submittedStudentIds.has(student.id));
-      pendingStudents.sort((a, b) => String(a.classRollNumber).localeCompare(String(b.classRollNumber), undefined, { numeric: true }));
 
       return {
         ...assignment,

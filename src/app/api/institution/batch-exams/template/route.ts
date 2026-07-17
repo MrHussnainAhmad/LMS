@@ -7,7 +7,7 @@ import { eq, and, inArray } from "drizzle-orm";
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession();
-    if (!session || session.role !== "INSTITUTION" || !session.institutionId) {
+    if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN") || !session.institutionId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

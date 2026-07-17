@@ -4,6 +4,19 @@ import { db } from "@/db";
 import { assignments, submissions, students, subjects } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { eq, and, desc, or, isNull } from "drizzle-orm";
+import cloudinary from "@/lib/cloudinary";
+
+async function resolveSubmissionUrl(fileKey: string) {
+  for (const resourceType of ["image", "raw"] as const) {
+    try {
+      const resource = await cloudinary.api.resource(fileKey, { resource_type: resourceType });
+      if (resource.secure_url) return resource.secure_url as string;
+    } catch {
+      // Cloudinary stores images and documents under different resource types.
+    }
+  }
+  return null;
+}
 
 export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,6 +30,7 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
       db.select({
         id: submissions.id,
         assignmentId: submissions.assignmentId,
+        fileKey: submissions.fileKey,
         createdAt: submissions.createdAt,
       })
       .from(submissions)
@@ -56,9 +70,14 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
 
     const submissionMap = new Map(studentSubmissions.map(sub => [sub.assignmentId, sub]));
 
+    const resolvedUrls = new Map(
+      await Promise.all(studentSubmissions.map(async (submission) => [submission.id, await resolveSubmissionUrl(submission.fileKey)] as const))
+    );
     const result = studentAssignments.map(a => ({
       ...a,
-      submission: submissionMap.get(a.id) || null,
+      submission: submissionMap.has(a.id)
+        ? { ...submissionMap.get(a.id)!, fileUrl: resolvedUrls.get(submissionMap.get(a.id)!.id) }
+        : null,
     }));
 
     return NextResponse.json({ assignments: result });

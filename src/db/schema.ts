@@ -12,12 +12,13 @@ import {
   time,
   jsonb,
   real,
-  index
+  index,
+  uniqueIndex
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 // --- ENUMS ---
-export const roleEnum = pgEnum('user_role', ['SUPER_ADMIN', 'EMPLOYEE', 'INSTITUTION', 'STAFF', 'STUDENT']);
+export const roleEnum = pgEnum('user_role', ['SUPER_ADMIN', 'EMPLOYEE', 'INSTITUTION', 'INSTITUTION_ADMIN', 'STAFF', 'STUDENT']);
 export const instTypeEnum = pgEnum('institution_type', ['SCHOOL', 'COLLEGE', 'UNIVERSITY']);
 export const instStatusEnum = pgEnum('institution_status', ['PENDING', 'APPROVED', 'REJECTED']);
 export const attendanceStatusEnum = pgEnum('attendance_status', ['PRESENT', 'ABSENT', 'LATE', 'LEAVE']);
@@ -28,8 +29,13 @@ export const onlineQuestionTypeEnum = pgEnum('online_question_type', ['MCQ', 'SH
 export const onlineSubmissionStatusEnum = pgEnum('online_submission_status', ['IN_PROGRESS', 'SUBMITTED', 'AUTO_GRADED', 'PENDING_REVIEW', 'GRADED', 'FAILED', 'ABANDONED']);
 export const announcementTargetEnum = pgEnum('announcement_target', ['ALL', 'CAMPUS', 'CLASS', 'SECTION', 'USER']);
 export const profileRequestStatusEnum = pgEnum('profile_request_status', ['PENDING', 'APPROVED', 'REJECTED']);
-export const notificationTypeEnum = pgEnum('notification_type', ['ANNOUNCEMENT', 'EXAM_TIMETABLE', 'ASSIGNMENT', 'TEST', 'MARKS', 'ATTENDANCE', 'GENERAL']);
-
+export const notificationTypeEnum = pgEnum('notification_type', ['ANNOUNCEMENT', 'EXAM_TIMETABLE', 'ASSIGNMENT', 'TEST', 'MARKS', 'ATTENDANCE', 'GENERAL', 'LEAVE_REQUEST']);
+export const leaveRequestStatusEnum = pgEnum('leave_request_status', ['PENDING', 'APPROVED', 'REJECTED']);
+export const genderEnum = pgEnum('gender', ['MALE', 'FEMALE', 'OTHER']);
+export const ticketStatusEnum = pgEnum('ticket_status', ['OPEN', 'WORKING', 'RESOLVED', 'FORWARDED']);
+export const ticketPlatformStatusEnum = pgEnum('ticket_platform_status', ['RECEIVED', 'WORKING', 'RESOLVED']);
+export const ticketHistoryActionEnum = pgEnum('ticket_history_action', ['CREATED', 'STATUS_CHANGED', 'FORWARDED', 'PLATFORM_STATUS_CHANGED', 'COMMENT_ADDED']);
+export const blogStatusEnum = pgEnum('blog_status', ['DRAFT', 'PUBLISHED']);
 // --- SUPER ADMIN ---
 export const superAdmins = pgTable('super_admins', {
   id: serial('id').primaryKey(),
@@ -70,9 +76,12 @@ export const institutions = pgTable('institutions', {
   status: instStatusEnum('status').default('PENDING').notNull(),
   rejectionReason: text('rejection_reason'),
   adminPasswordHash: text('admin_password_hash').notNull(),
+  acceptFeeVouchers: boolean('accept_fee_vouchers').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-});
+}, (t) => ({
+  statusCreatedIndex: index('institutions_status_created_idx').on(t.status, t.createdAt),
+}));
 
 // --- ACCOUNT DELETIONS ---
 export const accountDeletions = pgTable('account_deletions', {
@@ -131,7 +140,10 @@ export const staff = pgTable('staff', {
   announcementPushNotificationsEnabled: boolean('announcement_push_notifications_enabled').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-});
+}, (t) => ({
+  institutionIndex: index('staff_institution_id_idx').on(t.institutionId),
+  lowerEmailIndex: index('staff_lower_email_idx').on(sql`lower(${t.email})`),
+}));
 
 // --- SUBJECTS ---
 export const subjects = pgTable('subjects', {
@@ -200,6 +212,8 @@ export const students = pgTable('students', {
   deletedAt: timestamp('deleted_at'),
 }, (t) => ({
   instClassRollUnique: unique('inst_class_roll_unique').on(t.institutionId, t.classId, t.classRollNumber),
+  institutionIndex: index('students_institution_id_idx').on(t.institutionId),
+  lowerLoginRollIndex: index('students_lower_login_roll_idx').on(sql`lower(${t.loginRollNumber})`),
 }));
 
 // --- STUDENT PROFILE CHANGE REQUESTS ---
@@ -273,6 +287,7 @@ export const attendances = pgTable('attendances', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   studentDateUnique: unique('student_date_unique').on(t.studentId, t.date),
+  institutionDateIndex: index('attendances_institution_date_idx').on(t.institutionId, t.date),
 }));
 
 // --- TESTS ---
@@ -303,6 +318,7 @@ export const marks = pgTable('marks', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   studentTestUnique: unique('student_test_unique').on(t.testId, t.studentId),
+  institutionStudentCreatedIndex: index('marks_institution_student_created_idx').on(t.institutionId, t.studentId, t.createdAt),
 }));
 
 // --- ONLINE TESTS ---
@@ -344,6 +360,8 @@ export const onlineTestSubmissions = pgTable('online_test_submissions', {
   gradedBy: integer('graded_by').references(() => staff.id, { onDelete: 'set null' }),
 }, (t) => ({
   studentOnlineTestUnique: unique('student_online_test_unique').on(t.onlineTestId, t.studentId),
+  institutionStudentIndex: index('online_test_submissions_institution_student_idx').on(t.institutionId, t.studentId),
+  institutionStatusHeartbeatIndex: index('online_test_submissions_institution_status_heartbeat_idx').on(t.institutionId, t.status, t.lastHeartbeatAt),
 }));
 
 // --- ANNOUNCEMENTS ---
@@ -361,7 +379,9 @@ export const announcements = pgTable('announcements', {
   title: varchar('title', { length: 255 }).notNull(),
   content: text('content').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  institutionCreatedIndex: index('announcements_institution_created_idx').on(t.institutionId, t.createdAt),
+}));
 
 // --- ANNOUNCEMENT READS ---
 export const announcementReads = pgTable('announcement_reads', {
@@ -372,6 +392,7 @@ export const announcementReads = pgTable('announcement_reads', {
   readAt: timestamp('read_at').defaultNow().notNull(),
 }, (t) => ({
   userAnnouncementUnique: unique('user_announcement_unique').on(t.announcementId, t.userRole, t.userId),
+  userIndex: index('announcement_reads_user_idx').on(t.userRole, t.userId, t.announcementId),
 }));
 
 // --- NOTIFICATIONS ---
@@ -386,7 +407,10 @@ export const notifications = pgTable('notifications', {
   isRead: boolean('is_read').default(false).notNull(),
   referenceId: integer('reference_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  institutionUserCreatedIndex: index('notifications_institution_user_created_idx').on(t.institutionId, t.userRole, t.userId, t.createdAt),
+  institutionUserUnreadIndex: index('notifications_institution_user_unread_idx').on(t.institutionId, t.userRole, t.userId, t.isRead, t.createdAt),
+}));
 
 // --- EXPO PUSH TICKETS ---
 export const expoPushTickets = pgTable('expo_push_tickets', {
@@ -414,6 +438,7 @@ export const submissions = pgTable('submissions', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   studentAssignmentUnique: unique('student_assignment_unique').on(t.assignmentId, t.studentId),
+  institutionStudentIndex: index('submissions_institution_student_idx').on(t.institutionId, t.studentId),
 }));
 
 // --- AUDIT LOGS ---
@@ -426,7 +451,9 @@ export const auditLogs = pgTable('audit_logs', {
   target: varchar('target', { length: 255 }).notNull(),
   ip: varchar('ip', { length: 50 }),
   timestamp: timestamp('timestamp').defaultNow().notNull(),
-});
+}, (t) => ({
+  timestampIndex: index('audit_logs_timestamp_idx').on(t.timestamp),
+}));
 
 // --- REFRESH TOKENS ---
 export const refreshTokens = pgTable('refresh_tokens', {
@@ -464,6 +491,18 @@ export const passwordResets = pgTable('password_resets', {
   expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// --- FEE VOUCHERS ---
+export const feeVouchers = pgTable('fee_vouchers', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').references(() => institutions.id, { onDelete: 'cascade' }).notNull(),
+  studentId: integer('student_id').references(() => students.id, { onDelete: 'cascade' }).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  imageUrl: varchar('image_url', { length: 500 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  studentCreatedIdx: index('fee_vouchers_student_created_idx').on(t.studentId, t.createdAt),
+}));
 
 // --- PLATFORM REVIEWS ---
 export const platformReviews = pgTable('platform_reviews', {
@@ -526,4 +565,122 @@ export const batchExamResults = pgTable('batch_exam_results', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   studentBatchResultUnique: unique('student_batch_result_unique').on(t.batchExamSubjectId, t.studentId),
+}));
+
+// --- LEAVE REQUESTS ---
+export const leaveRequests = pgTable('leave_requests', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  userRole: roleEnum('user_role').notNull(), // STUDENT or STAFF
+  userId: integer('user_id').notNull(),
+  reason: text('reason').notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  parentPhone: varchar('parent_phone', { length: 50 }), // for students
+  status: leaveRequestStatusEnum('status').default('PENDING').notNull(),
+  reviewedBy: integer('reviewed_by'), // staff.id or institutions.id depending on who approved it
+  reviewedAt: timestamp('reviewed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  instRoleUserIndex: index('leave_requests_inst_role_user_idx').on(t.institutionId, t.userRole, t.userId),
+}));
+
+// --- STAFF ATTENDANCES ---
+export const staffAttendances = pgTable('staff_attendances', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  staffId: integer('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  date: date('date').notNull(),
+  status: attendanceStatusEnum('status').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  staffDateUnique: unique('staff_date_unique').on(t.staffId, t.date),
+  institutionDateIndex: index('staff_attendances_inst_date_idx').on(t.institutionId, t.date),
+}));
+
+// --- SYSTEM SETTINGS ---
+export const systemSettings = pgTable('system_settings', {
+  id: serial('id').primaryKey(),
+  mobileAppVersion: varchar('mobile_app_version', { length: 50 }).notNull().default('1.0.0'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// --- INSTITUTION OWNERS ---
+export const institutionOwners = pgTable('institution_owners', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }).unique(),
+  name: varchar('name', { length: 255 }).notNull(),
+  gender: genderEnum('gender').notNull(),
+  email: varchar('email', { length: 255 }).notNull(),
+  contactNumber: varchar('contact_number', { length: 50 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// --- INSTITUTION ADMINS ---
+export const institutionAdmins = pgTable('institution_admins', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// --- TICKETS ---
+export const tickets = pgTable('tickets', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  creatorRole: roleEnum('creator_role').notNull(),
+  creatorId: integer('creator_id').notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description').notNull(),
+  status: ticketStatusEnum('status').default('OPEN').notNull(),
+  platformStatus: ticketPlatformStatusEnum('platform_status'),
+  isForwarded: boolean('is_forwarded').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// --- TICKET HISTORY ---
+export const ticketHistory = pgTable('ticket_history', {
+  id: serial('id').primaryKey(),
+  ticketId: integer('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+  actorRole: roleEnum('actor_role').notNull(),
+  actorId: integer('actor_id').notNull(),
+  action: ticketHistoryActionEnum('action').notNull(),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// --- BLOGS ---
+export const blogs = pgTable('blogs', {
+  id: serial('id').primaryKey(),
+  slug: varchar('slug', { length: 255 }).notNull().unique(),
+  title: varchar('title', { length: 255 }).notNull(),
+  content: text('content').notNull(),
+  metaTitle: varchar('meta_title', { length: 255 }),
+  metaDescription: text('meta_description'),
+  excerpt: text('excerpt'),
+  status: blogStatusEnum('status').default('DRAFT').notNull(),
+  publishedAt: timestamp('published_at'),
+  authorRole: roleEnum('author_role').notNull(),
+  authorId: integer('author_id').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// --- DIARIES ---
+export const diaries = pgTable('diaries', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  staffId: integer('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  classId: integer('class_id').notNull().references(() => classes.id, { onDelete: 'cascade' }),
+  subjectId: integer('subject_id').references(() => subjects.id, { onDelete: 'cascade' }),
+  date: date('date').notNull(),
+  content: text('content').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  classSubjectDateUnique: uniqueIndex('diaries_class_subject_date_not_null_uidx')
+    .on(t.classId, t.subjectId, t.date)
+    .where(sql`${t.subjectId} is not null`),
 }));

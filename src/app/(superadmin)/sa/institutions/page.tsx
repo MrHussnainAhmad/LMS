@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { institutions } from "@/db/schema";
 import { desc } from "drizzle-orm";
@@ -7,6 +8,7 @@ import { Building2, Search } from "lucide-react";
 import { updateInstitutionStatusAction } from "@/app/actions/sa-actions";
 import { redirect } from "next/navigation";
 import { SubmitButton } from "@/components/ui/submit-button";
+import Link from "next/link";
 
 export default async function SAInstitutionsPage() {
   const allInstitutions = await db.select()
@@ -77,7 +79,9 @@ export default async function SAInstitutionsPage() {
                           {inst.name.substring(0, 2).toUpperCase()}
                         </div>
                         <div>
-                          <p className="font-semibold text-brand-950">{inst.name}</p>
+                          <Link href={`/sa/institutions/${inst.id}`} className="font-semibold text-brand-950 hover:underline">
+                            {inst.name}
+                          </Link>
                           <p className="text-xs text-stone-500">{inst.username}</p>
                         </div>
                       </div>

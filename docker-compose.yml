@@ -1,0 +1,196 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    restart: unless-stopped
+    command: >
+      postgres
+      -c shared_buffers=3GB
+      -c effective_cache_size=9GB
+      -c work_mem=32MB
+      -c maintenance_work_mem=512MB
+      -c max_connections=100
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=64MB
+      -c default_statistics_target=100
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_USER: ${POSTGRES_USER:-app}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB:-app}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 5000
+      DEFAULT_POOL_SIZE: 25
+      LISTEN_PORT: 6432
+      # For 4000-5000 concurrent users
+      SERVER_IDLE_TIMEOUT: 30
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+      - appnet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U ${POSTGRES_USER:-app}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  valkey:
+    # Valkey = Redis fork, 100% drop-in compatible, OSS licensed
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: valkey-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save ""
+    volumes:
+      - valkey_data:/data
+    networks:
+      - appnet
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    # Option 1: build locally on the ARM Oracle VM
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Option 2: use a prebuilt image instead, comment out build: above and uncomment:
+    # image: ghcr.io/yourname/yourapp:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # App -> PgBouncer, NOT direct to postgres
+      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
+      # Direct postgres URL for migrations (Prisma/Drizzle)
+      DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
+      # Valkey - 100% Redis compatible
+      REDIS_URL: redis://valkey:6379
+      # Add your other Next.js env vars here
+      NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      # NEXTAUTH_URL: https://${DOMAIN}
+      # NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      valkey:
+        condition: service_healthy
+    networks:
+      - appnet
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app2:
+    container_name: nisaab360-app2
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
+      DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
+      REDIS_URL: redis://valkey:6379
+      NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      valkey:
+        condition: service_healthy
+    networks:
+      - appnet
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - appnet
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-backup:
+    build: ./backup
+    restart: unless-stopped
+    volumes:
+      - postgres_backup:/backups
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DATABASE: ${POSTGRES_DB:-app}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Run backup daily at midnight
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 6
+      # S3 Upload (Backblaze B2)
+      S3_ENDPOINT: "https://s3.${B2_REGION}.backblazeb2.com"
+      S3_ACCESS_KEY_ID: ${B2_APPLICATION_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${B2_APPLICATION_KEY}
+      S3_BUCKET: ${B2_BUCKET_NAME}
+      S3_PREFIX: "postgres-backups"
+      S3_REGION: ${B2_REGION}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+volumes:
+  postgres_data:
+  postgres_backup:
+  valkey_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  backend:
+    internal: true
+  appnet:

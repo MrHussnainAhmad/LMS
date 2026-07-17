@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import cloudinary from '@/lib/cloudinary';
 import { requireRole } from '@/lib/rbac';
 
-export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'SUPER_ADMIN'], async () => {
+export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'SUPER_ADMIN'], async (req) => {
   try {
     const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME;
     const apiKey = process.env.CLOUDINARY_API_KEY;
@@ -15,13 +15,16 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'SUPER_ADMIN
       );
     }
 
+    const body = await req.json().catch(() => ({}));
+    const folder = body.folder || 'lms-uploads';
+
     const timestamp = Math.round(new Date().getTime() / 1000);
     
     // Cloudinary signature generation
     const signature = cloudinary.utils.api_sign_request(
       {
         timestamp: timestamp,
-        folder: 'lms-uploads',
+        folder: folder,
       },
       apiSecret
     );

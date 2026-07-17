@@ -10,51 +10,51 @@ import { SubmitButton } from "@/components/ui/submit-button";
 
 export default async function InstitutionAcademicsPage() {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") {
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) {
     redirect("/login");
   }
 
-  const institutionId = session.userId;
+  const institutionId = session.institutionId || session.userId;
 
-  const allSubjects = await db.select()
-    .from(subjects)
-    .where(eq(subjects.institutionId, institutionId))
-    .orderBy(desc(subjects.createdAt));
-
-  const allClasses = await db.select()
-    .from(classes)
-    .where(eq(classes.institutionId, institutionId))
-    .orderBy(desc(classes.createdAt));
-
-  const allSections = await db.select({
-    section: sections,
-    className: classes.name
-  })
-    .from(sections)
-    .innerJoin(classes, eq(sections.classId, classes.id))
-    .where(eq(sections.institutionId, institutionId))
-    .orderBy(desc(sections.createdAt));
-
-  const allStaff = await db.select()
-    .from(staff)
-    .where(eq(staff.institutionId, institutionId));
+  const [allSubjects, allClasses, allSections, allStaff] = await Promise.all([
+    db.select()
+      .from(subjects)
+      .where(eq(subjects.institutionId, institutionId))
+      .orderBy(desc(subjects.createdAt)),
+    db.select()
+      .from(classes)
+      .where(eq(classes.institutionId, institutionId))
+      .orderBy(desc(classes.createdAt)),
+    db.select({
+      section: sections,
+      className: classes.name,
+    })
+      .from(sections)
+      .innerJoin(classes, eq(sections.classId, classes.id))
+      .where(eq(sections.institutionId, institutionId))
+      .orderBy(desc(sections.createdAt)),
+    db.select().from(staff).where(eq(staff.institutionId, institutionId)),
+  ]);
+  const sectionsByClass = new Map<number, typeof allSections>();
+  for (const section of allSections) {
+    const classSections = sectionsByClass.get(section.section.classId) || [];
+    classSections.push(section);
+    sectionsByClass.set(section.section.classId, classSections);
+  }
 
   async function createSubject(formData: FormData) {
     "use server";
     await createSubjectAction(formData);
-    redirect("/institution/academics");
   }
 
   async function createClass(formData: FormData) {
     "use server";
     await createClassAction(formData);
-    redirect("/institution/academics");
   }
 
   async function createSection(formData: FormData) {
     "use server";
     await createSectionAction(formData);
-    redirect("/institution/academics");
   }
 
   return (
@@ -170,7 +170,7 @@ export default async function InstitutionAcademicsPage() {
                     </tr>
                   )}
                   {allClasses.map((cls) => {
-                    const clsSections = allSections.filter(s => s.section.classId === cls.id);
+                    const clsSections = sectionsByClass.get(cls.id) || [];
                     return (
                       <tr key={cls.id} className="hover:bg-stone-50/50 transition-colors">
                         <td className="px-6 py-4 font-semibold text-brand-950">{cls.name}</td>
@@ -220,49 +220,55 @@ export default async function InstitutionAcademicsPage() {
             </CardContent>
           </Card>
 
-          {/* Add Section Form */}
-          <Card>
-            <CardHeader className="border-b border-border bg-stone-50/50">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Plus className="h-5 w-5 text-brand-600" />
-                Add New Section
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <form action={createSection} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Select Class</label>
-                  <select name="classId" required className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
-                    {allClasses.map(cls => (
-                      <option key={cls.id} value={cls.id}>{cls.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Section Name</label>
-                  <input
-                    type="text"
-                    name="name"
-                    required
-                    className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    placeholder="e.g. Section A"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Class Teacher (Optional)</label>
-                  <select name="classTeacherId" className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
-                    <option value="">None</option>
-                    {allStaff.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <SubmitButton className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors">
-                  Create Section
-                </SubmitButton>
-              </form>
-            </CardContent>
-          </Card>
+          {/* Add Section Form (Hidden by default since it's optional) */}
+          <details className="group">
+            <summary className="cursor-pointer list-none text-sm font-medium text-brand-600 hover:text-brand-700 flex items-center gap-2 mb-2">
+              <span className="group-open:hidden">+ Advanced: Add Multiple Sections</span>
+              <span className="hidden group-open:inline">- Hide Section Form</span>
+            </summary>
+            <Card>
+              <CardHeader className="border-b border-border bg-stone-50/50">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Plus className="h-5 w-5 text-brand-600" />
+                  Add New Section
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                <form action={createSection} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">Select Class</label>
+                    <select name="classId" required className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-surface">
+                      {allClasses.map(cls => (
+                        <option key={cls.id} value={cls.id}>{cls.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">Section Name</label>
+                    <input
+                      type="text"
+                      name="name"
+                      required
+                      className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      placeholder="e.g. Section A"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">Class Teacher (Optional)</label>
+                    <select name="classTeacherId" className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-surface">
+                      <option value="">None</option>
+                      {allStaff.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <SubmitButton className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors">
+                    Create Section
+                  </SubmitButton>
+                </form>
+              </CardContent>
+            </Card>
+          </details>
         </div>
       </div>
     </div>

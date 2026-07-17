@@ -2,39 +2,35 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { notifications } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { eq, and, desc, inArray, gte } from "drizzle-orm";
+import { eq, and, desc, inArray, gte, count } from "drizzle-orm";
 import { getUserCreatedAt } from "@/lib/user";
 
 export const GET = requireRole(["STUDENT", "STAFF", "INSTITUTION", "EMPLOYEE", "SUPER_ADMIN"], async (req: NextRequest, { session }) => {
   try {
     const userCreatedAt = await getUserCreatedAt(session);
 
-    const userNotifications = await db.select()
-      .from(notifications)
-      .where(
-        and(
-          session.institutionId ? eq(notifications.institutionId, session.institutionId) : undefined,
-          eq(notifications.userRole, session.role),
-          eq(notifications.userId, session.userId),
-          gte(notifications.createdAt, userCreatedAt)
-        )
-      )
-      .orderBy(desc(notifications.createdAt))
-      .limit(50); // Get latest 50
+    const notificationScope = and(
+      session.institutionId ? eq(notifications.institutionId, session.institutionId) : undefined,
+      eq(notifications.userRole, session.role),
+      eq(notifications.userId, session.userId),
+      gte(notifications.createdAt, userCreatedAt)
+    );
 
-    const unreadCountArray = await db.select({ id: notifications.id })
-      .from(notifications)
-      .where(
-        and(
-          session.institutionId ? eq(notifications.institutionId, session.institutionId) : undefined,
-          eq(notifications.userRole, session.role),
-          eq(notifications.userId, session.userId),
-          eq(notifications.isRead, false),
-          gte(notifications.createdAt, userCreatedAt)
-        )
-      );
+    const [userNotifications, unreadCountRows] = await Promise.all([
+      db.select()
+        .from(notifications)
+        .where(notificationScope)
+        .orderBy(desc(notifications.createdAt))
+        .limit(50),
+      db.select({ value: count() })
+        .from(notifications)
+        .where(and(notificationScope, eq(notifications.isRead, false))),
+    ]);
 
-    return NextResponse.json({ notifications: userNotifications, unreadCount: unreadCountArray.length });
+    return NextResponse.json({
+      notifications: userNotifications,
+      unreadCount: unreadCountRows[0]?.value ?? 0,
+    });
   } catch (error) {
     console.error("Error fetching notifications:", error);
     return NextResponse.json({ error: "Failed to fetch notifications" }, { status: 500 });

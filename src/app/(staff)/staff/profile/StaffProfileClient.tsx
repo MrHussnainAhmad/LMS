@@ -213,7 +213,7 @@ export function StaffProfileClient({
                     <Input name="phone" placeholder={staff.phone || "Phone number"} />
                   </Field>
                   <Field label="Campus">
-                    <select name="campusId" className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
+                    <select name="campusId" className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
                       <option value="">No campus change</option>
                       {campuses.map((campus) => (
                         <option key={campus.id} value={campus.id}>{campus.name}</option>

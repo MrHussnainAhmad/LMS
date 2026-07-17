@@ -7,14 +7,15 @@ import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { createCampusAction } from "@/app/actions/institution-actions";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { DeleteCampusButton } from "./DeleteCampusButton";
 
 export default async function InstitutionCampusesPage() {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") {
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) {
     redirect("/login");
   }
 
-  const institutionId = session.userId;
+  const institutionId = session.institutionId || session.userId;
 
   const allCampuses = await db.select()
     .from(campuses)
@@ -24,7 +25,6 @@ export default async function InstitutionCampusesPage() {
   async function createCampus(formData: FormData) {
     "use server";
     await createCampusAction(formData);
-    redirect("/institution/campuses");
   }
 
   return (
@@ -53,12 +53,13 @@ export default async function InstitutionCampusesPage() {
                       <th className="px-6 py-4 font-medium">Campus Name</th>
                       <th className="px-6 py-4 font-medium">Address</th>
                       <th className="px-6 py-4 font-medium">Status</th>
+                      <th className="px-6 py-4 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {allCampuses.length === 0 && (
                       <tr>
-                        <td colSpan={3} className="px-6 py-8 text-center text-stone-500">
+                        <td colSpan={4} className="px-6 py-8 text-center text-stone-500">
                           No campuses added yet.
                         </td>
                       </tr>
@@ -71,6 +72,9 @@ export default async function InstitutionCampusesPage() {
                           <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-success/20 text-emerald-700">
                             Active
                           </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <DeleteCampusButton campusId={campus.id} campusName={campus.name} />
                         </td>
                       </tr>
                     ))}

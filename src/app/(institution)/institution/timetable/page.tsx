@@ -28,21 +28,28 @@ type TimetableTarget = {
 
 export default async function InstitutionTimetablePage({ searchParams }: { searchParams: Promise<{ sectionId?: string; classId?: string }> }) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") redirect("/login");
-  const institutionId = session.userId;
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) redirect("/login");
+  const institutionId = session.institutionId || session.userId;
   const params = await searchParams;
 
-  const allSections = await db.select({
-    section: sections,
-    className: classes.name
-  }).from(sections).innerJoin(classes, eq(sections.classId, classes.id)).where(eq(sections.institutionId, institutionId));
-
-  const allSubjects = await db.select().from(subjects).where(eq(subjects.institutionId, institutionId));
-  const allStaff = await db.select().from(staff).where(eq(staff.institutionId, institutionId));
-  const allClasses = await db.select().from(classes).where(eq(classes.institutionId, institutionId));
+  const [allSections, allSubjects, allStaff, allClasses] = await Promise.all([
+    db.select({
+      section: sections,
+      className: classes.name,
+    }).from(sections).innerJoin(classes, eq(sections.classId, classes.id)).where(eq(sections.institutionId, institutionId)),
+    db.select().from(subjects).where(eq(subjects.institutionId, institutionId)),
+    db.select().from(staff).where(eq(staff.institutionId, institutionId)),
+    db.select().from(classes).where(eq(classes.institutionId, institutionId)),
+  ]);
+  const sectionsByClass = new Map<number, typeof allSections>();
+  for (const section of allSections) {
+    const classSections = sectionsByClass.get(section.section.classId) || [];
+    classSections.push(section);
+    sectionsByClass.set(section.section.classId, classSections);
+  }
 
   const timetableTargets: TimetableTarget[] = allClasses.flatMap((classRow) => {
-    const classSections = allSections.filter((row) => row.section.classId === classRow.id);
+    const classSections = sectionsByClass.get(classRow.id) || [];
     const wholeClassSection = classSections.find((row) => row.section.name === WHOLE_CLASS_SECTION_NAME);
     const namedSections = classSections.filter((row) => row.section.name !== WHOLE_CLASS_SECTION_NAME);
 

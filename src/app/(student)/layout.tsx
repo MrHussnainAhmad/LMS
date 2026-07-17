@@ -1,10 +1,11 @@
 "use client";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { LayoutDashboard, CalendarDays, FileText, CheckSquare, UploadCloud, CalendarCheck, FileQuestion, Megaphone } from "lucide-react";
+import { LayoutDashboard, CalendarDays, FileText, CheckSquare, UploadCloud, CalendarCheck, FileQuestion, Megaphone, Receipt, Ticket, BookOpen } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
   { label: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard },
+  { label: "Daily Diary", href: "/student/diary", icon: BookOpen },
   { label: "Announcements", href: "/student/announcements", icon: Megaphone },
   { label: "Timetable", href: "/student/timetable", icon: CalendarDays },
   { label: "Exam Timetable", href: "/student/exams", icon: CalendarCheck, availabilityKey: "examTimetable" as const },
@@ -13,6 +14,8 @@ const SIDEBAR_ITEMS = [
   { label: "Marks", href: "/student/marks", icon: FileText },
   { label: "Transcripts", href: "/student/transcripts", icon: FileText },
   { label: "Submissions", href: "/student/submissions", icon: UploadCloud },
+  { label: "Fee Vouchers", href: "/student/vouchers", icon: Receipt, availabilityKey: "feeVouchers" as const },
+  { label: "Support Tickets", href: "/student/tickets", icon: Ticket },
 ];
 
 export default function StudentLayout({

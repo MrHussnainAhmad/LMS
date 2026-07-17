@@ -52,6 +52,15 @@ async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPay
         mustChangePassword: user.mustChangePassword,
       } : null;
     }
+    case 'INSTITUTION_ADMIN': {
+      // For now, assume it's valid if it exists
+      const { institutionAdmins } = await import('@/db/schema');
+      const [user] = await db.select({ institutionId: institutionAdmins.institutionId })
+        .from(institutionAdmins).where(eq(institutionAdmins.id, userId)).limit(1);
+      return user ? { userId, role, institutionId: user.institutionId } : null;
+    }
+    default:
+      return null;
   }
 }
 

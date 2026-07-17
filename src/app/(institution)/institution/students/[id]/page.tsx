@@ -1,11 +1,11 @@
 import { db } from "@/db";
-import { students, classes, sections, attendances, marks, tests, submissions, assignments, batchExams, batchExamSubjects, batchExamResults } from "@/db/schema";
+import { students, classes, sections, attendances, marks, tests, submissions, assignments, batchExams, batchExamSubjects, batchExamResults, feeVouchers } from "@/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Printer, ArrowLeft, User, BookOpen, CheckCircle, FileText, Award } from "lucide-react";
+import { Printer, ArrowLeft, User, BookOpen, CheckCircle, FileText, Award, Receipt } from "lucide-react";
 import Link from "next/link";
 import { PrintButton } from "./PrintButton";
 import { AttendanceCalendar } from "./AttendanceCalendar";
@@ -15,11 +15,11 @@ import { StudentAnalytics } from "./StudentAnalytics";
 
 export default async function StudentProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") redirect("/login");
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) redirect("/login");
 
   const { id } = await params;
   const studentId = parseInt(id);
-  const institutionId = session.userId;
+  const institutionId = session.institutionId || session.userId;
 
   if (isNaN(studentId)) redirect("/institution/students");
 
@@ -45,54 +45,54 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
 
   if (!student) redirect("/institution/students");
 
-  // Fetch Attendance
-  const attendanceRecords = await db.select()
-    .from(attendances)
-    .where(eq(attendances.studentId, studentId))
-    .orderBy(desc(attendances.date))
-    .limit(30);
-
-  const marksRecords = await db.select({
-    id: marks.id,
-    marksObtained: marks.marksObtained,
-    totalMarks: marks.totalMarks,
-    testTitle: tests.title,
-    date: tests.date,
-    testType: tests.type,
-  })
-    .from(marks)
-    .innerJoin(tests, eq(marks.testId, tests.id))
-    .where(eq(marks.studentId, studentId))
-    .orderBy(desc(tests.date));
-
-  // Fetch Submissions
-  const submissionRecords = await db.select({
-    id: submissions.id,
-    fileKey: submissions.fileKey,
-    createdAt: submissions.createdAt,
-    assignmentTitle: assignments.title,
-    dueAt: assignments.dueAt,
-  })
-    .from(submissions)
-    .innerJoin(assignments, eq(submissions.assignmentId, assignments.id))
-    .where(eq(submissions.studentId, studentId))
-    .orderBy(desc(submissions.createdAt));
-
-  // Fetch Batch Results
-  const rawBatchResults = await db.select({
-    examId: batchExams.id,
-    examTitle: batchExams.title,
-    examCreatedAt: batchExams.createdAt,
-    subjectId: batchExamSubjects.id,
-    isPublished: batchExamSubjects.isPublished,
-    reviewDeadline: batchExamSubjects.reviewDeadline,
-    maxMarks: batchExamSubjects.maxMarks,
-    marksObtained: batchExamResults.marksObtained,
-  })
-  .from(batchExamResults)
-  .innerJoin(batchExamSubjects, eq(batchExamResults.batchExamSubjectId, batchExamSubjects.id))
-  .innerJoin(batchExams, eq(batchExamSubjects.batchExamId, batchExams.id))
-  .where(eq(batchExamResults.studentId, studentId));
+  const [attendanceRecords, marksRecords, submissionRecords, rawBatchResults, studentVouchers] = await Promise.all([
+    db.select()
+      .from(attendances)
+      .where(and(eq(attendances.studentId, studentId), eq(attendances.institutionId, institutionId)))
+      .orderBy(desc(attendances.date))
+      .limit(30),
+    db.select({
+      id: marks.id,
+      marksObtained: marks.marksObtained,
+      totalMarks: marks.totalMarks,
+      testTitle: tests.title,
+      date: tests.date,
+      testType: tests.type,
+    })
+      .from(marks)
+      .innerJoin(tests, eq(marks.testId, tests.id))
+      .where(and(eq(marks.studentId, studentId), eq(marks.institutionId, institutionId)))
+      .orderBy(desc(tests.date)),
+    db.select({
+      id: submissions.id,
+      fileKey: submissions.fileKey,
+      createdAt: submissions.createdAt,
+      assignmentTitle: assignments.title,
+      dueAt: assignments.dueAt,
+    })
+      .from(submissions)
+      .innerJoin(assignments, eq(submissions.assignmentId, assignments.id))
+      .where(and(eq(submissions.studentId, studentId), eq(submissions.institutionId, institutionId)))
+      .orderBy(desc(submissions.createdAt)),
+    db.select({
+      examId: batchExams.id,
+      examTitle: batchExams.title,
+      examCreatedAt: batchExams.createdAt,
+      subjectId: batchExamSubjects.id,
+      isPublished: batchExamSubjects.isPublished,
+      reviewDeadline: batchExamSubjects.reviewDeadline,
+      maxMarks: batchExamSubjects.maxMarks,
+      marksObtained: batchExamResults.marksObtained,
+    })
+      .from(batchExamResults)
+      .innerJoin(batchExamSubjects, eq(batchExamResults.batchExamSubjectId, batchExamSubjects.id))
+      .innerJoin(batchExams, eq(batchExamSubjects.batchExamId, batchExams.id))
+      .where(and(eq(batchExamResults.studentId, studentId), eq(batchExams.institutionId, institutionId))),
+    db.select()
+      .from(feeVouchers)
+      .where(and(eq(feeVouchers.studentId, studentId), eq(feeVouchers.institutionId, institutionId)))
+      .orderBy(desc(feeVouchers.createdAt))
+  ]);
 
   const examMap = new Map<number, { id: number, title: string, createdAt: Date, totalMax: number, totalObtained: number, percentage: number, isEffectivelyPublished: boolean }>();
   const now = new Date();
@@ -250,6 +250,39 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
             }))} />
           </CardContent>
         </Card>
+
+        {studentVouchers.length > 0 && (
+          <Card>
+            <CardHeader className="bg-stone-50/50 py-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Receipt className="h-5 w-5 text-emerald-600" /> Fee Vouchers
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {studentVouchers.map((v) => (
+                  <div key={v.id} className="border border-border rounded-lg overflow-hidden flex flex-col bg-white">
+                    <div className="h-40 bg-stone-100 relative group overflow-hidden">
+                      <img src={v.imageUrl} alt={v.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                      <a 
+                        href={v.imageUrl} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                      >
+                        <span className="bg-white text-stone-900 text-sm font-medium px-3 py-1.5 rounded-md">View Full Image</span>
+                      </a>
+                    </div>
+                    <div className="p-3">
+                      <h4 className="font-semibold text-brand-950 truncate">{v.title}</h4>
+                      <p className="text-xs text-stone-500 mt-1">Uploaded on {v.createdAt.toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Analytics Section */}
         <StudentAnalytics data={{

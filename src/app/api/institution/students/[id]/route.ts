@@ -27,6 +27,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { par
       id: students.id,
       institutionId: students.institutionId,
       yearOfJoining: students.yearOfJoining,
+      gender: students.gender,
       classRollNumber: students.classRollNumber,
     })
       .from(students)
@@ -53,6 +54,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { par
       classRow,
       sectionRow,
       yearOfJoining: student.yearOfJoining,
+      gender: student.gender,
       classRollNumber,
     });
 

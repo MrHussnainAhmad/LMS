@@ -26,17 +26,20 @@ const DEFAULT_PAGES = [
   { slug: "terms-of-service", title: "Terms of Service" },
   { slug: "security", title: "Security" },
   { slug: "gdpr", title: "GDPR" },
+  { slug: "pricing", title: "Pricing" },
 ];
 
-export default function PagesClient() {
+export default function PagesClient({ role }: { role?: string }) {
+  const availablePages = DEFAULT_PAGES.filter(p => p.slug !== "pricing" || role !== "EMPLOYEE");
+  
   const [pages, setPages] = useState<PageData[]>([]);
-  const [selectedSlug, setSelectedSlug] = useState<string>(DEFAULT_PAGES[0].slug);
+  const [selectedSlug, setSelectedSlug] = useState<string>(availablePages[0].slug);
   const [content, setContent] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
-  const currentDefaultPage = DEFAULT_PAGES.find(p => p.slug === selectedSlug);
+  const currentDefaultPage = availablePages.find(p => p.slug === selectedSlug);
 
   useEffect(() => {
     fetchPages();
@@ -127,7 +130,7 @@ export default function PagesClient() {
             value={selectedSlug}
             onChange={(e) => setSelectedSlug(e.target.value)}
           >
-            {DEFAULT_PAGES.map((p) => (
+            {availablePages.map((p) => (
               <option key={p.slug} value={p.slug}>
                 {p.title}
               </option>

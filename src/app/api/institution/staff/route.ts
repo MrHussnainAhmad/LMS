@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff, staffTeachableSubjects, institutions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { hash } from '@node-rs/argon2';
+import { hashPassword as hash } from '@/lib/argon2-pool';
 import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStaffSchema } from '@/lib/validators/staff';
 import { logAudit } from '@/lib/audit';
@@ -70,6 +70,13 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
       target: `Staff ${newStaff.id}`,
       ip: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
     });
+
+    try {
+      const { redis } = await import('@/lib/redis');
+      await redis.del(`cache:dashboard:${tenantId}`);
+    } catch (e) {
+      // ignore
+    }
 
     // We realistically can't email the staff because it's a generated internal email unless we use 'phone' or SMS. 
     // Usually, the institution admin hands the credentials. But if there's a real email, we send it.
