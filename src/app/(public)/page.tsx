@@ -3,7 +3,7 @@ import { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, CheckCircle2, LayoutDashboard, Calendar, Bell, Star, MessageSquareQuote } from "lucide-react";
+import { ArrowRight, CheckCircle2, Download, LayoutDashboard, Calendar, Bell, Star, MessageSquareQuote } from "lucide-react";
 import { FadeIn, HeroFadeIn, StaggerContainer, StaggerItem, ScaleIn } from "@/components/ui/scroll-animation";
 import { AnimatedBackground, FloatingIcons } from "@/components/ui/animated-background";
 import { db } from "@/db";
@@ -173,6 +173,12 @@ export default async function LandingPage() {
         <nav className="hidden lg:flex items-center gap-8">
           <Link href="#testimonials" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Customers</Link>
           <Link href="#pricing" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Pricing</Link>
+          <Button asChild size="sm" variant="outline" className="rounded-full font-semibold">
+            <Link href="/download-app">
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Download
+            </Link>
+          </Button>
           <Link href="/employee-login" className="text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors">Employee Login</Link>
         </nav>
 

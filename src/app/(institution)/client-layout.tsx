@@ -1,7 +1,7 @@
 "use client";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { LayoutDashboard, Users, UserSquare2, BookOpen, Calendar, Settings, MapPin, Megaphone, FilePenLine, ClipboardList, CheckSquare, ShieldCheck, Ticket } from "lucide-react";
+import { LayoutDashboard, Users, UserSquare2, BookOpen, Calendar, Settings, MapPin, Megaphone, FilePenLine, ClipboardList, CheckSquare, ShieldCheck, Ticket, Download } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
   { label: "Dashboard", href: "/institution/dashboard", icon: LayoutDashboard },
@@ -18,6 +18,7 @@ const SIDEBAR_ITEMS = [
   { label: "Admins", href: "/institution/admins", icon: ShieldCheck },
   { label: "Helpdesk", href: "/institution/helpdesk", icon: Ticket },
   { label: "Settings", href: "/institution/settings", icon: Settings },
+  { label: "App Download", href: "/institution/download-app", icon: Download },
 ];
 
 export default function InstitutionLayout({
@@ -31,7 +32,7 @@ export default function InstitutionLayout({
     if (role === "INSTITUTION_ADMIN") {
       return item.label !== "Settings" && item.label !== "Admins";
     }
-    return true;
+    return item.label !== "App Download";
   });
 
   return (

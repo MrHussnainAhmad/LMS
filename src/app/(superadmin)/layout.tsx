@@ -1,7 +1,7 @@
 "use client";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { LayoutDashboard, Building2, Users, Activity, ShieldAlert, FileText, Star, Newspaper } from "lucide-react";
+import { LayoutDashboard, Building2, Users, Activity, ShieldAlert, FileText, Star, Newspaper, Download } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
   { label: "Dashboard", href: "/sa/dashboard", icon: LayoutDashboard },
@@ -13,6 +13,7 @@ const SIDEBAR_ITEMS = [
   { label: "Audit Logs", href: "/sa/audit", icon: Activity },
   { label: "Footer Pages", href: "/sa/pages", icon: FileText },
   { label: "Blogs", href: "/sa/blogs", icon: Newspaper },
+  { label: "App Download", href: "/sa/download-app", icon: Download },
 ];
 
 export default function SuperAdminLayout({

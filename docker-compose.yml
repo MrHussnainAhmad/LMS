@@ -102,6 +102,8 @@ services:
     networks:
       - appnet
       - backend
+    volumes:
+      - app_downloads:/app/public/downloads
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
       interval: 10s
@@ -132,6 +134,8 @@ services:
     networks:
       - appnet
       - backend
+    volumes:
+      - app_downloads:/app/public/downloads
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
       interval: 10s
@@ -215,6 +219,7 @@ volumes:
   valkey_data:
   caddy_data:
   caddy_config:
+  app_downloads:
 
 networks:
   backend:

@@ -35,6 +35,7 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
+RUN mkdir -p public/downloads && chown -R nextjs:nodejs public
 # Copy schema and config for migrations
 COPY --from=builder /app/src/db ./src/db
 COPY --from=builder /app/drizzle.config.ts ./
