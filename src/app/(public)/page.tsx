@@ -12,6 +12,7 @@ import { eq, desc, sql } from "drizzle-orm";
 import { LiveStats } from "@/components/ui/live-stats";
 import { InteractiveFeatures } from "@/components/ui/interactive-features";
 import { unstable_cache } from "next/cache";
+import { LandingHeader } from "@/components/layout/LandingHeader";
 
 const pricingPlans = [
   {
@@ -141,28 +142,7 @@ export default async function LandingPage() {
 
       <AnimatedBackground />
 
-      <header className="sticky top-0 z-50 flex items-center justify-between border-b border-stone-200 bg-white px-6 py-4 shadow-sm md:px-12">
-        <div className="flex items-center gap-3 group cursor-pointer">
-          <div className="h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-brand-100">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <Image src="/Logo.png" alt="Nisaab360 logo" width={40} height={40} quality={80} className="h-full w-full object-contain" />
-          </div>
-          <span className="font-display font-extrabold text-2xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Nisaab360</span>
-        </div>
-        
-        <nav className="hidden lg:flex items-center gap-8">
-          <Link href="#testimonials" className="text-sm font-semibold text-stone-600 hover:text-stone-900">Customers</Link>
-          <Link href="#pricing" className="text-sm font-semibold text-stone-600 hover:text-stone-900">Pricing</Link>
-          <Link href="/download-app" className="text-sm font-semibold text-stone-600 hover:text-stone-900">Download</Link>
-          <Link href="/employee-login" className="text-sm font-semibold text-stone-600 hover:text-stone-900">Employee Login</Link>
-        </nav>
-
-        <div className="flex items-center gap-4">
-          <Button asChild className="landing-hover rounded-full font-semibold shadow-lg shadow-brand-500/20 active:scale-100">
-            <Link href="/register">Request as Institution</Link>
-          </Button>
-        </div>
-      </header>
+      <LandingHeader />
 
       <main className="flex-1 flex flex-col items-center w-full">
         {/* Hero Section */}
@@ -379,6 +359,28 @@ export default async function LandingPage() {
 
                <FadeIn direction="up" delay={0.4} className="flex justify-center">
                  <Button size="lg" className="landing-hover h-14 rounded-full bg-white px-10 text-base font-bold text-stone-900 hover:bg-stone-100 shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-100" asChild>
+                   <a href="mailto:Workwithhussnainahmad@gmail.com">Contact Sales: Workwithhussnainahmad@gmail.com</a>
+                 </Button>
+               </FadeIn>
+             </div>
+          </ScaleIn>
+        </section>
+      </main>
+
+      {/* --- Professional Footer --- */}
+      <footer className="w-full bg-stone-950 text-white border-t border-stone-800 pt-20 pb-10 px-6 md:px-12">
+        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-12 mb-16">
+           <div className="col-span-2">
+             <div className="flex items-center gap-2 mb-6">
+                <div className="h-9 w-9 overflow-hidden rounded-lg bg-white ring-1 ring-white/10">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <Image src="/Logo.png" alt="Nisaab360 logo" width={40} height={40} quality={80} className="h-full w-full object-contain" />
+                </div>
+                <span className="font-display font-bold text-2xl">Nisaab360</span>
+             </div>
+             <p className="text-stone-400 text-sm max-w-xs mb-6">
+               The next-generation platform for modern education. Simplify admin tasks, boost engagement, and leverage advanced analytics.
+             </p>
            </div>
            
            <div>
