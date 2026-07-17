@@ -7,6 +7,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# Dedicated lightweight runtime for the receipt-only worker. It intentionally
+# retains TypeScript tooling so it can execute the existing shared source directly.
+FROM deps AS push-receipt-worker
+WORKDIR /app
+COPY . .
+ENV NODE_ENV production
+CMD ["./node_modules/.bin/tsx", "scripts/push-receipt-worker.ts"]
+
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app

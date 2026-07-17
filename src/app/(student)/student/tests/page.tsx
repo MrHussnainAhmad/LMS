@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { CheckCircle2, Clock, FileQuestion } from "lucide-react";
+import { Clock, FileQuestion } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/db";
-import { classes, onlineTestSubmissions, onlineTests, students, subjects, tests } from "@/db/schema";
+import { onlineTestSubmissions, onlineTests, students, subjects, tests } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 export default async function StudentTestsPage() {
@@ -15,25 +15,34 @@ export default async function StudentTestsPage() {
   if (!student) redirect("/login");
 
   const rows = await db.select({
-    onlineTest: onlineTests,
-    test: tests,
-    className: classes.name,
+    onlineTest: {
+      id: onlineTests.id,
+      mode: onlineTests.mode,
+      durationMinutes: onlineTests.durationMinutes,
+    },
+    test: {
+      title: tests.title,
+      maxMarks: tests.maxMarks,
+    },
     subjectName: subjects.name,
   })
     .from(onlineTests)
     .innerJoin(tests, eq(onlineTests.testId, tests.id))
-    .innerJoin(classes, eq(tests.classId, classes.id))
     .leftJoin(subjects, eq(tests.subjectId, subjects.id))
-    .where(and(eq(onlineTests.institutionId, session.institutionId), eq(tests.classId, student.classId), eq(tests.sectionId, student.sectionId)))
-    .orderBy(desc(onlineTests.createdAt));
-
-  const submissions = await db.select().from(onlineTestSubmissions).where(and(eq(onlineTestSubmissions.studentId, session.userId), eq(onlineTestSubmissions.institutionId, session.institutionId)));
-  const submissionByTest = new Map(submissions.map((submission) => [submission.onlineTestId, submission]));
-  const nowMs = new Date().getTime();
-  const activeRows = rows.filter(({ onlineTest }) => (
-    onlineTest.createdAt.getTime() + onlineTest.durationMinutes * 60 * 1000 > nowMs
-    && !submissionByTest.has(onlineTest.id)
-  ));
+    .leftJoin(onlineTestSubmissions, and(
+      eq(onlineTestSubmissions.onlineTestId, onlineTests.id),
+      eq(onlineTestSubmissions.institutionId, session.institutionId),
+      eq(onlineTestSubmissions.studentId, session.userId)
+    ))
+    .where(and(
+      eq(onlineTests.institutionId, session.institutionId),
+      eq(tests.classId, student.classId),
+      eq(tests.sectionId, student.sectionId),
+      isNull(onlineTestSubmissions.id),
+      sql`${onlineTests.createdAt} + ${onlineTests.durationMinutes} * interval '1 minute' > now()`
+    ))
+    .orderBy(desc(onlineTests.createdAt), desc(onlineTests.id))
+    .limit(50);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -51,13 +60,11 @@ export default async function StudentTestsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {activeRows.length === 0 ? (
+          {rows.length === 0 ? (
             <p className="p-8 text-sm text-stone-500">No online tests are available for your class right now.</p>
           ) : (
             <div className="divide-y divide-border">
-              {activeRows.map(({ onlineTest, test, subjectName }) => {
-                const submission = submissionByTest.get(onlineTest.id);
-                return (
+              {rows.map(({ onlineTest, test, subjectName }) => (
                   <div key={onlineTest.id} className="grid gap-4 p-5 lg:grid-cols-[1fr_auto] lg:items-center">
                     <div>
                       <h3 className="font-semibold text-brand-950">{test.title}</h3>
@@ -67,19 +74,11 @@ export default async function StudentTestsPage() {
                         {onlineTest.durationMinutes} minutes
                       </p>
                     </div>
-                    {submission ? (
-                      <div className="flex items-center gap-2 rounded-md bg-stone-100 px-3 py-2 text-sm font-medium text-stone-700">
-                        <CheckCircle2 className="h-4 w-4 text-success" />
-                        {submission.status} - {submission.totalScore}/{test.maxMarks}
-                      </div>
-                    ) : (
-                      <Link href={`/student/tests/${onlineTest.id}`} className="rounded-md bg-brand-900 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-brand-800">
-                        Start
-                      </Link>
-                    )}
+                    <Link href={`/student/tests/${onlineTest.id}`} className="rounded-md bg-brand-900 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-brand-800">
+                      Start
+                    </Link>
                   </div>
-                );
-              })}
+              ))}
             </div>
           )}
         </CardContent>

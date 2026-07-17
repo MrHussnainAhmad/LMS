@@ -2,6 +2,9 @@ import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from './schema';
 
+const configuredPoolMax = Number.parseInt(process.env.DB_POOL_MAX ?? "5", 10);
+const poolMax = Number.isFinite(configuredPoolMax) && configuredPoolMax > 0 ? configuredPoolMax : 5;
+
 // Patch console.error to prevent dumping huge PG error objects with undefined fields
 const originalError = console.error;
 console.error = (...args: any[]) => {
@@ -20,7 +23,7 @@ console.error = (...args: any[]) => {
 
 const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL!,
-  max: 5,
+  max: poolMax,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
   keepAlive: true,

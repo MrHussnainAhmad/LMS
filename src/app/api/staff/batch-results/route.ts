@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { batchExams, batchExamSubjects, classes, sections, subjects } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { eq, desc } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -21,31 +21,20 @@ export async function GET(req: NextRequest) {
       className: classes.name,
       sectionName: sections.name,
       createdAt: batchExamSubjects.createdAt,
+      isEffectivelyPublished: sql<boolean>`${batchExamSubjects.isPublished} OR now() > ${batchExamSubjects.reviewDeadline}`,
     })
     .from(batchExamSubjects)
     .innerJoin(batchExams, eq(batchExamSubjects.batchExamId, batchExams.id))
     .innerJoin(subjects, eq(batchExamSubjects.subjectId, subjects.id))
     .innerJoin(classes, eq(batchExams.classId, classes.id))
     .leftJoin(sections, eq(batchExams.sectionId, sections.id))
-    .where(eq(batchExamSubjects.staffId, session.userId))
+    .where(and(
+      eq(batchExamSubjects.staffId, session.userId),
+      gte(batchExamSubjects.reviewDeadline, sql`now() - interval '36 hours'`)
+    ))
     .orderBy(desc(batchExamSubjects.createdAt));
 
-    // Calculate effective publish status and filter out items older than 36h past deadline
-    const now = new Date();
-    const THIRTY_SIX_HOURS_MS = 36 * 60 * 60 * 1000;
-
-    const results = assignedSubjects
-      .map(sub => ({
-        ...sub,
-        isEffectivelyPublished: sub.isPublished || now > sub.reviewDeadline
-      }))
-      .filter(sub => {
-        // Disappear items 36 hours after they are effectively guaranteed to be published (the deadline)
-        const expiryTime = new Date(sub.reviewDeadline.getTime() + THIRTY_SIX_HOURS_MS);
-        return now <= expiryTime;
-      });
-
-    return NextResponse.json(results);
+    return NextResponse.json(assignedSubjects);
   } catch (error: any) {
     console.error("Fetch batch results error:", error);
     return NextResponse.json({ error: "Failed to fetch results" }, { status: 500 });

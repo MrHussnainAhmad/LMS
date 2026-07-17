@@ -3,16 +3,28 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toaster";
-import { Loader2, Plus, Save } from "lucide-react";
+import { Loader2, Save, X } from "lucide-react";
+
+type HistoryEntry = {
+  id: number;
+  classId: number;
+  subjectId: number | null;
+  date: string;
+  preview: string;
+};
 
 export default function DiaryClient() {
-  const [diaries, setDiaries] = useState<any[]>([]);
   const [classId, setClassId] = useState<number | "">("");
   const [subjectId, setSubjectId] = useState<number | "">("");
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [readOnlyEntry, setReadOnlyEntry] = useState<{ date: string; content: string } | null>(null);
   
   // Dropdown options
   const [assignedSections, setAssignedSections] = useState<any[]>([]);
@@ -22,12 +34,11 @@ export default function DiaryClient() {
 
   useEffect(() => {
     fetchMetadata();
-    fetchDiaries();
   }, []);
 
   const fetchMetadata = async () => {
     try {
-      const res = await fetch("/api/staff/assignments");
+      const res = await fetch("/api/staff/assignments?view=metadata");
       if (res.ok) {
         const data = await res.json();
         
@@ -48,13 +59,24 @@ export default function DiaryClient() {
     }
   };
 
-  const fetchDiaries = async () => {
+  const fetchDiary = async () => {
+    if (classId === "" || subjectId === "") {
+      setContent("");
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const res = await fetch("/api/staff/diary");
+      const params = new URLSearchParams({
+        classId: String(classId),
+        subjectId: String(subjectId),
+        date,
+      });
+      params.set("view", "entry");
+      const res = await fetch(`/api/staff/diary?${params}`);
       if (res.ok) {
         const data = await res.json();
-        setDiaries(data);
+        setContent(data.diary?.content || "");
       }
     } catch (error) {
       console.error("Failed to fetch diaries", error);
@@ -63,18 +85,50 @@ export default function DiaryClient() {
     }
   };
 
-  // When class, subject, or date changes, try to auto-fill the content if it already exists
-  useEffect(() => {
-    if (classId === "" || subjectId === "") return;
-    const existing = diaries.find(
-      (d) => d.classId === classId && d.subjectId === subjectId && d.date === date
-    );
-    if (existing) {
-      setContent(existing.content);
-    } else {
-      setContent("");
+  const fetchHistory = async (cursor?: string) => {
+    setHistoryLoading(true);
+    try {
+      const params = new URLSearchParams({ view: "history" });
+      if (cursor) params.set("cursor", cursor);
+      const res = await fetch(`/api/staff/diary?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch history");
+      const data = await res.json();
+      setHistoryEntries((current) => cursor ? [...current, ...data.entries] : data.entries);
+      setHistoryCursor(data.nextCursor);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to load past diary entries.", variant: "destructive" });
+    } finally {
+      setHistoryLoading(false);
     }
-  }, [classId, subjectId, date, diaries]);
+  };
+
+  const openHistoryEntry = async (entry: HistoryEntry) => {
+    if (entry.subjectId !== null) {
+      setReadOnlyEntry(null);
+      setClassId(entry.classId);
+      setSubjectId(entry.subjectId);
+      setDate(entry.date);
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({ view: "entry", classId: String(entry.classId), date: entry.date });
+      const res = await fetch(`/api/staff/diary?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch diary entry");
+      const data = await res.json();
+      if (data.diary) setReadOnlyEntry({ date: entry.date, content: data.diary.content });
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to open this diary entry.", variant: "destructive" });
+    }
+  };
+
+  useEffect(() => {
+    void fetchDiary();
+  }, [classId, subjectId, date]);
+
+  useEffect(() => {
+    if (historyOpen && historyEntries.length === 0) void fetchHistory();
+  }, [historyOpen]);
 
   const handleSave = async () => {
     if (!content) return;
@@ -89,21 +143,13 @@ export default function DiaryClient() {
       if (!res.ok) throw new Error("Failed to save");
 
       toast({ title: "Success", description: "Diary entry saved successfully." });
-      await fetchDiaries();
+      await fetchDiary();
     } catch (error) {
       toast({ title: "Error", description: "Failed to create diary entry.", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
   };
-
-  if (isLoading && diaries.length === 0) {
-    return (
-      <div className="flex items-center justify-center p-12">
-        <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -160,20 +206,26 @@ export default function DiaryClient() {
         </div>
       </div>
 
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Your Previous Entries</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {diaries.map((d) => (
-            <div key={d.id} className="bg-white p-5 rounded-xl shadow-sm border border-stone-200 hover:shadow-md transition-shadow cursor-pointer" onClick={() => { setClassId(d.classId); setSubjectId(d.subjectId); setDate(d.date); }}>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-semibold text-brand-600 bg-brand-50 px-2 py-1 rounded-md">Class: {d.classId} | Subject: {d.subjectId}</span>
-                <span className="text-xs text-stone-500">{d.date}</span>
-              </div>
-              <p className="text-sm text-stone-700 line-clamp-3">{d.content}</p>
-            </div>
-          ))}
+      <div className="rounded-xl border border-stone-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-4">
+          <div><h2 className="text-lg font-semibold">Past entries</h2><p className="text-sm text-stone-500">Load previous entries only when you need to browse them.</p></div>
+          <Button variant="outline" onClick={() => setHistoryOpen((open) => !open)}>{historyOpen ? "Hide history" : "Browse history"}</Button>
         </div>
+        {historyOpen && <div className="mt-4 space-y-3">
+          {historyEntries.map((entry) => <button key={entry.id} type="button" onClick={() => void openHistoryEntry(entry)} className="block w-full rounded-lg border border-stone-200 p-4 text-left hover:bg-stone-50">
+            <div className="flex justify-between gap-3 text-xs text-stone-500"><span>Class {entry.classId} {entry.subjectId === null ? "· General entry" : `· Subject ${entry.subjectId}`}</span><span>{entry.date}</span></div>
+            <p className="mt-2 line-clamp-3 text-sm text-stone-700">{entry.preview}</p>
+          </button>)}
+          {historyEntries.length === 0 && !historyLoading && <p className="text-sm text-stone-500">No past entries yet.</p>}
+          {historyLoading && <p className="text-sm text-stone-500">Loading history…</p>}
+          {historyCursor && !historyLoading && <Button variant="outline" onClick={() => void fetchHistory(historyCursor)}>Load more</Button>}
+        </div>}
       </div>
+
+      {readOnlyEntry && <div className="rounded-xl border border-stone-200 bg-stone-50 p-6">
+        <div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-semibold">General diary entry</h2><p className="text-sm text-stone-500">{readOnlyEntry.date} · Read-only because it is not subject-specific.</p></div><Button variant="ghost" size="icon" onClick={() => setReadOnlyEntry(null)} aria-label="Close general diary entry"><X className="h-4 w-4" /></Button></div>
+        <p className="mt-4 whitespace-pre-wrap text-sm text-stone-700">{readOnlyEntry.content}</p>
+      </div>}
     </div>
   );
 }

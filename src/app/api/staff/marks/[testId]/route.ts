@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { tests, students, marks, staffAssignments, sections } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 
 export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, params }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -75,22 +75,20 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, p
       return NextResponse.json({ error: "One or more students do not belong to this class" }, { status: 400 });
     }
 
-    // Upsert marks
-    for (const record of records) {
-      await db.insert(marks).values({
-        institutionId: session.institutionId,
-        testId: test.id,
-        studentId: Number(record.studentId),
-        marksObtained: Number(record.marksObtained),
-        totalMarks: expectedTotal,
-      }).onConflictDoUpdate({
-        target: [marks.testId, marks.studentId],
-        set: {
-          marksObtained: Number(record.marksObtained),
-          totalMarks: expectedTotal,
-        },
-      });
-    }
+    // Bulk upsert: one database round trip for the complete class roster.
+    await db.insert(marks).values(records.map((record) => ({
+      institutionId: session.institutionId!,
+      testId: test.id,
+      studentId: Number(record.studentId),
+      marksObtained: Number(record.marksObtained),
+      totalMarks: expectedTotal,
+    }))).onConflictDoUpdate({
+      target: [marks.testId, marks.studentId],
+      set: {
+        marksObtained: sql`EXCLUDED.marks_obtained`,
+        totalMarks: sql`EXCLUDED.total_marks`,
+      },
+    });
 
     const { createBulkNotifications } = await import("@/lib/notifications");
     import('next/server').then(({ after }) => {
@@ -110,6 +108,9 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, p
           const keys = records.map((r: any) => `cache:student:marks:${r.studentId}`);
           if (keys.length > 0) {
             await redis.del(...keys);
+            await Promise.all(records.map((r: any) =>
+              redis.incr(`cache:student:marks:version:${r.studentId}`)
+            ));
           }
         } catch (e) {
           console.error(e);

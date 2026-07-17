@@ -1,6 +1,6 @@
 import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { students, institutions, classes, sections } from '@/db/schema';
+import { students, institutions, campuses, classes, sections } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { hashPassword as hash } from '@/lib/argon2-pool';
 import { requireRole, getTenantContext } from '@/lib/rbac';
@@ -52,7 +52,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
 
     const { firstName, lastName, campusId, classId, sectionId, gender, yearOfJoining, classRollNumber, phone, age } = parsed.data;
 
-    const [[inst], [classObj], sectionRows] = await Promise.all([
+    const [[inst], [classObj], sectionRows, campusRows] = await Promise.all([
       db.select({
         id: institutions.id,
         type: institutions.type,
@@ -67,6 +67,10 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
         classId: sections.classId,
         name: sections.name,
       }).from(sections).where(and(eq(sections.id, sectionId), eq(sections.institutionId, tenantId))).limit(1) : Promise.resolve([]),
+      campusId ? db.select({ id: campuses.id })
+        .from(campuses)
+        .where(and(eq(campuses.id, campusId), eq(campuses.institutionId, tenantId)))
+        .limit(1) : Promise.resolve([]),
     ]);
 
     if (!inst) {
@@ -75,6 +79,9 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
 
     if (!classObj) {
       return NextResponse.json({ error: "Class not found" }, { status: 400 });
+    }
+    if (campusId && !campusRows[0]) {
+      return NextResponse.json({ error: "Campus not found" }, { status: 400 });
     }
 
     const sectionObj = sectionRows[0] ?? await getOrCreateWholeClassSection(tenantId, classId);

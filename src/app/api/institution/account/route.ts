@@ -1,8 +1,9 @@
 import { db } from "@/db";
 import { getSession } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { institutions, staff, students, refreshTokens, accountDeletions } from "@/db/schema";
+import { institutions, institutionAdmins, staff, students, refreshTokens, accountDeletions } from "@/db/schema";
 import { eq, inArray, and } from "drizzle-orm";
+import { invalidateUserValidityBatch } from "@/lib/user";
 
 export async function DELETE(req: NextRequest) {
   try {
@@ -15,61 +16,61 @@ export async function DELETE(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const reason = body.reason || null;
 
-    // Fetch the institution
-    const [institution] = await db.select({
-      name: institutions.name,
-      contactEmail: institutions.contactEmail
-    }).from(institutions).where(eq(institutions.id, institutionId));
+    const affectedUsers = await db.transaction(async (tx) => {
+      const [institution] = await tx.select({
+        name: institutions.name,
+        contactEmail: institutions.contactEmail,
+      }).from(institutions).where(eq(institutions.id, institutionId));
 
-    if (!institution) {
-      return NextResponse.json({ error: "Institution not found" }, { status: 404 });
-    }
+      if (!institution) {
+        throw new Error("Institution not found");
+      }
 
-    // Get all associated staff IDs
-    const associatedStaff = await db.select({ id: staff.id })
-      .from(staff)
-      .where(eq(staff.institutionId, institutionId));
-    const staffIds = associatedStaff.map((s) => s.id);
+      const associatedStaff = await tx.select({ id: staff.id })
+        .from(staff)
+        .where(eq(staff.institutionId, institutionId));
+      const associatedStudents = await tx.select({ id: students.id })
+        .from(students)
+        .where(eq(students.institutionId, institutionId));
+      const associatedInstitutionAdmins = await tx.select({ id: institutionAdmins.id })
+        .from(institutionAdmins)
+        .where(eq(institutionAdmins.institutionId, institutionId));
+      const staffIds = associatedStaff.map((row) => row.id);
+      const studentIds = associatedStudents.map((row) => row.id);
 
-    // Get all associated student IDs
-    const associatedStudents = await db.select({ id: students.id })
-      .from(students)
-      .where(eq(students.institutionId, institutionId));
-    const studentIds = associatedStudents.map((s) => s.id);
+      await tx.delete(refreshTokens)
+        .where(and(eq(refreshTokens.userRole, "INSTITUTION"), eq(refreshTokens.userId, institutionId)));
+      if (staffIds.length > 0) {
+        await tx.delete(refreshTokens)
+          .where(and(eq(refreshTokens.userRole, "STAFF"), inArray(refreshTokens.userId, staffIds)));
+      }
+      if (studentIds.length > 0) {
+        await tx.delete(refreshTokens)
+          .where(and(eq(refreshTokens.userRole, "STUDENT"), inArray(refreshTokens.userId, studentIds)));
+      }
 
-    // Run in a transaction? No, Neon serverless driver over HTTP might not support standard interactive transactions if not careful, but drizzle does.
-    // However, it's safer to just do the operations sequentially, the cascade will handle most things.
-    // Drizzle Neon HTTP doesn't fully support all transaction features depending on the driver. Let's do it sequentially.
+      await tx.insert(accountDeletions).values({
+        institutionName: institution.name,
+        adminEmail: institution.contactEmail,
+        reason,
+      });
+      await tx.delete(institutions).where(eq(institutions.id, institutionId));
 
-    // 1. Delete refresh tokens
-    // Delete institution token
-    await db.delete(refreshTokens)
-      .where(and(eq(refreshTokens.userRole, "INSTITUTION"), eq(refreshTokens.userId, institutionId)));
-    
-    // Delete staff tokens
-    if (staffIds.length > 0) {
-      await db.delete(refreshTokens)
-        .where(and(eq(refreshTokens.userRole, "STAFF"), inArray(refreshTokens.userId, staffIds)));
-    }
-
-    // Delete student tokens
-    if (studentIds.length > 0) {
-      await db.delete(refreshTokens)
-        .where(and(eq(refreshTokens.userRole, "STUDENT"), inArray(refreshTokens.userId, studentIds)));
-    }
-
-    // 2. Log deletion reason
-    await db.insert(accountDeletions).values({
-      institutionName: institution.name,
-      adminEmail: institution.contactEmail,
-      reason: reason,
+      return { staffIds, studentIds, institutionAdminIds: associatedInstitutionAdmins.map((row) => row.id) };
     });
 
-    // 3. Delete the institution (Cascades staff, students, sessions, campuses, etc.)
-    await db.delete(institutions).where(eq(institutions.id, institutionId));
+    await invalidateUserValidityBatch([
+      { role: "INSTITUTION", userId: institutionId },
+      ...affectedUsers.staffIds.map((userId) => ({ role: "STAFF" as const, userId })),
+      ...affectedUsers.studentIds.map((userId) => ({ role: "STUDENT" as const, userId })),
+      ...affectedUsers.institutionAdminIds.map((userId) => ({ role: "INSTITUTION_ADMIN" as const, userId })),
+    ]);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    if (error instanceof Error && error.message === "Institution not found") {
+      return NextResponse.json({ error: "Institution not found" }, { status: 404 });
+    }
     console.error("Account deletion error:", error);
     return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
   }

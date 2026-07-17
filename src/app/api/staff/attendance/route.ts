@@ -139,6 +139,9 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
           const keys = records.map((r: any) => `cache:student:attendance:${r.studentId}`);
           if (keys.length > 0) {
             await redis.del(...keys);
+            await Promise.all(records.map((r: any) =>
+              redis.incr(`cache:student:attendance:version:${r.studentId}`)
+            ));
           }
         } catch (e) {
           console.error(e);

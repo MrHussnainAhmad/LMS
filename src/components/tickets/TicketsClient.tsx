@@ -26,21 +26,35 @@ export function TicketsClient() {
   const router = useRouter();
   const { toast } = useToast();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const loadTickets = useCallback(async () => {
-    setLoading(true);
+  const loadTickets = useCallback(async (cursor?: string) => {
+    if (!cursor) setLoading(true);
     try {
-      const response = await api.get<{ tickets: SupportTicket[] }>("/api/tickets");
-      setTickets(response.tickets);
+      const suffix = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+      const response = await api.get<{ tickets: SupportTicket[]; nextCursor: string | null }>(`/api/tickets${suffix}`);
+      setTickets((current) => cursor ? [...current, ...response.tickets] : response.tickets);
+      setNextCursor(response.nextCursor);
     } catch (error: unknown) {
       toast({ title: "Could not load tickets", description: errorMessage(error), variant: "destructive" });
     } finally {
-      setLoading(false);
+      if (!cursor) setLoading(false);
     }
   }, [toast]);
+
+  const loadMore = async () => {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    try {
+      await loadTickets(nextCursor);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     void loadTickets();
@@ -115,9 +129,18 @@ export function TicketsClient() {
           ) : tickets.length === 0 ? (
             <div className="p-10 text-center text-stone-500"><Ticket className="mx-auto mb-3 h-10 w-10 text-stone-300" /><p>No support tickets yet.</p></div>
           ) : (
-            <div className="divide-y divide-border">
-              {tickets.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} />)}
-            </div>
+            <>
+              <div className="divide-y divide-border">
+                {tickets.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} />)}
+              </div>
+              {nextCursor && (
+                <div className="flex justify-center p-5">
+                  <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
+                    {loadingMore ? "Loading..." : "Load more"}
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

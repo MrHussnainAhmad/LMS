@@ -38,7 +38,12 @@ export async function GET(req: NextRequest) {
     .orderBy(students.classRollNumber);
 
     // 2. Fetch Subjects
-    const sectionRows = await db.select({ id: sections.id }).from(sections).where(eq(sections.classId, classId));
+    const sectionRows = await db.select({ id: sections.id })
+      .from(sections)
+      .where(and(
+        eq(sections.classId, classId),
+        eq(sections.institutionId, session.institutionId)
+      ));
     const sectionIds = sectionRows.map(s => s.id);
     
     let subjectList: { name: string }[] = [];
@@ -48,7 +53,11 @@ export async function GET(req: NextRequest) {
       })
       .from(staffAssignments)
       .innerJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-      .where(inArray(staffAssignments.sectionId, sectionIds));
+      .where(and(
+        eq(staffAssignments.institutionId, session.institutionId),
+        eq(subjects.institutionId, session.institutionId),
+        inArray(staffAssignments.sectionId, sectionIds)
+      ));
 
       subjectList = timetableSubjects;
     }

@@ -106,7 +106,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Verify result hasn't been edited before
     const [existingResult] = await db.select({ isEdited: batchExamResults.isEdited })
     .from(batchExamResults)
-    .where(eq(batchExamResults.id, resultId));
+    .where(and(
+      eq(batchExamResults.id, resultId),
+      eq(batchExamResults.batchExamSubjectId, subjectId)
+    ));
 
     if (!existingResult) return NextResponse.json({ error: "Result not found" }, { status: 404 });
     if (existingResult.isEdited) return NextResponse.json({ error: "Result can only be edited once" }, { status: 400 });
@@ -114,7 +117,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Update
     await db.update(batchExamResults)
       .set({ marksObtained: newMarks, isEdited: true })
-      .where(eq(batchExamResults.id, resultId));
+      .where(and(
+        eq(batchExamResults.id, resultId),
+        eq(batchExamResults.batchExamSubjectId, subjectId)
+      ));
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

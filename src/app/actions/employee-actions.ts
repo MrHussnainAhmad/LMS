@@ -11,6 +11,7 @@ import {
   campuses,
   classes,
   institutionHolidays,
+  institutionAdmins,
   institutions,
   marks,
   onlineTestQuestions,
@@ -31,6 +32,7 @@ import {
 import { and, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { invalidateUserValidity, invalidateUserValidityBatch } from "@/lib/user";
 
 export async function updateInstitutionStatusAction(institutionId: number, newStatus: "PENDING" | "APPROVED" | "REJECTED") {
   const session = await getSession();
@@ -41,6 +43,7 @@ export async function updateInstitutionStatusAction(institutionId: number, newSt
   await db.update(institutions)
     .set({ status: newStatus })
     .where(eq(institutions.id, institutionId));
+  await invalidateUserValidity("INSTITUTION", institutionId);
 
   revalidatePath("/employee/institutions");
   revalidatePath("/employee/dashboard");
@@ -61,9 +64,10 @@ export async function deleteInstitutionAction(institutionId: number, confirmatio
     throw new Error("Type the exact institution name to confirm deletion");
   }
 
-  await db.transaction(async (tx) => {
+  const affectedUsers = await db.transaction(async (tx) => {
     const staffRows = await tx.select({ id: staff.id }).from(staff).where(eq(staff.institutionId, institutionId));
     const studentRows = await tx.select({ id: students.id }).from(students).where(eq(students.institutionId, institutionId));
+    const institutionAdminRows = await tx.select({ id: institutionAdmins.id }).from(institutionAdmins).where(eq(institutionAdmins.institutionId, institutionId));
     const testRows = await tx.select({ id: tests.id }).from(tests).where(eq(tests.institutionId, institutionId));
     const onlineRows = testRows.length > 0
       ? await tx.select({ id: onlineTests.id }).from(onlineTests).where(inArray(onlineTests.testId, testRows.map((row) => row.id)))
@@ -108,7 +112,21 @@ export async function deleteInstitutionAction(institutionId: number, confirmatio
     }
 
     await tx.delete(institutions).where(eq(institutions.id, institutionId));
+
+    return {
+      staffIds,
+      studentIds,
+      institutionAdminIds: institutionAdminRows.map((row) => row.id),
+    };
   });
+
+  // Run only after the transaction commits, so a rolled-back deletion never logs users out.
+  await invalidateUserValidityBatch([
+    { role: "INSTITUTION", userId: institutionId },
+    ...affectedUsers.staffIds.map((userId) => ({ role: "STAFF" as const, userId })),
+    ...affectedUsers.studentIds.map((userId) => ({ role: "STUDENT" as const, userId })),
+    ...affectedUsers.institutionAdminIds.map((userId) => ({ role: "INSTITUTION_ADMIN" as const, userId })),
+  ]);
 
   revalidatePath("/employee/institutions");
   return { success: true };

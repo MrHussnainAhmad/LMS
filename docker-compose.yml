@@ -39,7 +39,7 @@ services:
       AUTH_TYPE: scram-sha-256
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 5000
-      DEFAULT_POOL_SIZE: 25
+      DEFAULT_POOL_SIZE: 10
       LISTEN_PORT: 6432
       # For 4000-5000 concurrent users
       SERVER_IDLE_TIMEOUT: 30
@@ -86,6 +86,8 @@ services:
       DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
       # Valkey - 100% Redis compatible
       REDIS_URL: redis://valkey:6379
+      # Required for the authenticated/manual push-receipt endpoint.
+      CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
       # Add your other Next.js env vars here
       NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
@@ -117,6 +119,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
       DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
       REDIS_URL: redis://valkey:6379
+      # Required for the authenticated/manual push-receipt endpoint.
+      CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
       NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
@@ -133,6 +137,28 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Receipt checks run outside the web processes. It calls Postgres/Expo directly
+  # and has no public port or Caddy route.
+  push-receipt-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: push-receipt-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
+      # Receipt processing is intentionally low-concurrency and must not add a
+      # second five-connection application pool behind PgBouncer.
+      DB_POOL_MAX: 1
+      PUSH_RECEIPT_INTERVAL_MS: ${PUSH_RECEIPT_INTERVAL_MS:-60000}
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    networks:
+      - backend
+      - appnet
 
   caddy:
     image: caddy:2-alpine

@@ -3,7 +3,10 @@ import { checkExpoPushReceipts } from "@/lib/notifications";
 
 function isAuthorized(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true;
+  if (!secret) {
+    console.error("CRON_SECRET is not configured; rejecting push receipt cron request");
+    return false;
+  }
 
   const authHeader = req.headers.get("authorization");
   const cronHeader = req.headers.get("x-cron-secret");

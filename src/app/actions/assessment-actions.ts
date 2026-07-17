@@ -583,16 +583,20 @@ export async function saveStudentSubmission(assignmentId: number, fileKey: strin
   if (!assignment) throw new Error("Assignment not found");
   if (assignment.classId !== student.classId) throw new Error("This assignment is not for your class");
   if (assignment.sectionId && assignment.sectionId !== student.sectionId) throw new Error("This assignment is not for your section");
-  await verifyCloudinarySubmission(fileKey);
+  const cloudinaryResource = await verifyCloudinarySubmission(fileKey);
+  const fileUrl = typeof cloudinaryResource.secure_url === "string"
+    ? cloudinaryResource.secure_url
+    : null;
 
   await db.insert(submissions).values({
     institutionId: session.institutionId,
     assignmentId,
     studentId: student.id,
     fileKey,
+    fileUrl,
   }).onConflictDoUpdate({
     target: [submissions.assignmentId, submissions.studentId],
-    set: { fileKey },
+    set: { fileKey, fileUrl },
   });
 
   revalidatePath("/student/submissions");

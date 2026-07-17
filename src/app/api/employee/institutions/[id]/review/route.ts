@@ -6,6 +6,7 @@ import { requireRole } from '@/lib/rbac';
 import { reviewInstitutionSchema } from '@/lib/validators/institution';
 import { sendEmail, InstitutionStatusEmail } from '@/lib/email';
 import { logAudit } from '@/lib/audit';
+import { invalidateUserValidity } from '@/lib/user';
 
 export const POST = requireRole(['SUPER_ADMIN', 'EMPLOYEE'], async (req: NextRequest, { params, session }) => {
   const institutionId = parseInt(params.id, 10);
@@ -29,6 +30,7 @@ export const POST = requireRole(['SUPER_ADMIN', 'EMPLOYEE'], async (req: NextReq
   await db.update(institutions)
     .set({ status, rejectionReason: status === 'REJECTED' ? rejectionReason : null })
     .where(eq(institutions.id, institutionId));
+  await invalidateUserValidity('INSTITUTION', institutionId);
 
   await logAudit({
     actorId: session.userId,

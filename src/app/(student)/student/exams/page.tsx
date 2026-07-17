@@ -2,7 +2,7 @@ import { ExamTimetableList, type ExamTimetableRow } from "@/components/exams/Exa
 import { db } from "@/db";
 import { classes, students, subjects, tests } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 function todayDateString() {
@@ -32,6 +32,10 @@ export default async function StudentExamTimetablePage() {
     .where(and(
       eq(tests.institutionId, session.institutionId),
       eq(tests.classId, student.classId),
+      or(
+        isNull(tests.sectionId),
+        eq(tests.sectionId, student.sectionId)
+      ),
       eq(tests.createdByRole, "INSTITUTION"),
       inArray(tests.type, ["MONTHLY", "MID", "FINAL"])
     ))

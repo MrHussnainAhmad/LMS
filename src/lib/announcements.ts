@@ -157,9 +157,165 @@ export async function resolveAnnouncementRecipients(announcement: AnnouncementRo
 }
 
 async function isAnnouncementRecipient(announcement: AnnouncementRow, session: JWTPayload) {
-  if (session.role !== "STUDENT" && session.role !== "STAFF") return false;
-  const recipients = await resolveAnnouncementRecipients(announcement);
-  return recipients.some((recipient) => recipient.userRole === session.role && recipient.userId === session.userId);
+  if (session.role !== "STUDENT" && session.role !== "STAFF") {
+    return false;
+  }
+
+  // Matches addRecipient(): an author is never a recipient of their own announcement.
+  if (
+    announcement.senderRole === session.role &&
+    announcement.senderId === session.userId
+  ) {
+    return false;
+  }
+
+  if (session.role === "STUDENT") {
+    const baseConditions = [
+      eq(students.id, session.userId),
+      eq(students.institutionId, announcement.institutionId),
+    ];
+
+    switch (announcement.targetType) {
+      case "ALL":
+        break;
+
+      case "CAMPUS":
+        if (!announcement.targetCampusId) return false;
+        baseConditions.push(
+          eq(students.campusId, announcement.targetCampusId)
+        );
+        break;
+
+      case "CLASS":
+        if (!announcement.targetClassId) return false;
+        baseConditions.push(
+          eq(students.classId, announcement.targetClassId)
+        );
+        break;
+
+      case "SECTION":
+        if (!announcement.targetSectionId) return false;
+        baseConditions.push(
+          eq(students.sectionId, announcement.targetSectionId)
+        );
+        break;
+
+      case "USER":
+        if (announcement.targetUserRole !== "STUDENT") return false;
+        if (
+          announcement.targetUserId !== null &&
+          announcement.targetUserId !== session.userId
+        ) {
+          return false;
+        }
+        break;
+
+      default:
+        return false;
+    }
+
+    const [recipient] = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(and(...baseConditions))
+      .limit(1);
+
+    return Boolean(recipient);
+  }
+
+  // USER-targeted staff announcements do not require an institution sender;
+  // this exactly matches resolveAnnouncementRecipients().
+  if (announcement.targetType === "USER") {
+    if (announcement.targetUserRole !== "STAFF") return false;
+    if (
+      announcement.targetUserId !== null &&
+      announcement.targetUserId !== session.userId
+    ) {
+      return false;
+    }
+
+    const [recipient] = await db
+      .select({ id: staff.id })
+      .from(staff)
+      .where(and(
+        eq(staff.id, session.userId),
+        eq(staff.institutionId, announcement.institutionId)
+      ))
+      .limit(1);
+
+    return Boolean(recipient);
+  }
+
+  // Current code includes staff for ALL/CAMPUS/CLASS/SECTION only when
+  // the sender is the institution.
+  if (announcement.senderRole !== "INSTITUTION") {
+    return false;
+  }
+
+  if (announcement.targetType === "ALL") {
+    const [recipient] = await db
+      .select({ id: staff.id })
+      .from(staff)
+      .where(and(
+        eq(staff.id, session.userId),
+        eq(staff.institutionId, announcement.institutionId)
+      ))
+      .limit(1);
+
+    return Boolean(recipient);
+  }
+
+  if (announcement.targetType === "CAMPUS") {
+    if (!announcement.targetCampusId) return false;
+
+    const [recipient] = await db
+      .select({ id: staff.id })
+      .from(staff)
+      .where(and(
+        eq(staff.id, session.userId),
+        eq(staff.institutionId, announcement.institutionId),
+        eq(staff.campusId, announcement.targetCampusId)
+      ))
+      .limit(1);
+
+    return Boolean(recipient);
+  }
+
+  if (announcement.targetType === "CLASS") {
+    if (!announcement.targetClassId) return false;
+
+    const [recipient] = await db
+      .select({ id: staffAssignments.id })
+      .from(staffAssignments)
+      .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
+      .where(and(
+        eq(staffAssignments.staffId, session.userId),
+        eq(staffAssignments.institutionId, announcement.institutionId),
+        eq(sections.institutionId, announcement.institutionId),
+        eq(sections.classId, announcement.targetClassId)
+      ))
+      .limit(1);
+
+    return Boolean(recipient);
+  }
+
+  if (announcement.targetType === "SECTION") {
+    if (!announcement.targetSectionId) return false;
+
+    const [recipient] = await db
+      .select({ id: staffAssignments.id })
+      .from(staffAssignments)
+      .where(and(
+        eq(staffAssignments.staffId, session.userId),
+        eq(staffAssignments.institutionId, announcement.institutionId),
+        eq(staffAssignments.sectionId, announcement.targetSectionId)
+      ))
+      .limit(1);
+
+    return Boolean(recipient);
+  }
+
+  return false;
 }
 
 function canViewSentOrManagedAnnouncement(announcement: AnnouncementRow, session: JWTPayload) {

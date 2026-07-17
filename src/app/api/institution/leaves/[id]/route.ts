@@ -41,17 +41,17 @@ export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { par
           dates.push(d.toISOString().split('T')[0]);
         }
 
-        for (const dStr of dates) {
-          await db.insert(staffAttendances).values({
+        await db.insert(staffAttendances).values(
+          dates.map((date) => ({
             institutionId,
             staffId: leave.userId,
-            date: dStr,
-            status: "LEAVE",
-          }).onConflictDoUpdate({
-            target: [staffAttendances.staffId, staffAttendances.date],
-            set: { status: "LEAVE" }
-          });
-        }
+            date,
+            status: "LEAVE" as const,
+          }))
+        ).onConflictDoUpdate({
+          target: [staffAttendances.staffId, staffAttendances.date],
+          set: { status: "LEAVE" },
+        });
       }
 
       await createNotification({

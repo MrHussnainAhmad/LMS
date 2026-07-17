@@ -16,6 +16,8 @@ interface Voucher {
 
 export function FeeVouchersClient() {
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [title, setTitle] = useState("");
@@ -28,14 +30,26 @@ export function FeeVouchersClient() {
     fetchVouchers();
   }, []);
 
-  const fetchVouchers = async () => {
+  const fetchVouchers = async (cursor?: string) => {
     try {
-      const res: any = await api.get("/api/student/vouchers");
-      setVouchers(res.vouchers || []);
+      const suffix = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+      const res: any = await api.get(`/api/student/vouchers${suffix}`);
+      setVouchers((current) => cursor ? [...current, ...(res.vouchers || [])] : (res.vouchers || []));
+      setNextCursor(res.nextCursor || null);
     } catch (err: any) {
       toast({ title: "Error", description: "Failed to load vouchers", variant: "destructive" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    try {
+      await fetchVouchers(nextCursor);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -260,27 +274,36 @@ export function FeeVouchersClient() {
                   <p>You haven't uploaded any fee vouchers yet.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {vouchers.map(v => (
-                    <div key={v.id} className="border border-border rounded-lg overflow-hidden flex flex-col bg-white">
-                      <div className="h-48 bg-stone-100 relative group overflow-hidden">
-                        <img src={v.imageUrl} alt={v.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                        <a 
-                          href={v.imageUrl} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                        >
-                          <span className="bg-white text-stone-900 text-sm font-medium px-3 py-1.5 rounded-md">View Full Image</span>
-                        </a>
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {vouchers.map(v => (
+                      <div key={v.id} className="border border-border rounded-lg overflow-hidden flex flex-col bg-white">
+                        <div className="h-48 bg-stone-100 relative group overflow-hidden">
+                          <img src={v.imageUrl} alt={v.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                          <a
+                            href={v.imageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                          >
+                            <span className="bg-white text-stone-900 text-sm font-medium px-3 py-1.5 rounded-md">View Full Image</span>
+                          </a>
+                        </div>
+                        <div className="p-3">
+                          <h4 className="font-semibold text-brand-950 truncate">{v.title}</h4>
+                          <p className="text-xs text-stone-500 mt-1">Uploaded on {new Date(v.createdAt).toLocaleDateString()}</p>
+                        </div>
                       </div>
-                      <div className="p-3">
-                        <h4 className="font-semibold text-brand-950 truncate">{v.title}</h4>
-                        <p className="text-xs text-stone-500 mt-1">Uploaded on {new Date(v.createdAt).toLocaleDateString()}</p>
-                      </div>
+                    ))}
+                  </div>
+                  {nextCursor && (
+                    <div className="mt-6 flex justify-center">
+                      <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
+                        {loadingMore ? "Loading..." : "Load more"}
+                      </Button>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>

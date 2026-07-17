@@ -7,6 +7,7 @@ import { requireRole } from '@/lib/rbac';
 import { changePasswordSchema } from '@/lib/validators/auth';
 import { logAudit } from '@/lib/audit';
 import { createTokens, setAuthCookies } from '@/lib/auth';
+import { invalidateUserValidity } from '@/lib/user';
 
 async function getPasswordHashForSession(role: string, userId: number) {
   if (role === 'EMPLOYEE') {
@@ -64,6 +65,7 @@ export const POST = requireRole(['EMPLOYEE', 'STAFF', 'STUDENT'], async (req: Ne
 
   const passwordHash = await hash(newPassword);
   await updatePasswordForSession(session.role, session.userId, passwordHash);
+  await invalidateUserValidity(session.role, session.userId);
 
   await logAudit({
     institutionId: session.institutionId,

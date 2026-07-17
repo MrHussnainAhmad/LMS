@@ -1,5 +1,8 @@
 import { db } from "@/db";
-import { batchExams, batchExamSubjects, batchExamResults, students, staffAssignments } from "@/db/schema";
+import {
+  batchExams, batchExamSubjects, batchExamResults,
+  classes, sections, subjects, students, staffAssignments
+} from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { and, eq, inArray } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
@@ -17,6 +20,59 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    const parsedClassId = Number(classId);
+    const parsedSectionId = sectionId === null || sectionId === undefined || sectionId === ""
+      ? null
+      : Number(sectionId);
+    const requestedSubjects = Array.isArray(subjects)
+      ? subjects.map((subject: any) => ({ ...subject, subjectId: Number(subject.subjectId) }))
+      : [];
+    const requestedSubjectIds = Array.from(new Set(requestedSubjects.map((subject) => subject.subjectId)));
+
+    if (
+      !Number.isInteger(parsedClassId) ||
+      (parsedSectionId !== null && !Number.isInteger(parsedSectionId)) ||
+      requestedSubjects.length === 0 ||
+      requestedSubjectIds.length !== requestedSubjects.length ||
+      requestedSubjectIds.some((subjectId) => !Number.isInteger(subjectId) || subjectId <= 0)
+    ) {
+      return NextResponse.json({ error: "Invalid class, section, or subject selection" }, { status: 400 });
+    }
+
+    const [[classRow], sectionRows, subjectRows] = await Promise.all([
+      db.select({ id: classes.id })
+        .from(classes)
+        .where(and(
+          eq(classes.id, parsedClassId),
+          eq(classes.institutionId, session.institutionId)
+        ))
+        .limit(1),
+      parsedSectionId === null
+        ? Promise.resolve([])
+        : db.select({ id: sections.id, classId: sections.classId })
+          .from(sections)
+          .where(and(
+            eq(sections.id, parsedSectionId),
+            eq(sections.institutionId, session.institutionId)
+          ))
+          .limit(1),
+      db.select({ id: subjects.id })
+        .from(subjects)
+        .where(and(
+          eq(subjects.institutionId, session.institutionId),
+          inArray(subjects.id, requestedSubjectIds)
+        )),
+    ]);
+
+    const sectionRow = sectionRows[0];
+    if (
+      !classRow ||
+      (sectionRow && sectionRow.classId !== parsedClassId) ||
+      subjectRows.length !== requestedSubjectIds.length
+    ) {
+      return NextResponse.json({ error: "Invalid class, section, or subject selection" }, { status: 400 });
+    }
+
     // 1. Fetch students by roll numbers to get their IDs
     const rollNumbers = studentMarks.map((s: any) => String(s.rollNumber));
     if (rollNumbers.length === 0) {
@@ -31,7 +87,7 @@ export async function POST(req: NextRequest) {
     .where(
       and(
         eq(students.institutionId, session.institutionId),
-        eq(students.classId, classId),
+        eq(students.classId, parsedClassId),
         inArray(students.classRollNumber, rollNumbers)
       )
     );
@@ -40,7 +96,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Fetch staff assignments to find subject teachers
     let assignments: any[] = [];
-    if (sectionId) {
+    if (parsedSectionId !== null) {
       assignments = await db.select({
         subjectId: staffAssignments.subjectId,
         staffId: staffAssignments.staffId
@@ -49,57 +105,69 @@ export async function POST(req: NextRequest) {
       .where(
         and(
           eq(staffAssignments.institutionId, session.institutionId),
-          eq(staffAssignments.sectionId, sectionId),
-          inArray(staffAssignments.subjectId, subjects.map((s: any) => s.subjectId))
+          eq(staffAssignments.sectionId, parsedSectionId),
+          inArray(staffAssignments.subjectId, requestedSubjectIds)
         )
       );
     }
     const staffIdMap = new Map(assignments.map(a => [a.subjectId, a.staffId]));
 
-    // 3. Create records sequentially (transactions not supported in neon-http)
-    // Create Batch Exam
-    const [newExam] = await db.insert(batchExams).values({
-      institutionId: session.institutionId!,
-      classId,
-      sectionId: sectionId || null,
-      title
-    }).returning({ id: batchExams.id });
-
-    // Calculate review deadline (6 hours from now)
+    // Calculate review deadline (6 hours from now).
     const reviewDeadline = new Date();
     reviewDeadline.setHours(reviewDeadline.getHours() + 6);
 
-    for (const subj of subjects) {
-      const staffId = staffIdMap.get(subj.subjectId) || null;
-      
-      // Create Batch Exam Subject
-      const [newSubject] = await db.insert(batchExamSubjects).values({
-        batchExamId: newExam.id,
-        subjectId: subj.subjectId,
-        maxMarks: subj.maxMarks,
-        staffId,
-        reviewDeadline,
-        isPublished: staffId ? false : true, // Auto-publish if no teacher assigned
-      }).returning({ id: batchExamSubjects.id });
+    await db.transaction(async (tx) => {
+      const [newExam] = await tx.insert(batchExams).values({
+        institutionId: session.institutionId!,
+        classId: parsedClassId,
+        sectionId: parsedSectionId,
+        title,
+      }).returning({ id: batchExams.id });
 
-      // Insert results for this subject
-      const resultsToInsert = [];
-      for (const student of studentMarks) {
-        const sId = studentIdMap.get(String(student.rollNumber));
-        if (sId && student.marks[subj.subjectId] !== undefined && student.marks[subj.subjectId] !== null) {
-          resultsToInsert.push({
-            batchExamSubjectId: newSubject.id,
-            studentId: sId,
-            marksObtained: Number(student.marks[subj.subjectId]),
-            isEdited: false
-          });
+      const createdSubjects = await tx.insert(batchExamSubjects).values(
+        requestedSubjects.map((subject) => {
+          const staffId = staffIdMap.get(subject.subjectId) || null;
+          return {
+            batchExamId: newExam.id,
+            subjectId: subject.subjectId,
+            maxMarks: subject.maxMarks,
+            staffId,
+            reviewDeadline,
+            isPublished: !staffId,
+          };
+        })
+      ).returning({ id: batchExamSubjects.id, subjectId: batchExamSubjects.subjectId });
+
+      const batchExamSubjectIdBySubjectId = new Map(
+        createdSubjects.map((subject) => [subject.subjectId, subject.id])
+      );
+      const resultsToInsert: Array<typeof batchExamResults.$inferInsert> = [];
+
+      for (const subject of requestedSubjects) {
+        const batchExamSubjectId = batchExamSubjectIdBySubjectId.get(subject.subjectId);
+        if (!batchExamSubjectId) throw new Error("Failed to create batch exam subject");
+
+        for (const student of studentMarks) {
+          const studentId = studentIdMap.get(String(student.rollNumber));
+          const marksObtained = student.marks[subject.subjectId];
+          if (studentId && marksObtained !== undefined && marksObtained !== null) {
+            resultsToInsert.push({
+              batchExamSubjectId,
+              studentId,
+              marksObtained: Number(marksObtained),
+              isEdited: false,
+            });
+          }
         }
       }
 
-      if (resultsToInsert.length > 0) {
-        await db.insert(batchExamResults).values(resultsToInsert);
+      const RESULT_INSERT_CHUNK_SIZE = 2000;
+      for (let start = 0; start < resultsToInsert.length; start += RESULT_INSERT_CHUNK_SIZE) {
+        await tx.insert(batchExamResults).values(
+          resultsToInsert.slice(start, start + RESULT_INSERT_CHUNK_SIZE)
+        );
       }
-    }
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

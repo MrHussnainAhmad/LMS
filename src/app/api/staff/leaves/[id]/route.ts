@@ -57,19 +57,18 @@ export const PATCH = requireRole(["STAFF"], async (req: NextRequest, { params, s
           dates.push(d.toISOString().split('T')[0]);
         }
 
-        for (const dStr of dates) {
-          // Upsert attendance
-          await db.insert(attendances).values({
+        await db.insert(attendances).values(
+          dates.map((date) => ({
             institutionId,
             sectionId: student.sectionId,
             studentId: leave.userId,
-            date: dStr,
-            status: "LEAVE",
-          }).onConflictDoUpdate({
-            target: [attendances.studentId, attendances.date],
-            set: { status: "LEAVE" }
-          });
-        }
+            date,
+            status: "LEAVE" as const,
+          }))
+        ).onConflictDoUpdate({
+          target: [attendances.studentId, attendances.date],
+          set: { status: "LEAVE" },
+        });
       }
 
       await createNotification({

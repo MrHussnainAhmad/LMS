@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { staff, staffTeachableSubjects, institutions } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { staff, staffTeachableSubjects, institutions, campuses, subjects } from '@/db/schema';
+import { and, eq, inArray } from 'drizzle-orm';
 import { hashPassword as hash } from '@/lib/argon2-pool';
 import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStaffSchema } from '@/lib/validators/staff';
@@ -18,10 +18,30 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
   }
 
   const { name, phone, subjectIds, campusId } = parsed.data;
+  const uniqueSubjectIds = Array.from(new Set(subjectIds));
 
-  const [inst] = await db.select().from(institutions).where(eq(institutions.id, tenantId)).limit(1);
+  const [[inst], campusRows, subjectRows] = await Promise.all([
+    db.select().from(institutions).where(eq(institutions.id, tenantId)).limit(1),
+    campusId ? db.select({ id: campuses.id })
+      .from(campuses)
+      .where(and(eq(campuses.id, campusId), eq(campuses.institutionId, tenantId)))
+      .limit(1) : Promise.resolve([]),
+    uniqueSubjectIds.length > 0 ? db.select({ id: subjects.id })
+      .from(subjects)
+      .where(and(
+        eq(subjects.institutionId, tenantId),
+        inArray(subjects.id, uniqueSubjectIds)
+      )) : Promise.resolve([]),
+  ]);
+
   if (!inst) {
     return NextResponse.json({ error: "Institution not found" }, { status: 404 });
+  }
+  if (campusId && !campusRows[0]) {
+    return NextResponse.json({ error: "Campus not found" }, { status: 400 });
+  }
+  if (subjectRows.length !== uniqueSubjectIds.length) {
+    return NextResponse.json({ error: "One or more subjects were not found" }, { status: 400 });
   }
 
   const baseEmail = generateStaffEmail({ name, phone, institution: inst });
@@ -52,9 +72,9 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
       isActive: true,
     }).returning();
 
-    if (subjectIds.length > 0) {
+    if (uniqueSubjectIds.length > 0) {
       await db.insert(staffTeachableSubjects).values(
-        subjectIds.map(id => ({
+        uniqueSubjectIds.map(id => ({
           institutionId: tenantId,
           staffId: newStaff.id,
           subjectId: id,

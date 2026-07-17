@@ -1,11 +1,12 @@
 "use server";
 
 import { db } from "@/db";
-import { superAdmins, employees, institutions } from "@/db/schema";
+import { superAdmins, employees, institutions, institutionAdmins, staff, students } from "@/db/schema";
 import { hash } from "@node-rs/argon2";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { invalidateUserValidity, invalidateUserValidityBatch } from "@/lib/user";
 
 export async function createSuperAdminAction(formData: FormData) {
   const session = await getSession();
@@ -57,6 +58,7 @@ export async function deleteSuperAdminAction(adminId: number) {
   }
 
   await db.delete(superAdmins).where(eq(superAdmins.id, adminId));
+  await invalidateUserValidity("SUPER_ADMIN", adminId);
   revalidatePath("/sa/admins");
   return { success: true };
 }
@@ -102,6 +104,7 @@ export async function toggleEmployeeStatusAction(employeeId: number, currentlyDi
   await db.update(employees)
     .set({ deletedAt: currentlyDisabled ? null : new Date() })
     .where(eq(employees.id, employeeId));
+  await invalidateUserValidity("EMPLOYEE", employeeId);
 
   revalidatePath("/sa/employees");
   return { success: true };
@@ -114,6 +117,7 @@ export async function deleteEmployeeAction(employeeId: number) {
   }
 
   await db.delete(employees).where(eq(employees.id, employeeId));
+  await invalidateUserValidity("EMPLOYEE", employeeId);
   revalidatePath("/sa/employees");
   return { success: true };
 }
@@ -125,11 +129,25 @@ export async function updateInstitutionStatusAction(institutionId: number, newSt
   }
 
   if (newStatus === "REJECTED") {
-    await db.delete(institutions).where(eq(institutions.id, institutionId));
+    const affectedUsers = await db.transaction(async (tx) => {
+      const staffRows = await tx.select({ id: staff.id }).from(staff).where(eq(staff.institutionId, institutionId));
+      const studentRows = await tx.select({ id: students.id }).from(students).where(eq(students.institutionId, institutionId));
+      const institutionAdminRows = await tx.select({ id: institutionAdmins.id }).from(institutionAdmins).where(eq(institutionAdmins.institutionId, institutionId));
+      await tx.delete(institutions).where(eq(institutions.id, institutionId));
+      return { staffRows, studentRows, institutionAdminRows };
+    });
+
+    await invalidateUserValidityBatch([
+      { role: "INSTITUTION", userId: institutionId },
+      ...affectedUsers.staffRows.map(({ id: userId }) => ({ role: "STAFF" as const, userId })),
+      ...affectedUsers.studentRows.map(({ id: userId }) => ({ role: "STUDENT" as const, userId })),
+      ...affectedUsers.institutionAdminRows.map(({ id: userId }) => ({ role: "INSTITUTION_ADMIN" as const, userId })),
+    ]);
   } else {
     await db.update(institutions)
       .set({ status: newStatus })
       .where(eq(institutions.id, institutionId));
+    await invalidateUserValidity("INSTITUTION", institutionId);
   }
 
   revalidatePath("/sa/institutions");

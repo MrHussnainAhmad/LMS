@@ -438,6 +438,17 @@ export async function createTimetableAssignmentAction(formData: FormData) {
     endTime,
   });
 
+  // Future staff_assignments update/delete actions must invalidate these same keys,
+  // or student/staff timetables can remain stale for up to the 10-minute TTL.
+  const timetableCacheKeys = [
+    `cache:timetable:student:${institutionId}:${sectionId}`,
+    ...(staffId ? [`cache:timetable:staff:${institutionId}:${staffId}`] : []),
+  ];
+  const { redis } = await import("@/lib/redis");
+  await redis.del(...timetableCacheKeys).catch((error) => {
+    console.warn("Failed to invalidate timetable cache:", error);
+  });
+
   revalidatePath("/institution/timetable");
   return { success: true };
 }

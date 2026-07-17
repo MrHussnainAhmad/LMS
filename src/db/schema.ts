@@ -213,6 +213,7 @@ export const students = pgTable('students', {
 }, (t) => ({
   instClassRollUnique: unique('inst_class_roll_unique').on(t.institutionId, t.classId, t.classRollNumber),
   institutionIndex: index('students_institution_id_idx').on(t.institutionId),
+  institutionSectionIndex: index('students_institution_section_id_idx').on(t.institutionId, t.sectionId),
   lowerLoginRollIndex: index('students_lower_login_roll_idx').on(sql`lower(${t.loginRollNumber})`),
 }));
 
@@ -435,6 +436,7 @@ export const submissions = pgTable('submissions', {
   assignmentId: integer('assignment_id').notNull().references(() => assignments.id, { onDelete: 'cascade' }),
   studentId: integer('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
   fileKey: varchar('file_key', { length: 255 }).notNull(),
+  fileUrl: text('file_url'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   studentAssignmentUnique: unique('student_assignment_unique').on(t.assignmentId, t.studentId),

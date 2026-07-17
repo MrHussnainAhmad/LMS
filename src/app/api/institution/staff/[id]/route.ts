@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { staff } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { requireRole, getTenantContext } from "@/lib/rbac";
+import { invalidateUserValidity } from "@/lib/user";
 
 export const DELETE = requireRole(["INSTITUTION"], async (req: NextRequest, { params, session }) => {
   const { id } = await params;
@@ -21,6 +22,8 @@ export const DELETE = requireRole(["INSTITUTION"], async (req: NextRequest, { pa
     if (!deleted) {
       return NextResponse.json({ error: "Staff not found" }, { status: 404 });
     }
+
+    await invalidateUserValidity("STAFF", deleted.id);
 
     return NextResponse.json({ message: "Staff deleted successfully" });
   } catch (error) {

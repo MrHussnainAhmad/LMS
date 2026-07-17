@@ -4,6 +4,7 @@ import { classes, institutions, sections, students } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { requireRole, getTenantContext } from "@/lib/rbac";
 import { generateStudentLoginRollNumber } from "@/lib/login-identifiers";
+import { invalidateUserValidity } from "@/lib/user";
 
 export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { params, session }) => {
   const { id } = await params;
@@ -101,6 +102,8 @@ export const DELETE = requireRole(["INSTITUTION"], async (req: NextRequest, { pa
     if (!deleted) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 });
     }
+
+    await invalidateUserValidity("STUDENT", deleted.id);
 
     return NextResponse.json({ message: "Student deleted successfully" });
   } catch (error) {

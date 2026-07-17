@@ -15,6 +15,92 @@ const LOCKOUT_WINDOW_MINUTES = Number(process.env.AUTH_LOCKOUT_WINDOW_MINUTES ||
 const LOCKOUT_COOLDOWN_MINUTES = Number(process.env.AUTH_LOCKOUT_COOLDOWN_MINUTES || 15);
 const LOGIN_LOOKUP_ORDER: UserRole[] = ['STUDENT', 'STAFF', 'INSTITUTION', 'INSTITUTION_ADMIN', 'EMPLOYEE', 'SUPER_ADMIN'];
 
+type LoginCandidate = {
+  role: UserRole;
+  id: number;
+  password_hash: string;
+  security_answer_hash: string | null;
+  is_super_admin: boolean | null;
+  is_active: boolean | null;
+  institution_id: number | null;
+  campus_id: number | null;
+  must_change_password: boolean | null;
+  account_status: string | null;
+  email: string | null;
+  contact_email: string | null;
+};
+
+type SuperAdminLogin = { id: number; email?: string; passwordHash: string; securityAnswerHash: string; isSuperAdmin: boolean };
+type EmployeeLogin = { id: number; email: string; passwordHash: string; mustChangePassword: boolean };
+type InstitutionLogin = { id: number; contactEmail: string; adminPasswordHash: string; status: string };
+type InstitutionAdminLogin = { id: number; email?: string; passwordHash: string; institutionId: number };
+type StaffLogin = { id: number; email?: string; passwordHash: string; isActive: boolean; institutionId: number; campusId: number | null; mustChangePassword: boolean };
+type StudentLogin = { id: number; loginRollNumber?: string; passwordHash: string; isActive: boolean; institutionId: number; mustChangePassword: boolean };
+
+async function findUnhintedLoginCandidate(loginIdentifier: string): Promise<LoginCandidate | null> {
+  const result = await db.execute(sql`
+    WITH login_input AS (
+      SELECT ${loginIdentifier}::text AS identifier
+    ),
+    candidates AS (
+      SELECT 'STUDENT'::text AS role, 1 AS priority, s.id, s.password_hash,
+        NULL::text AS security_answer_hash, NULL::boolean AS is_super_admin,
+        s.is_active, s.institution_id, NULL::integer AS campus_id,
+        s.must_change_password, NULL::text AS account_status,
+        NULL::text AS email, NULL::text AS contact_email
+      FROM students AS s CROSS JOIN login_input AS i
+      WHERE lower(s.login_roll_number) = i.identifier
+
+      UNION ALL
+
+      SELECT 'STAFF'::text, 2, s.id, s.password_hash,
+        NULL::text, NULL::boolean, s.is_active, s.institution_id, s.campus_id,
+        s.must_change_password, NULL::text, NULL::text, NULL::text
+      FROM staff AS s CROSS JOIN login_input AS i
+      WHERE lower(s.email) = i.identifier
+
+      UNION ALL
+
+      SELECT 'INSTITUTION'::text, 3, i2.id, i2.admin_password_hash,
+        NULL::text, NULL::boolean, NULL::boolean, i2.id, NULL::integer,
+        NULL::boolean, i2.status::text, NULL::text, i2.contact_email::text
+      FROM institutions AS i2 CROSS JOIN login_input AS i
+      WHERE lower(i2.contact_email) = i.identifier
+
+      UNION ALL
+
+      SELECT 'INSTITUTION_ADMIN'::text, 4, ia.id, ia.password_hash,
+        NULL::text, NULL::boolean, NULL::boolean, ia.institution_id, NULL::integer,
+        NULL::boolean, NULL::text, NULL::text, NULL::text
+      FROM institution_admins AS ia CROSS JOIN login_input AS i
+      WHERE lower(ia.email) = i.identifier
+
+      UNION ALL
+
+      SELECT 'EMPLOYEE'::text, 5, e.id, e.password_hash,
+        NULL::text, NULL::boolean, NULL::boolean, NULL::integer, NULL::integer,
+        e.must_change_password, NULL::text, e.email::text, NULL::text
+      FROM employees AS e CROSS JOIN login_input AS i
+      WHERE lower(e.email) = i.identifier
+
+      UNION ALL
+
+      SELECT 'SUPER_ADMIN'::text, 6, sa.id, sa.password_hash,
+        sa.security_answer_hash, sa.is_super_admin, NULL::boolean, NULL::integer,
+        NULL::integer, NULL::boolean, NULL::text, NULL::text, NULL::text
+      FROM super_admins AS sa CROSS JOIN login_input AS i
+      WHERE lower(sa.email) = i.identifier
+    )
+    SELECT role, id, password_hash, security_answer_hash, is_super_admin, is_active,
+      institution_id, campus_id, must_change_password, account_status, email, contact_email
+    FROM candidates
+    ORDER BY priority
+    LIMIT 1
+  `);
+
+  return (result.rows[0] as LoginCandidate | undefined) ?? null;
+}
+
 function addMinutes(value: Date, minutes: number) {
   return new Date(value.getTime() + minutes * 60 * 1000);
 }
@@ -163,15 +249,69 @@ export async function POST(req: NextRequest) {
     const cacheKey = `auth:role:${loginIdentifier}`;
     const cachedRole = await redis.get(cacheKey).catch(() => null);
     
-    if (cachedRole && lookupRoles.includes(cachedRole as UserRole)) {
+    const hasUsableCachedRole = Boolean(cachedRole && lookupRoles.includes(cachedRole as UserRole));
+    if (hasUsableCachedRole) {
       const idx = lookupRoles.indexOf(cachedRole as UserRole);
       lookupRoles.splice(idx, 1);
       lookupRoles.unshift(cachedRole as UserRole);
     }
 
-    let admin, emp, inst, instAdmin, stf, stu;
+    let admin: SuperAdminLogin | undefined;
+    let emp: EmployeeLogin | undefined;
+    let inst: InstitutionLogin | undefined;
+    let instAdmin: InstitutionAdminLogin | undefined;
+    let stf: StaffLogin | undefined;
+    let stu: StudentLogin | undefined;
     
-    for (const lookupRole of lookupRoles) {
+    if (!roleHint && !hasUsableCachedRole) {
+      const candidate = await findUnhintedLoginCandidate(loginIdentifier);
+
+      if (candidate?.role === 'SUPER_ADMIN') {
+        admin = {
+          id: candidate.id,
+          passwordHash: candidate.password_hash,
+          securityAnswerHash: candidate.security_answer_hash!,
+          isSuperAdmin: candidate.is_super_admin!,
+        };
+      } else if (candidate?.role === 'EMPLOYEE') {
+        emp = {
+          id: candidate.id,
+          email: candidate.email!,
+          passwordHash: candidate.password_hash,
+          mustChangePassword: candidate.must_change_password!,
+        };
+      } else if (candidate?.role === 'INSTITUTION') {
+        inst = {
+          id: candidate.id,
+          contactEmail: candidate.contact_email!,
+          adminPasswordHash: candidate.password_hash,
+          status: candidate.account_status!,
+        };
+      } else if (candidate?.role === 'INSTITUTION_ADMIN') {
+        instAdmin = {
+          id: candidate.id,
+          passwordHash: candidate.password_hash,
+          institutionId: candidate.institution_id!,
+        };
+      } else if (candidate?.role === 'STAFF') {
+        stf = {
+          id: candidate.id,
+          passwordHash: candidate.password_hash,
+          isActive: candidate.is_active!,
+          institutionId: candidate.institution_id!,
+          campusId: candidate.campus_id,
+          mustChangePassword: candidate.must_change_password!,
+        };
+      } else if (candidate?.role === 'STUDENT') {
+        stu = {
+          id: candidate.id,
+          passwordHash: candidate.password_hash,
+          isActive: candidate.is_active!,
+          institutionId: candidate.institution_id!,
+          mustChangePassword: candidate.must_change_password!,
+        };
+      }
+    } else for (const lookupRole of lookupRoles) {
       if (lookupRole === 'SUPER_ADMIN') {
         const rows = await db.select({
           id: superAdmins.id,

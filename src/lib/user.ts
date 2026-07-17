@@ -1,7 +1,8 @@
 import { db } from "@/db";
 import { students, staff, institutions, employees, superAdmins, institutionAdmins } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import type { JWTPayload } from "./auth-types";
+import { redis } from "./redis";
+import type { JWTPayload, UserRole } from "./auth-types";
 
 export async function getUserCreatedAt(session: JWTPayload): Promise<Date> {
   const defaultDate = new Date(0);
@@ -35,18 +36,21 @@ export async function getUserCreatedAt(session: JWTPayload): Promise<Date> {
   }
 }
 
-import { cache } from 'react';
-import type { UserRole } from './auth-types';
+const USER_VALIDITY_CACHE_TTL_SECONDS = 30;
 
-export const verifyUserExists = cache(async (role: UserRole, userId: number): Promise<boolean> => {
+function userValidityCacheKey(role: UserRole, userId: number) {
+  return `auth:user-validity:${role}:${userId}`;
+}
+
+async function verifyUserExistsInDatabase(role: UserRole, userId: number): Promise<boolean> {
   switch (role) {
     case 'SUPER_ADMIN': {
       const [u] = await db.select({ id: superAdmins.id }).from(superAdmins).where(eq(superAdmins.id, userId)).limit(1);
       return !!u;
     }
     case 'EMPLOYEE': {
-      const [u] = await db.select({ id: employees.id }).from(employees).where(eq(employees.id, userId)).limit(1);
-      return !!u;
+      const [u] = await db.select({ deletedAt: employees.deletedAt }).from(employees).where(eq(employees.id, userId)).limit(1);
+      return !!u && u.deletedAt === null;
     }
     case 'INSTITUTION': {
       const [u] = await db.select({ status: institutions.status }).from(institutions).where(eq(institutions.id, userId)).limit(1);
@@ -67,4 +71,58 @@ export const verifyUserExists = cache(async (role: UserRole, userId: number): Pr
     default:
       return false;
   }
-});
+}
+
+/**
+ * Shared, short-lived validity cache for authenticated requests. Valkey errors
+ * deliberately fall through to Postgres so an outage cannot grant or deny access.
+ */
+export async function verifyUserExists(role: UserRole, userId: number): Promise<boolean> {
+  const key = userValidityCacheKey(role, userId);
+
+  try {
+    if (redis.status === "ready") {
+      const cached = await redis.get(key);
+      if (cached === "1") return true;
+      if (cached === "0") return false;
+    }
+  } catch (error) {
+    console.warn("User validity cache read failed; checking Postgres", error);
+  }
+
+  const valid = await verifyUserExistsInDatabase(role, userId);
+
+  try {
+    if (redis.status === "ready") {
+      // Exact TTL: do not use cache TTL jitter for an authorization decision.
+      await redis.setex(key, USER_VALIDITY_CACHE_TTL_SECONDS, valid ? "1" : "0");
+    }
+  } catch (error) {
+    console.warn("User validity cache write failed; continuing without cache", error);
+  }
+
+  return valid;
+}
+
+export async function invalidateUserValidity(role: UserRole, userId: number) {
+  try {
+    if (redis.status === "ready") {
+      await redis.del(userValidityCacheKey(role, userId));
+    }
+  } catch (error) {
+    console.warn("User validity cache invalidation failed", error);
+  }
+}
+
+export async function invalidateUserValidityBatch(users: Array<{ role: UserRole; userId: number }>) {
+  const keys = [...new Set(users.map(({ role, userId }) => userValidityCacheKey(role, userId)))];
+  if (keys.length === 0) return;
+
+  try {
+    if (redis.status === "ready") {
+      await redis.del(...keys);
+    }
+  } catch (error) {
+    console.warn("User validity cache batch invalidation failed", error);
+  }
+}
