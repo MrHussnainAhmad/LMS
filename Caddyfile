@@ -2,7 +2,7 @@
     admin :2019
 }
 
-http:// {
+nisaab360.app, www.nisaab360.app, blog.nisaab360.app {
     header {
         X-Content-Type-Options nosniff
         X-Frame-Options DENY
