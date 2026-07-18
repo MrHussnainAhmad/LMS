@@ -17,6 +17,10 @@ export async function middleware(request: NextRequest) {
 
   // Handle blog subdomain rewrite
   if (hostname === 'blog.nisaab360.app' || hostname.startsWith('blog.localhost')) {
+    // Skip static assets
+    if (path.match(/\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf)$/i)) {
+      return NextResponse.next();
+    }
     return NextResponse.rewrite(new URL(`/blog${path === '/' ? '' : path}`, request.url));
   }
 
