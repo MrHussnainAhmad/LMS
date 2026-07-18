@@ -33,6 +33,7 @@ export function RegistrationForm() {
     logoKey: "mock-logo-key",
     proofDocumentKey: "mock-doc-key",
   });
+  const [hasAgreed, setHasAgreed] = useState(false);
 
   const updateForm = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -45,6 +46,15 @@ export function RegistrationForm() {
     e.preventDefault();
     if (step < STEPS.length - 1) {
       nextStep();
+      return;
+    }
+
+    if (!hasAgreed) {
+      toast({
+        title: "Agreement Required",
+        description: "You must agree to the Nisaab360 Service Agreement to register.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -158,8 +168,23 @@ export function RegistrationForm() {
               <Input type="password" name="adminPassword" value={formData.adminPassword} onChange={updateForm} required minLength={8} />
               <p className="text-xs text-stone-500">This will be used along with your contact email to login.</p>
             </div>
-            <div className="p-4 border border-dashed border-border rounded-md bg-stone-50 text-center">
-              <p className="text-sm text-stone-600">Documents & Logo Upload simulated for UI phase.</p>
+            
+            <div className="pt-4 border-t border-stone-200">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="mt-1 h-4 w-4 rounded border-stone-300 text-brand-600 focus:ring-brand-500" 
+                  checked={hasAgreed}
+                  onChange={(e) => setHasAgreed(e.target.checked)}
+                  required
+                />
+                <span className="text-sm text-stone-700">
+                  I have read and agree to the{" "}
+                  <a href="/agreement-nisaab360" target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline font-medium">
+                    Nisaab360 Service Agreement
+                  </a>.
+                </span>
+              </label>
             </div>
           </div>
         )}

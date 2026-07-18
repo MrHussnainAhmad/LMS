@@ -41,6 +41,14 @@ export default async function SAInstitutionDetailPage({ params }: { params: Prom
           <h1 className="text-3xl font-display font-bold text-brand-950">{institution.name}</h1>
           <p className="text-stone-500 mt-1">Institution details and statistics.</p>
         </div>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link href={`/agreement-nisaab360?id=${institution.id}`} target="_blank" rel="noopener noreferrer">
+              <FileCheck className="mr-2 h-4 w-4" />
+              View Agreement
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
