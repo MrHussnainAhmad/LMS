@@ -388,7 +388,7 @@ export default async function LandingPage() {
              <ul className="space-y-4">
                 <li><Link href="/about-us" className="text-stone-400 hover:text-white">About Us</Link></li>
                 <li><Link href="/careers" className="text-stone-400 hover:text-white">Careers</Link></li>
-                <li><Link href="/blog" className="text-stone-400 hover:text-white">Blog</Link></li>
+                <li><Link href="https://blog.nisaab360.app" className="text-stone-400 hover:text-white">Blog</Link></li>
                 <li><Link href="/contact" className="text-stone-400 hover:text-white">Contact</Link></li>
               </ul>
             </div>

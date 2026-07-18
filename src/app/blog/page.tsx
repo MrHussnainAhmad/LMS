@@ -21,14 +21,14 @@ export default async function BlogIndexPage() {
   return (
     <div className="min-h-screen flex flex-col bg-[#FDFCFB] selection:bg-brand-500 selection:text-white">
       <header className="sticky top-0 z-50 flex items-center px-6 md:px-12 py-4 backdrop-blur-2xl bg-white/60 border-b border-stone-200/50">
-        <Link href="/" className="flex items-center gap-3 group">
+        <Link href="https://nisaab360.app" className="flex items-center gap-3 group">
           <div className="h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-brand-100 transition-transform group-hover:scale-105">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/Logo.png" alt="Nisaab360 logo" className="h-full w-full object-contain" />
           </div>
           <span className="font-display font-extrabold text-xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Nisaab360</span>
         </Link>
-        <Link href="/" className="ml-auto text-sm font-semibold text-stone-500 hover:text-stone-900 flex items-center gap-2">
+        <Link href="https://nisaab360.app" className="ml-auto text-sm font-semibold text-stone-500 hover:text-stone-900 flex items-center gap-2">
           <ArrowLeft className="w-4 h-4" /> Back to Home
         </Link>
       </header>
@@ -49,7 +49,7 @@ export default async function BlogIndexPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {publishedBlogs.map((post) => (
-              <Link key={post.id} href={`/blog/${post.slug}`} className="group bg-white rounded-2xl shadow-sm hover:shadow-xl border border-stone-100 transition-all duration-300 overflow-hidden flex flex-col">
+              <Link key={post.id} href={`/${post.slug}`} className="group bg-white rounded-2xl shadow-sm hover:shadow-xl border border-stone-100 transition-all duration-300 overflow-hidden flex flex-col">
                 <div className="p-4 sm:p-8 flex-1">
                   <h2 className="font-bold font-display tracking-tight text-2xl text-stone-900 mb-3 group-hover:text-brand-600 transition-colors line-clamp-2">
                     {post.title}

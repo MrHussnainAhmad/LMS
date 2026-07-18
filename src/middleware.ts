@@ -13,6 +13,12 @@ export async function middleware(request: NextRequest) {
 
   const session = await getSessionEdge(request.cookies);
   const path = request.nextUrl.pathname;
+  const hostname = request.headers.get('host') || '';
+
+  // Handle blog subdomain rewrite
+  if (hostname === 'blog.nisaab360.app' || hostname.startsWith('blog.localhost')) {
+    return NextResponse.rewrite(new URL(`/blog${path === '/' ? '' : path}`, request.url));
+  }
 
   // Redirect Android mobile users to app download page
   if (path !== '/download-app') {
