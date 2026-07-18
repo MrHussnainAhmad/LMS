@@ -4,7 +4,7 @@ import { resolveAnnouncementRecipients } from "@/lib/announcements";
 import { and, eq, inArray, lt } from "drizzle-orm";
 import { after } from "next/server";
 
-type NotificationType = 'ANNOUNCEMENT' | 'EXAM_TIMETABLE' | 'ASSIGNMENT' | 'TEST' | 'MARKS' | 'ATTENDANCE' | 'GENERAL' | 'LEAVE_REQUEST';
+type NotificationType = 'ANNOUNCEMENT' | 'EXAM_TIMETABLE' | 'ASSIGNMENT' | 'TEST' | 'MARKS' | 'ATTENDANCE' | 'GENERAL' | 'LEAVE_REQUEST' | 'DIARY';
 
 type NotificationPayload = {
   institutionId: number;
@@ -303,6 +303,41 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]): Prom
   }
 
   return summary;
+}
+
+export async function createDiaryNotifications({
+  institutionId,
+  classId,
+  className,
+  subjectName,
+  date,
+}: {
+  institutionId: number;
+  classId: number;
+  className: string;
+  subjectName?: string | null;
+  date: string;
+}) {
+  const recipients = await db
+    .select({ id: students.id })
+    .from(students)
+    .where(and(eq(students.institutionId, institutionId), eq(students.classId, classId)));
+
+  console.info("Processing diary notification", {
+    classId,
+    studentRecipients: recipients.length,
+  });
+
+  const subjectLabel = subjectName ? ` for ${subjectName}` : "";
+
+  return createBulkNotifications(recipients.map((student) => ({
+    institutionId,
+    userRole: "STUDENT",
+    userId: student.id,
+    type: "DIARY",
+    title: "New Daily Diary",
+    message: `A new daily diary entry has been added${subjectLabel} for ${className} on ${date}.`,
+  })));
 }
 
 export async function createOnlineTestNotifications({

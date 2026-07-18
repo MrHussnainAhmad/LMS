@@ -4,6 +4,7 @@ import { classes, diaries, subjects } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import { createDiaryNotifications } from "@/lib/notifications";
 
 const diarySchema = z.object({
   classId: z.number().int().positive(),
@@ -140,7 +141,7 @@ export async function POST(req: Request) {
     }
 
     const [[classRow], subjectRows] = await Promise.all([
-      db.select({ id: classes.id })
+      db.select({ id: classes.id, name: classes.name })
         .from(classes)
         .where(and(
           eq(classes.id, result.data.classId),
@@ -148,7 +149,7 @@ export async function POST(req: Request) {
         ))
         .limit(1),
       result.data.subjectId
-        ? db.select({ id: subjects.id })
+        ? db.select({ id: subjects.id, name: subjects.name })
           .from(subjects)
           .where(and(
             eq(subjects.id, result.data.subjectId),
@@ -171,18 +172,29 @@ export async function POST(req: Request) {
       content: result.data.content,
     };
 
+    let newDiary;
+
     // General class diary entries have no subject and always create a new row.
     if (values.subjectId === null) {
-      const [newDiary] = await db.insert(diaries).values(values).returning();
-      return NextResponse.json(newDiary);
+      [newDiary] = await db.insert(diaries).values(values).returning();
+    } else {
+      // Subject-specific entries update the existing entry for the same class and date.
+      [newDiary] = await db.insert(diaries).values(values).onConflictDoUpdate({
+        target: [diaries.classId, diaries.subjectId, diaries.date],
+        targetWhere: sql`${diaries.subjectId} is not null`,
+        set: { content: result.data.content },
+      }).returning();
     }
 
-    // Subject-specific entries update the existing entry for the same class and date.
-    const [newDiary] = await db.insert(diaries).values(values).onConflictDoUpdate({
-      target: [diaries.classId, diaries.subjectId, diaries.date],
-      targetWhere: sql`${diaries.subjectId} is not null`,
-      set: { content: result.data.content },
-    }).returning();
+    if (newDiary) {
+      createDiaryNotifications({
+        institutionId: session.institutionId,
+        classId: result.data.classId,
+        className: classRow.name,
+        subjectName: subjectRows[0]?.name,
+        date: result.data.date,
+      }).catch(err => console.error("Error creating diary notification:", err));
+    }
 
     return NextResponse.json(newDiary);
   } catch (error) {
