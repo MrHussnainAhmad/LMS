@@ -15,18 +15,31 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const hostname = request.headers.get('host') || '';
 
-  // Handle blog subdomain rewrite
-  if (hostname === 'blog.nisaab360.app' || hostname.startsWith('blog.localhost')) {
-    // Skip static assets
-    if (path.match(/\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf)$/i)) {
-      return NextResponse.next();
+  let rewritePath: string | null = null;
+  const isStaticOrApi = path.match(/\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf)$/i) || path.startsWith('/api');
+  const isAuthPath = path === '/login' || path === '/institution-login' || path === '/employee-login' || path === '/login/super-admin' || path === '/force-password-change';
+
+  if (!isStaticOrApi) {
+    if (hostname === 'blog.nisaab360.app' || hostname.startsWith('blog.localhost')) {
+      rewritePath = `/blog${path === '/' ? '' : path}`;
+    } else if (hostname === 'student.nisaab360.app' || hostname.startsWith('student.localhost')) {
+      if (!isAuthPath && !path.startsWith('/student')) rewritePath = `/student${path === '/' ? '' : path}`;
+    } else if (hostname === 'staff.nisaab360.app' || hostname.startsWith('staff.localhost')) {
+      if (!isAuthPath && !path.startsWith('/staff')) rewritePath = `/staff${path === '/' ? '' : path}`;
+    } else if (hostname === 'institution.nisaab360.app' || hostname.startsWith('institution.localhost')) {
+      if (!isAuthPath && !path.startsWith('/institution')) rewritePath = `/institution${path === '/' ? '' : path}`;
+    } else if (hostname === 'employee.nisaab360.app' || hostname.startsWith('employee.localhost')) {
+      if (!isAuthPath && !path.startsWith('/employee')) rewritePath = `/employee${path === '/' ? '' : path}`;
+    } else if (hostname === 'sa.nisaab360.app' || hostname === 'superadmin.nisaab360.app' || hostname.startsWith('sa.localhost')) {
+      if (!isAuthPath && !path.startsWith('/sa')) rewritePath = `/sa${path === '/' ? '' : path}`;
     }
-    return NextResponse.rewrite(new URL(`/blog${path === '/' ? '' : path}`, request.url));
   }
 
+  const virtualPath = rewritePath || path;
+
   // Redirect Android mobile users to app download page
-  if (path !== '/download-app') {
-    const androidPaths = path === '/' || path === '/login' || path.startsWith('/student') || path.startsWith('/staff');
+  if (virtualPath !== '/download-app') {
+    const androidPaths = virtualPath === '/' || virtualPath === '/login' || virtualPath.startsWith('/student') || virtualPath.startsWith('/staff');
     if (androidPaths) {
       const { device, os } = userAgent(request);
       if (device.type === 'mobile' && os.name === 'Android') {
@@ -38,11 +51,11 @@ export async function middleware(request: NextRequest) {
   if (
     session &&
     !session.mustChangePassword &&
-    (path === '/' ||
-      path === '/login' ||
-      path === '/institution-login' ||
-      path === '/employee-login' ||
-      path === '/login/super-admin')
+    (virtualPath === '/' ||
+      virtualPath === '/login' ||
+      virtualPath === '/institution-login' ||
+      virtualPath === '/employee-login' ||
+      virtualPath === '/login/super-admin')
   ) {
     return keepWebSessionAlive(
       NextResponse.redirect(new URL(getDashboardPath(session.role), request.url)),
@@ -51,55 +64,54 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protect force-password-change path
-  if (path === '/force-password-change') {
+  if (virtualPath === '/force-password-change') {
     if (!session) return NextResponse.redirect(new URL('/login', request.url));
     if (!session.mustChangePassword) {
-      // Redirect to their dashboard if they don't need to change it
       return keepWebSessionAlive(
         NextResponse.redirect(new URL(getDashboardPath(session.role), request.url)),
         request
       );
     }
-    return keepWebSessionAlive(NextResponse.next(), request);
+    const res = rewritePath ? NextResponse.rewrite(new URL(rewritePath, request.url)) : NextResponse.next();
+    return keepWebSessionAlive(res, request);
   }
 
   // Handle password change requirement globally
-  if (session && session.mustChangePassword && !path.startsWith('/api/auth/change-password')) {
+  if (session && session.mustChangePassword && !virtualPath.startsWith('/api/auth/change-password')) {
     return keepWebSessionAlive(
       NextResponse.redirect(new URL('/force-password-change', request.url)),
       request
     );
   }
 
-  if (path.startsWith('/sa')) {
+  if (virtualPath.startsWith('/sa')) {
     if (!session || session.role !== 'SUPER_ADMIN') {
       return NextResponse.redirect(new URL('/login/super-admin', request.url));
     }
   }
 
-  if (path === '/employee' || path.startsWith('/employee/')) {
+  if (virtualPath === '/employee' || virtualPath.startsWith('/employee/')) {
     if (!session || session.role !== 'EMPLOYEE') {
       return NextResponse.redirect(new URL('/employee-login', request.url));
     }
   }
 
-  if (path === '/institution' || path.startsWith('/institution/')) {
+  if (virtualPath === '/institution' || virtualPath.startsWith('/institution/')) {
     if (!session || (session.role !== 'INSTITUTION' && session.role !== 'INSTITUTION_ADMIN')) {
       return NextResponse.redirect(new URL('/institution-login', request.url));
     }
-    // Block INSTITUTION_ADMIN from /institution/admins and /institution/settings
-    if (session.role === 'INSTITUTION_ADMIN' && (path === '/institution/admins' || path === '/institution/settings')) {
+    if (session.role === 'INSTITUTION_ADMIN' && (virtualPath === '/institution/admins' || virtualPath === '/institution/settings')) {
       return NextResponse.redirect(new URL('/institution/dashboard', request.url));
     }
   }
 
-  if (path.startsWith('/staff')) {
+  if (virtualPath.startsWith('/staff')) {
     if (!session || session.role !== 'STAFF') {
       return NextResponse.redirect(new URL('/login', request.url));
     }
   }
 
-  if (path.startsWith('/student')) {
+  if (virtualPath.startsWith('/student')) {
     if (!session || session.role !== 'STUDENT') {
       return NextResponse.redirect(new URL('/login', request.url));
     }
@@ -109,14 +121,11 @@ export async function middleware(request: NextRequest) {
   if (session) {
     requestHeaders.set('x-user-session', JSON.stringify(session));
   }
-  const nextRes = NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
+  
+  const nextRes = rewritePath 
+    ? NextResponse.rewrite(new URL(rewritePath, request.url), { request: { headers: requestHeaders } })
+    : NextResponse.next({ request: { headers: requestHeaders } });
 
-  // Prevent browser bfcache from showing stale authenticated pages after logout.
-  // Without this, the back button restores the cached page without hitting the server.
   if (session) {
     nextRes.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     nextRes.headers.set('Pragma', 'no-cache');

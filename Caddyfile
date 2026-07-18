@@ -2,7 +2,7 @@
     admin :2019
 }
 
-nisaab360.app, www.nisaab360.app, blog.nisaab360.app {
+nisaab360.app, www.nisaab360.app, blog.nisaab360.app, student.nisaab360.app, staff.nisaab360.app, institution.nisaab360.app, employee.nisaab360.app, sa.nisaab360.app, superadmin.nisaab360.app {
     header {
         X-Content-Type-Options nosniff
         X-Frame-Options DENY
