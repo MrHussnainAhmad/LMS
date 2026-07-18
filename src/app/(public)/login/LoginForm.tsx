@@ -132,8 +132,15 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
       if (res.mustChangePassword) {
         router.push("/force-password-change");
       } else {
-        const redirectRole = res.role === "INSTITUTION_ADMIN" ? "institution" : res.role.toLowerCase();
-        router.push(`/${redirectRole}/dashboard`);
+        let targetRole = res.role.toLowerCase();
+        if (targetRole === "super_admin") targetRole = "sa";
+        if (targetRole === "institution_admin") targetRole = "institution";
+        
+        const isLocal = window.location.hostname.includes("localhost");
+        const protocol = isLocal ? "http://" : "https://";
+        const baseHost = isLocal ? "localhost:3000" : "nisaab360.app";
+        
+        window.location.href = `${protocol}${targetRole}.${baseHost}/dashboard`;
       }
     } catch (err: any) {
       toast({

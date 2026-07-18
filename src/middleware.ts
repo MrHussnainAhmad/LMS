@@ -58,7 +58,7 @@ export async function middleware(request: NextRequest) {
       virtualPath === '/login/super-admin')
   ) {
     return keepWebSessionAlive(
-      NextResponse.redirect(new URL(getDashboardPath(session.role), request.url)),
+      NextResponse.redirect(new URL(getDashboardPath(session.role, request), request.url)),
       request
     );
   }
@@ -68,7 +68,7 @@ export async function middleware(request: NextRequest) {
     if (!session) return NextResponse.redirect(new URL('/login', request.url));
     if (!session.mustChangePassword) {
       return keepWebSessionAlive(
-        NextResponse.redirect(new URL(getDashboardPath(session.role), request.url)),
+        NextResponse.redirect(new URL(getDashboardPath(session.role, request), request.url)),
         request
       );
     }
@@ -135,14 +135,19 @@ export async function middleware(request: NextRequest) {
   return session ? keepWebSessionAlive(nextRes, request) : nextRes;
 }
 
-function getDashboardPath(role: string) {
+function getDashboardPath(role: string, request: NextRequest) {
+  const host = request.headers.get('host') || 'nisaab360.app';
+  const isLocal = host.includes('localhost');
+  const protocol = isLocal ? 'http://' : 'https://';
+  const baseHost = isLocal ? 'localhost:3000' : 'nisaab360.app';
+  
   switch (role) {
-    case 'SUPER_ADMIN': return '/sa/dashboard';
-    case 'EMPLOYEE': return '/employee/dashboard';
+    case 'SUPER_ADMIN': return `${protocol}sa.${baseHost}/dashboard`;
+    case 'EMPLOYEE': return `${protocol}employee.${baseHost}/dashboard`;
     case 'INSTITUTION':
-    case 'INSTITUTION_ADMIN': return '/institution/dashboard';
-    case 'STAFF': return '/staff/dashboard';
-    case 'STUDENT': return '/student/dashboard';
+    case 'INSTITUTION_ADMIN': return `${protocol}institution.${baseHost}/dashboard`;
+    case 'STAFF': return `${protocol}staff.${baseHost}/dashboard`;
+    case 'STUDENT': return `${protocol}student.${baseHost}/dashboard`;
     default: return '/login';
   }
 }
@@ -151,6 +156,7 @@ function keepWebSessionAlive(response: NextResponse, request: NextRequest) {
   const accessToken = request.cookies.get('access_token')?.value;
   const refreshToken = request.cookies.get('refresh_token')?.value;
   const secure = process.env.NODE_ENV === 'production';
+  const domain = process.env.NODE_ENV === 'production' ? '.nisaab360.app' : undefined;
 
   if (accessToken) {
     response.cookies.set('access_token', accessToken, {
@@ -159,6 +165,7 @@ function keepWebSessionAlive(response: NextResponse, request: NextRequest) {
       sameSite: 'lax',
       path: '/',
       maxAge: WEB_SESSION_MAX_AGE,
+      domain,
     });
   }
 
@@ -169,6 +176,7 @@ function keepWebSessionAlive(response: NextResponse, request: NextRequest) {
       sameSite: 'lax',
       path: '/',
       maxAge: WEB_SESSION_MAX_AGE,
+      domain,
     });
   }
 

@@ -44,6 +44,7 @@ export async function createTokens(payload: JWTPayload) {
 
 export async function setAuthCookies(accessToken: string, refreshToken: string) {
   const cookieStore = await cookies();
+  const domain = process.env.NODE_ENV === 'production' ? '.nisaab360.app' : undefined;
   
   cookieStore.set('access_token', accessToken, {
     httpOnly: true,
@@ -51,6 +52,7 @@ export async function setAuthCookies(accessToken: string, refreshToken: string) 
     sameSite: 'lax',
     path: '/',
     maxAge: WEB_SESSION_EXPIRY_DAYS * 24 * 60 * 60,
+    domain,
   });
 
   cookieStore.set('refresh_token', refreshToken, {
@@ -59,6 +61,7 @@ export async function setAuthCookies(accessToken: string, refreshToken: string) 
     sameSite: 'lax',
     path: '/',
     maxAge: WEB_SESSION_EXPIRY_DAYS * 24 * 60 * 60,
+    domain,
   });
 
   // Non-HttpOnly cookie for client-side session expiration tracking
@@ -68,6 +71,7 @@ export async function setAuthCookies(accessToken: string, refreshToken: string) 
     sameSite: 'lax',
     path: '/',
     maxAge: WEB_SESSION_EXPIRY_DAYS * 24 * 60 * 60,
+    domain,
   });
 }
 
