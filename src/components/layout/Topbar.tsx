@@ -29,7 +29,9 @@ export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
   const handleLogout = async () => {
     try {
       await api.post("/api/auth/logout", {});
-      window.location.href = "/login";
+      // replace() instead of href — removes current page from history stack
+      // so back button can't return to authenticated page
+      window.location.replace("/login");
     } catch (err) {
       console.error(err);
     }

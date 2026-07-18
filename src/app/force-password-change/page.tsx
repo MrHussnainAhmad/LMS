@@ -32,7 +32,7 @@ export default function ForcePasswordChangePage() {
       
       // Logout and redirect to login
       await api.post("/api/auth/logout", {});
-      window.location.href = "/login";
+      window.location.replace("/login");
     } catch (err: any) {
       toast({
         title: "Error",

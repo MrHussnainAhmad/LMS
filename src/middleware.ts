@@ -14,10 +14,14 @@ export async function middleware(request: NextRequest) {
   const session = await getSessionEdge(request.cookies);
   const path = request.nextUrl.pathname;
 
-  if (path === '/') {
-    const { device, os } = userAgent(request);
-    if (device.type === 'mobile' && os.name === 'Android') {
-      return NextResponse.redirect(new URL('/download-app', request.url));
+  // Redirect Android mobile users to app download page
+  if (path !== '/download-app') {
+    const androidPaths = path === '/' || path === '/login' || path.startsWith('/student') || path.startsWith('/staff');
+    if (androidPaths) {
+      const { device, os } = userAgent(request);
+      if (device.type === 'mobile' && os.name === 'Android') {
+        return NextResponse.redirect(new URL('/download-app', request.url));
+      }
     }
   }
 
@@ -100,6 +104,14 @@ export async function middleware(request: NextRequest) {
       headers: requestHeaders,
     },
   });
+
+  // Prevent browser bfcache from showing stale authenticated pages after logout.
+  // Without this, the back button restores the cached page without hitting the server.
+  if (session) {
+    nextRes.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    nextRes.headers.set('Pragma', 'no-cache');
+    nextRes.headers.set('Expires', '0');
+  }
 
   return session ? keepWebSessionAlive(nextRes, request) : nextRes;
 }

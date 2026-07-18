@@ -40,7 +40,7 @@ export function DangerZone() {
       await fetch("/api/auth/logout", { method: "POST" });
       
       // Redirect to login
-      window.location.href = "/login";
+      window.location.replace("/login");
     } catch (err: any) {
       setStep("reason");
       setErrorMsg(err.message || "Failed to delete account. Please try again.");

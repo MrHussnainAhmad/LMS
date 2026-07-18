@@ -359,7 +359,7 @@ export default async function LandingPage() {
 
                <FadeIn direction="up" delay={0.4} className="flex justify-center w-full px-4">
                  <Button size="lg" className="landing-hover h-auto min-h-[3.5rem] py-3 rounded-3xl sm:rounded-full bg-white px-4 sm:px-10 text-sm sm:text-base font-bold text-stone-900 hover:bg-stone-100 shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-100 whitespace-normal text-center w-full sm:w-auto" asChild>
-                   <a href="mailto:Workwithhussnainahmad@gmail.com">Contact Sales: Workwithhussnainahmad@gmail.com</a>
+                   <a href="mailto:hello@nisaab360.app">Contact Sales: hello@nisaab360.app</a>
                  </Button>
                </FadeIn>
              </div>
