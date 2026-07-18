@@ -73,7 +73,7 @@ export function OnlineTestBuilder({ sections, subjects }: { sections: SectionOpt
 
       <div>
         <label className="mb-2 block text-sm font-medium text-stone-700">Test Type</label>
-        <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-stone-50 p-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border border-border bg-stone-50 p-1">
           {(["MCQ", "MIX"] as const).map((value) => (
             <label key={value} className={`cursor-pointer rounded px-3 py-2 text-center text-sm font-medium ${mode === value ? "bg-white text-brand-900 shadow-sm" : "text-stone-600"}`}>
               <input type="radio" name="mode" value={value} checked={mode === value} onChange={() => setMode(value)} className="sr-only" />

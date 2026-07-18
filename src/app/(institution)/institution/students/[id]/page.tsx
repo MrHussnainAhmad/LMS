@@ -156,7 +156,7 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
             </div>
           </CardHeader>
           <CardContent className="p-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
               <div>
                 <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Class</p>
                 <p className="mt-1 text-stone-800">{student.className} - {student.sectionName}</p>

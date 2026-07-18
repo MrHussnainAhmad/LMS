@@ -127,7 +127,7 @@ export function InstitutionExamForm({
         <input name="title" required defaultValue={initialValues?.title} placeholder="e.g. Final Term 2026" className="w-full rounded-md border border-border px-3 py-2 text-sm" />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-stone-700 mb-1">Start Date</label>
           <input

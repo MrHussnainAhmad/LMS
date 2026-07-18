@@ -48,7 +48,7 @@ export default async function SATicketsPage() {
         </CardHeader>
         <CardContent className="p-0">
           {forwardedTickets.length === 0 ? (
-            <div className="p-8 text-center text-stone-500">
+            <div className="p-4 sm:p-8 text-center text-stone-500">
               <Ticket className="w-12 h-12 text-stone-300 mx-auto mb-3" />
               <p>No tickets have been forwarded to platform support yet.</p>
             </div>

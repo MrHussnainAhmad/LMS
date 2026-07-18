@@ -115,7 +115,7 @@ export default function BlogClient() {
         <div className="lg:col-span-2 space-y-6">
           <div className="relative group">
             <div className="absolute -inset-0.5 bg-gradient-to-r from-brand-500 to-indigo-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
-            <div className="relative bg-white p-8 rounded-2xl shadow-sm border border-stone-100/50 backdrop-blur-sm">
+            <div className="relative bg-white p-4 sm:p-8 rounded-2xl shadow-sm border border-stone-100/50 backdrop-blur-sm">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2.5 bg-brand-50 rounded-xl">
                   <PenTool className="w-5 h-5 text-brand-600" />

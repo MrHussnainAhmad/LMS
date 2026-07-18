@@ -87,7 +87,7 @@ export default async function InstitutionAcademicsPage() {
                 <tbody className="divide-y divide-border">
                   {allSubjects.length === 0 && (
                     <tr>
-                      <td colSpan={2} className="px-6 py-8 text-center text-stone-500">
+                      <td colSpan={2} className="px-6 py-4 sm:py-8 text-center text-stone-500">
                         No subjects added yet.
                       </td>
                     </tr>
@@ -164,7 +164,7 @@ export default async function InstitutionAcademicsPage() {
                 <tbody className="divide-y divide-border">
                   {allClasses.length === 0 && (
                     <tr>
-                      <td colSpan={2} className="px-6 py-8 text-center text-stone-500">
+                      <td colSpan={2} className="px-6 py-4 sm:py-8 text-center text-stone-500">
                         No classes added yet.
                       </td>
                     </tr>

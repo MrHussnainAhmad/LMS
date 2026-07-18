@@ -65,7 +65,7 @@ export function RegistrationForm() {
 
   if (isSuccess) {
     return (
-      <Card className="p-8">
+      <Card className="p-4 sm:p-8">
         <EmptyState 
           icon={CheckCircle2}
           title="Registration Submitted" 
@@ -123,7 +123,7 @@ export function RegistrationForm() {
         {step === 1 && (
           <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
             <h3 className="font-semibold text-lg">Location & Contact</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-sm font-medium">Country</label>
                 <Input name="country" value={formData.country} onChange={updateForm} required />
@@ -137,7 +137,7 @@ export function RegistrationForm() {
               <label className="text-sm font-medium">Address</label>
               <Input name="address" value={formData.address} onChange={updateForm} required />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-sm font-medium">Contact Email</label>
                 <Input type="email" name="contactEmail" value={formData.contactEmail} onChange={updateForm} required />

@@ -56,7 +56,7 @@ export default function StudentDiaryPage() {
       </div>
 
       {isLoading && (
-        <div className="flex items-center justify-center p-12">
+        <div className="flex items-center justify-center p-6 sm:p-12">
           <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
         </div>
       )}

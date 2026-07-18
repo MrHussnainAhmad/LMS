@@ -94,7 +94,7 @@ export default async function InstitutionStaffPage() {
                   <tbody className="divide-y divide-border">
                     {allStaff.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center text-stone-500">
+                        <td colSpan={5} className="px-6 py-4 sm:py-8 text-center text-stone-500">
                           No staff registered yet.
                         </td>
                       </tr>

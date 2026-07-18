@@ -78,7 +78,7 @@ export function NotificationCenter() {
         </div>
         <div className="max-h-[400px] overflow-y-auto">
           {notifications.length === 0 ? (
-            <div className="p-8 text-center text-sm text-stone-500">
+            <div className="p-4 sm:p-8 text-center text-sm text-stone-500">
               No notifications yet
             </div>
           ) : (

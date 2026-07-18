@@ -91,7 +91,7 @@ export default async function StaticPage({ params }: { params: Promise<{ slug: s
         </article>
       </main>
 
-      <footer className="w-full bg-white border-t border-stone-200 py-10 px-6 text-center">
+      <footer className="w-full bg-white border-t border-stone-200 py-6 sm:py-10 px-6 text-center">
         <p className="text-stone-400 text-sm">&copy; {new Date().getFullYear()} Nisaab360 Inc. All rights reserved.</p>
       </footer>
     </div>

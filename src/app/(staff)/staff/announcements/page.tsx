@@ -122,7 +122,7 @@ export default async function StaffAnnouncementsPage({ searchParams }: { searchP
             <CardContent className="p-0">
               <div className="divide-y divide-border">
                 {recentAnnouncements.length === 0 && (
-                  <div className="p-12 flex flex-col items-center justify-center text-center text-stone-500">
+                  <div className="p-6 sm:p-12 flex flex-col items-center justify-center text-center text-stone-500">
                     <Bell className="h-10 w-10 text-stone-300 mb-3" />
                     <p className="font-medium text-stone-600">No New Announcements</p>
                     <p className="text-sm mt-1">You are all caught up!</p>

@@ -90,7 +90,7 @@ export default async function InstitutionAnnouncementsPage({ searchParams }: { s
                   <tbody className="divide-y divide-border">
                     {announcementCount === 0 && (
                       <tr>
-                        <td colSpan={4} className="px-6 py-8 text-center text-stone-500">
+                        <td colSpan={4} className="px-6 py-4 sm:py-8 text-center text-stone-500">
                           No announcements sent yet.
                         </td>
                       </tr>

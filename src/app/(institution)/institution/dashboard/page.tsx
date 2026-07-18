@@ -113,7 +113,7 @@ export default async function InstitutionDashboard() {
         <p className="text-stone-500 mt-1">Overview of your campus activities and academics.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <StatCard title="Total Students" value={studentCount.value.toString()} icon={Users} />
         <StatCard title="Teaching Staff" value={staffCount.value.toString()} icon={UserSquare2} />
         <StatCard title="Active Campuses" value="1" icon={MapPin} />
@@ -130,13 +130,13 @@ export default async function InstitutionDashboard() {
         </Link>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="lg:col-span-2 space-y-4 sm:space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Attendance Trends</CardTitle>
             </CardHeader>
-            <CardContent className="h-[300px] mt-4 p-0 pb-4">
+            <CardContent className="h-[250px] sm:h-[300px] mt-4 p-0 pb-4">
               <AttendanceTrendsChartDeferred data={trendsData} />
             </CardContent>
           </Card>
@@ -145,7 +145,7 @@ export default async function InstitutionDashboard() {
             <CardHeader>
               <CardTitle>Recent Exam Performance</CardTitle>
             </CardHeader>
-            <CardContent className="h-[300px] mt-4 p-0 pb-4">
+            <CardContent className="h-[250px] sm:h-[300px] mt-4 p-0 pb-4">
               <ExamPerformanceChart data={examPerfData} />
             </CardContent>
           </Card>
@@ -166,12 +166,12 @@ export default async function InstitutionDashboard() {
           )}
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Class Distribution</CardTitle>
             </CardHeader>
-            <CardContent className="h-[300px] mt-4 p-0 pb-4">
+            <CardContent className="h-[250px] sm:h-[300px] mt-4 p-0 pb-4">
               <ClassDistributionChart data={classDistRows} />
             </CardContent>
           </Card>

@@ -71,6 +71,7 @@ services:
       retries: 5
 
   app:
+    init: true
     # Option 1: build locally on the ARM Oracle VM
     build:
       context: .
@@ -111,6 +112,7 @@ services:
       retries: 5
 
   app2:
+    init: true
     container_name: nisaab360-app2
     build:
       context: .
@@ -145,6 +147,7 @@ services:
   # Receipt checks run outside the web processes. It calls Postgres/Expo directly
   # and has no public port or Caddy route.
   push-receipt-worker:
+    init: true
     build:
       context: .
       dockerfile: Dockerfile
@@ -166,6 +169,7 @@ services:
 
   caddy:
     image: caddy:2-alpine
+    init: true
     restart: unless-stopped
     ports:
       - "80:80"
@@ -180,10 +184,11 @@ services:
     networks:
       - appnet
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
-      interval: 10s
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:2019/config/"]
+      interval: 30s
       timeout: 5s
-      retries: 5
+      retries: 3
+      start_period: 10s
 
   postgres-backup:
     build: ./backup

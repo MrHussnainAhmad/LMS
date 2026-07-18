@@ -42,7 +42,7 @@ export default async function InstitutionAdminsPage() {
             </CardHeader>
             <CardContent className="p-0">
               {admins.length === 0 ? (
-                <div className="p-8 text-center text-stone-500">
+                <div className="p-4 sm:p-8 text-center text-stone-500">
                   <ShieldCheck className="w-12 h-12 text-stone-300 mx-auto mb-3" />
                   <p>No admins added yet.</p>
                 </div>

@@ -174,7 +174,7 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
             <p className="text-sm text-stone-500">Select an assignment to upload.</p>
           ) : !file ? (
             <div
-              className="border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center justify-center text-center hover:bg-stone-50 transition-colors cursor-pointer"
+              className="border-2 border-dashed border-border rounded-lg p-4 sm:p-8 flex flex-col items-center justify-center text-center hover:bg-stone-50 transition-colors cursor-pointer"
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
                 event.preventDefault();

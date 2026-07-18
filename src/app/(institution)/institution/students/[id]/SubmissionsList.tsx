@@ -34,7 +34,7 @@ export function SubmissionsList({ records }: { records: SubmissionRecord[] }) {
           </thead>
           <tbody className="divide-y divide-border">
             {records.length === 0 && (
-              <tr><td colSpan={3} className="px-4 py-8 text-center text-stone-500">No submissions found.</td></tr>
+              <tr><td colSpan={3} className="px-4 py-4 sm:py-8 text-center text-stone-500">No submissions found.</td></tr>
             )}
             {visibleRecords.map(r => {
               const isLate = new Date(r.createdAt) > new Date(r.dueAt);

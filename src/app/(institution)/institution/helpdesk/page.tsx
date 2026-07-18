@@ -63,7 +63,7 @@ export default async function InstitutionHelpdeskPage() {
         </CardHeader>
         <CardContent className="p-0">
           {allTickets.length === 0 ? (
-            <div className="p-8 text-center text-stone-500">
+            <div className="p-4 sm:p-8 text-center text-stone-500">
               <Ticket className="w-12 h-12 text-stone-300 mx-auto mb-3" />
               <p>No tickets have been created yet.</p>
             </div>

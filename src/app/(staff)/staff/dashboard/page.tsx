@@ -70,7 +70,7 @@ export default async function StaffDashboard() {
         <div className="space-y-4 mt-8 lg:mt-0">
           <h2 className="text-lg font-semibold text-brand-900 px-1">Quick Links</h2>
           <Card>
-            <CardContent className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <Link href="/staff/attendance" className="flex flex-col items-center justify-center p-4 rounded-lg bg-stone-50 hover:bg-brand-50 hover:text-brand-800 transition-colors text-stone-600 text-center gap-2 border border-transparent hover:border-brand-200">
                 <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center shadow-sm">
                   <CheckSquare className="h-5 w-5" />

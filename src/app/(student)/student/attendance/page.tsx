@@ -53,7 +53,7 @@ export default async function StudentAttendancePage() {
               Current Semester
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-12">
+          <CardContent className="p-6 sm:p-12">
             <div className="flex flex-col items-center justify-center text-center space-y-4">
               <div className="h-16 w-16 rounded-full bg-brand-50 flex items-center justify-center">
                 <AlertCircle className="h-8 w-8 text-brand-400" />

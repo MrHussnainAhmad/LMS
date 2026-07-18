@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, userAgent } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSessionEdge } from './lib/auth-edge';
 import { applyCorsHeaders, corsPreflight } from './lib/cors';
@@ -13,6 +13,13 @@ export async function middleware(request: NextRequest) {
 
   const session = await getSessionEdge(request.cookies);
   const path = request.nextUrl.pathname;
+
+  if (path === '/') {
+    const { device, os } = userAgent(request);
+    if (device.type === 'mobile' && os.name === 'Android') {
+      return NextResponse.redirect(new URL('/download-app', request.url));
+    }
+  }
 
   if (
     session &&

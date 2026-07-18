@@ -149,7 +149,7 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
   return (
     <Card className="overflow-hidden">
       <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="border-b border-border bg-stone-50 p-6 lg:border-b-0 lg:border-r">
+        <div className="border-b border-border bg-stone-50 p-4 sm:p-6 lg:border-b-0 lg:border-r">
           <div className="flex h-full flex-col justify-between gap-8">
             <div>
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-900 text-white">
@@ -158,7 +158,7 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
               <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
                 {copy.eyebrow}
               </p>
-              <h2 className="mt-3 text-2xl font-display font-bold text-brand-950">
+              <h2 className="mt-3 text-xl sm:text-2xl font-display font-bold text-brand-950">
                 {copy.title}
               </h2>
               <p className="mt-3 text-sm leading-6 text-stone-600">{copy.description}</p>
@@ -218,7 +218,7 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex h-full flex-col p-6">
+        <form onSubmit={handleSubmit} className="flex h-full flex-col p-4 sm:p-6">
           <div>
             <div className="mb-6">
               <p className="text-sm font-medium text-stone-500">Continue as</p>

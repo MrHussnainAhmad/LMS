@@ -24,10 +24,10 @@ export function NotFoundChasePage({ fallbackWord }: { fallbackWord: string }) {
   const missingWord = queryWord?.trim() || missingWordFromPath(pathname, fallbackWord);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-stone-50 px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-stone-50 px-4 py-6 sm:py-10">
       <section className="w-full max-w-5xl overflow-hidden rounded-xl border border-border bg-white shadow-sm">
         <div className="grid min-h-[560px] lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="flex flex-col justify-center border-b border-border p-8 sm:p-10 lg:border-b-0 lg:border-r">
+          <div className="flex flex-col justify-center border-b border-border p-4 sm:p-8 sm:p-10 lg:border-b-0 lg:border-r">
             <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-lg bg-brand-900 text-white">
               <SearchX className="h-6 w-6" />
             </div>

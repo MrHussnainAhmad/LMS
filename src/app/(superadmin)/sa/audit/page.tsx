@@ -73,7 +73,7 @@ export default async function SAAuditLogsPage({ searchParams }: { searchParams: 
               <tbody className="divide-y divide-border">
                 {allLogs.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-stone-500">
+                    <td colSpan={6} className="px-6 py-4 sm:py-8 text-center text-stone-500">
                       No audit logs recorded yet.
                     </td>
                   </tr>

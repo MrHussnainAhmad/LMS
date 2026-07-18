@@ -177,12 +177,12 @@ export default function FeaturedInstitutionsClient() {
           <tbody className="divide-y divide-stone-200">
             {isLoading && (
               <tr>
-                <td colSpan={3} className="px-6 py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand-600" /></td>
+                <td colSpan={3} className="px-6 py-4 sm:py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand-600" /></td>
               </tr>
             )}
             {!isLoading && institutions.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-6 py-8 text-center text-stone-500">No featured institutions added yet.</td>
+                <td colSpan={3} className="px-6 py-4 sm:py-8 text-center text-stone-500">No featured institutions added yet.</td>
               </tr>
             )}
             {institutions.map((inst) => (

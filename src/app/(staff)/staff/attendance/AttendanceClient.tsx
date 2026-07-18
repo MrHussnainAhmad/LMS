@@ -104,7 +104,7 @@ export function AttendanceClient({
             </div>
           )}
           {students.length === 0 && (
-            <div className="p-12 text-center text-stone-500 border border-border rounded-lg bg-surface">
+            <div className="p-6 sm:p-12 text-center text-stone-500 border border-border rounded-lg bg-surface">
               No students enrolled in this section.
             </div>
           )}

@@ -13,8 +13,8 @@ export const metadata: Metadata = {
 
 export default function RegisterPage() {
   return (
-    <div className="relative min-h-screen bg-stone-50 px-4 py-12 sm:px-6 lg:px-8">
-      <Link href="/" className="absolute left-6 top-6 flex items-center gap-2 text-sm font-medium text-stone-500 transition-colors hover:text-brand-900">
+    <div className="relative min-h-screen bg-stone-50 px-4 py-6 sm:py-12 sm:px-6 lg:px-8">
+      <Link href="/" className="relative sm:absolute sm:left-6 sm:top-6 mb-8 sm:mb-0 inline-flex items-center gap-2 text-sm font-medium text-stone-500 transition-colors hover:text-brand-900">
         <ArrowLeft className="h-4 w-4" />
         Back to Home
       </Link>

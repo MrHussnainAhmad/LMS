@@ -42,7 +42,7 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
   const signatureKey = institution?.signatureKey;
 
   if (rawResults.length === 0) {
-    return <div className="p-8 text-center text-stone-500">Transcript not found or unavailable.</div>;
+    return <div className="p-4 sm:p-8 text-center text-stone-500">Transcript not found or unavailable.</div>;
   }
 
   // Security Check: Make sure it's fully published
@@ -50,7 +50,7 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
   const allPublished = rawResults.every(r => r.isPublished || now > r.reviewDeadline);
   if (!allPublished) {
     return (
-      <div className="p-8 text-center text-amber-600 bg-amber-50 rounded-lg max-w-xl mx-auto mt-8 border border-amber-200">
+      <div className="p-4 sm:p-8 text-center text-amber-600 bg-amber-50 rounded-lg max-w-xl mx-auto mt-8 border border-amber-200">
         This transcript is still pending review from some teachers and is not yet available.
       </div>
     );
@@ -73,7 +73,7 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
       </div>
 
       {/* Transcript Document Container */}
-      <div className="bg-white border border-stone-200 shadow-sm p-8 md:p-12 print:shadow-none print:border-none print:p-0">
+      <div className="bg-white border border-stone-200 shadow-sm p-4 sm:p-8 md:p-12 print:shadow-none print:border-none print:p-0">
         
         {/* Header Section */}
         <div className="border-b-2 border-stone-800 pb-6 mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">

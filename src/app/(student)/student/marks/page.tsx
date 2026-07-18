@@ -39,7 +39,7 @@ export default async function StudentMarksPage() {
         </CardHeader>
         <CardContent className="p-0">
           {rows.length === 0 ? (
-            <div className="p-12 flex flex-col items-center justify-center text-center space-y-4">
+            <div className="p-6 sm:p-12 flex flex-col items-center justify-center text-center space-y-4">
               <div className="h-16 w-16 rounded-full bg-brand-50 flex items-center justify-center">
                 <Trophy className="h-8 w-8 text-brand-400" />
               </div>

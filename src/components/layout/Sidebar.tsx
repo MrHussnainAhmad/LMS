@@ -65,7 +65,7 @@ export function Sidebar({ items, role, brand, onClose, isCollapsed = false, onTo
               title={isCollapsed ? item.label : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-md text-sm font-medium transition-all group",
-                isCollapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5",
+                isCollapsed ? "justify-center px-2 py-3" : "px-3 py-3 lg:py-2.5",
                 isActive 
                   ? "bg-brand-50 text-brand-900" 
                   : "text-stone-600 hover:bg-stone-50 hover:text-brand-900"

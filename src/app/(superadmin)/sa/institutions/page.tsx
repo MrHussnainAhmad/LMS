@@ -66,7 +66,7 @@ export default async function SAInstitutionsPage() {
               <tbody className="divide-y divide-border">
                 {allInstitutions.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-stone-500">
+                    <td colSpan={6} className="px-6 py-4 sm:py-8 text-center text-stone-500">
                       No institutions found.
                     </td>
                   </tr>

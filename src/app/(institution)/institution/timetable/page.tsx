@@ -124,7 +124,7 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
       </div>
 
       {timetableTargets.length === 0 ? (
-        <Card className="p-12 text-center">
+        <Card className="p-6 sm:p-12 text-center">
           <Calendar className="h-12 w-12 text-stone-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-brand-900">No Classes Found</h3>
           <p className="text-stone-500 mt-2 max-w-md mx-auto">

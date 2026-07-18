@@ -189,7 +189,7 @@ export default function BatchResultDetailsPage({ params }: { params: Promise<{ i
               ))}
               {results.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-stone-500">
+                  <td colSpan={4} className="px-6 py-4 sm:py-8 text-center text-stone-500">
                     No results found.
                   </td>
                 </tr>

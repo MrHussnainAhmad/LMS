@@ -83,7 +83,7 @@ export function StaffLeavesClient({ initialRequests }: { initialRequests: StaffL
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 text-sm mt-4 p-4 bg-stone-50 rounded-md border border-stone-100">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm mt-4 p-4 bg-stone-50 rounded-md border border-stone-100">
                   <div>
                     <p className="text-stone-500 text-xs uppercase tracking-wider mb-1 font-semibold">Start Date</p>
                     <p className="font-medium text-foreground">{format(new Date(req.startDate), "MMM d, yyyy")}</p>

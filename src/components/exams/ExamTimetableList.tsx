@@ -112,7 +112,7 @@ export function ExamTimetableList({ rows, emptyText, audience = "student" }: Exa
   if (rows.length === 0) {
     return (
       <Card>
-        <CardContent className="p-10 text-center">
+        <CardContent className="p-6 sm:p-10 text-center">
           <CalendarDays className="mx-auto mb-3 h-10 w-10 text-stone-300" />
           <p className="text-sm text-stone-500">{emptyText}</p>
         </CardContent>
@@ -166,7 +166,7 @@ export function ExamTimetableList({ rows, emptyText, audience = "student" }: Exa
                     {formatExamDate(group.startDate)} to {formatExamDate(group.endDate)}
                   </p>
                 </div>
-                <div className="grid grid-cols-3 gap-2 rounded-md bg-white/80 p-3 text-center shadow-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-md bg-white/80 p-3 text-center shadow-sm">
                   <div className="min-w-20">
                     <p className="text-lg font-bold text-brand-950">{group.rows.length}</p>
                     <p className="text-[11px] font-medium text-stone-500">Books</p>

@@ -52,7 +52,7 @@ export default async function EmployeeVerificationQueuePage() {
               <tbody className="divide-y divide-border">
                 {allInstitutions.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center">
+                    <td colSpan={6} className="px-6 py-6 sm:py-12 text-center">
                       <div className="flex flex-col items-center justify-center text-stone-500">
                         <FileSearch className="h-10 w-10 text-stone-300 mb-3" />
                         <p className="text-base font-medium text-stone-600">No Applications</p>

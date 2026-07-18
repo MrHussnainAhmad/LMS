@@ -172,7 +172,7 @@ export function DataTable<T extends { id: string | number }>({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={columns.length} className="px-6 py-12 text-center">
+                  <td colSpan={columns.length} className="px-6 py-6 sm:py-12 text-center">
                     <EmptyState
                       title={emptyStateTitle}
                       description={emptyStateDescription}

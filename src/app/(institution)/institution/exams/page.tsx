@@ -146,7 +146,7 @@ export default async function InstitutionExamsPage() {
             </CardHeader>
             <CardContent className="p-0">
               {examRows.length === 0 ? (
-                <p className="p-8 text-sm text-stone-500">No institution exams scheduled yet.</p>
+                <p className="p-4 sm:p-8 text-sm text-stone-500">No institution exams scheduled yet.</p>
               ) : (
                 <div>
                   <div className="grid gap-4 border-b border-border p-5 xl:grid-cols-2">
@@ -168,7 +168,7 @@ export default async function InstitutionExamsPage() {
                           </div>
 
                           <div className="p-4 flex-1">
-                            <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                               <div>
                                 <p className="text-stone-500 text-xs uppercase tracking-wider font-semibold mb-1">Start Date</p>
                                 <p className="font-medium text-stone-900">{formatExamDate(group.startDate)}</p>

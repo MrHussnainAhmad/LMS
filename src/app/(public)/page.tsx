@@ -216,10 +216,10 @@ export default async function LandingPage() {
 
         {/* --- Dynamic Social Proof Marquee --- */}
         {featuredLogos.length > 0 && (
-           <section className="w-full border-y border-stone-200 bg-white py-10 overflow-hidden relative">
+           <section className="w-full border-y border-stone-200 bg-white py-6 sm:py-10 overflow-hidden relative">
              <div className="max-w-7xl mx-auto px-6 md:px-12 text-center relative">
                <div className="flex flex-wrap justify-center">
-                 <div className="flex items-center gap-16 py-4 px-8">
+                 <div className="flex items-center gap-16 py-4 px-4 sm:px-8">
                   {featuredLogos.map((inst, i) => (
                     <div key={i} className="flex shrink-0 items-center gap-3 grayscale opacity-60">
                       {inst.logoKey && (
@@ -248,7 +248,7 @@ export default async function LandingPage() {
           </FadeIn>
           
           <StaggerContainer className="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-6 h-auto md:h-[600px]">
-             <StaggerItem className="landing-hover relative flex flex-col justify-between overflow-hidden rounded-3xl border border-stone-200 bg-stone-50 p-8 md:col-span-2 md:row-span-2">
+             <StaggerItem className="landing-hover relative flex flex-col justify-between overflow-hidden rounded-3xl border border-stone-200 bg-stone-50 p-4 sm:p-8 md:col-span-2 md:row-span-2">
                 <div className="absolute inset-0 bg-gradient-to-br from-brand-50/50 to-transparent" />
                 <div className="relative z-10 max-w-md mb-8">
                   <div className="h-12 w-12 rounded-xl bg-brand-100 flex items-center justify-center mb-6 text-brand-700">
@@ -269,7 +269,7 @@ export default async function LandingPage() {
                 </div>
              </StaggerItem>
 
-             <StaggerItem className="landing-hover overflow-hidden rounded-3xl border border-indigo-100 bg-indigo-50 p-8">
+             <StaggerItem className="landing-hover overflow-hidden rounded-3xl border border-indigo-100 bg-indigo-50 p-4 sm:p-8">
                 <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
                    <Calendar className="h-6 w-6" />
                 </div>
@@ -277,7 +277,7 @@ export default async function LandingPage() {
                 <p className="text-stone-700">Automate conflict resolution and generate optimal schedules instantly.</p>
              </StaggerItem>
 
-             <StaggerItem className="landing-hover overflow-hidden rounded-3xl border border-stone-800 bg-stone-900 p-8 text-white">
+             <StaggerItem className="landing-hover overflow-hidden rounded-3xl border border-stone-800 bg-stone-900 p-4 sm:p-8 text-white">
                 <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-stone-800 text-stone-300">
                    <Bell className="h-6 w-6" />
                 </div>
@@ -298,7 +298,7 @@ export default async function LandingPage() {
                </FadeIn>
                <StaggerContainer className="grid md:grid-cols-3 gap-8 text-left">
                  {latestReviews.map((review) => (
-                   <StaggerItem key={review.id} className="landing-hover flex flex-col rounded-3xl border border-stone-200 bg-white p-8 shadow-sm">
+                   <StaggerItem key={review.id} className="landing-hover flex flex-col rounded-3xl border border-stone-200 bg-white p-4 sm:p-8 shadow-sm">
                      <div className="flex text-amber-400 mb-6">
                        {Array.from({length: 5}).map((_, i) => (
                           <Star key={i} className={`w-5 h-5 ${i < review.rating ? 'fill-current' : 'text-stone-200'}`} />
@@ -322,7 +322,7 @@ export default async function LandingPage() {
 
         {/* --- Final CTA --- */}
         <section id="pricing" className="w-full py-24 px-6 md:px-12">
-          <ScaleIn className="relative mx-auto max-w-6xl overflow-hidden rounded-[3rem] bg-stone-900 p-8 text-center shadow-2xl md:p-14 lg:p-16">
+          <ScaleIn className="relative mx-auto max-w-6xl overflow-hidden rounded-[3rem] bg-stone-900 p-4 sm:p-8 text-center shadow-2xl md:p-14 lg:p-16">
              <div className="absolute right-0 top-0 h-[500px] w-[500px] -translate-y-1/2 translate-x-1/2 rounded-full bg-brand-500/20" />
              <div className="absolute bottom-0 left-0 h-[500px] w-[500px] translate-y-1/2 -translate-x-1/2 rounded-full bg-indigo-500/20" />
              
@@ -357,8 +357,8 @@ export default async function LandingPage() {
                  ))}
                </StaggerContainer>
 
-               <FadeIn direction="up" delay={0.4} className="flex justify-center">
-                 <Button size="lg" className="landing-hover h-14 rounded-full bg-white px-10 text-base font-bold text-stone-900 hover:bg-stone-100 shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-100" asChild>
+               <FadeIn direction="up" delay={0.4} className="flex justify-center w-full px-4">
+                 <Button size="lg" className="landing-hover h-auto min-h-[3.5rem] py-3 rounded-3xl sm:rounded-full bg-white px-4 sm:px-10 text-sm sm:text-base font-bold text-stone-900 hover:bg-stone-100 shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-100 whitespace-normal text-center w-full sm:w-auto" asChild>
                    <a href="mailto:Workwithhussnainahmad@gmail.com">Contact Sales: Workwithhussnainahmad@gmail.com</a>
                  </Button>
                </FadeIn>

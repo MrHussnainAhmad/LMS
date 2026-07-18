@@ -135,11 +135,11 @@ export function StaffAttendanceClient({ staffMembers }: { staffMembers: StaffMem
       
       <CardContent className="p-0">
         {loading ? (
-          <div className="flex justify-center p-8">
+          <div className="flex justify-center p-4 sm:p-8">
             <Loader2 className="h-8 w-8 animate-spin text-stone-400" />
           </div>
         ) : filteredStaff.length === 0 ? (
-          <div className="p-8 text-center text-stone-500">No staff found.</div>
+          <div className="p-4 sm:p-8 text-center text-stone-500">No staff found.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">

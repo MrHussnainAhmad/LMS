@@ -150,7 +150,7 @@ export function DangerZone() {
           )}
 
           {step === "deleting" && (
-            <div className="py-12 flex flex-col items-center justify-center space-y-4">
+            <div className="py-6 sm:py-12 flex flex-col items-center justify-center space-y-4">
               <Loader2 className="h-10 w-10 text-red-600 animate-spin" />
               <p className="text-lg font-medium text-stone-800 animate-pulse">Erasing all data...</p>
               <p className="text-sm text-stone-500">Please do not close this window.</p>

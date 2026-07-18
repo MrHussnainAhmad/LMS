@@ -212,7 +212,7 @@ export function TodayTimetableCard({
       </CardHeader>
       <CardContent className="p-0">
         {sortedEntries.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-stone-500">{emptyText}</p>
+          <p className="px-6 py-6 sm:py-10 text-sm text-stone-500">{emptyText}</p>
         ) : (
           <div className="overflow-x-auto">
             <div className="min-w-[560px]">

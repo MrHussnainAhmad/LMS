@@ -40,7 +40,7 @@ export function OwnerOnboardingForm() {
 
   return (
     <div className="min-h-screen bg-brand-50 flex items-center justify-center p-4">
-      <div className="max-w-3xl w-full bg-surface p-8 rounded-2xl shadow-xl border border-brand-100 relative overflow-hidden">
+      <div className="max-w-3xl w-full bg-surface p-4 sm:p-8 rounded-2xl shadow-xl border border-brand-100 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-brand-500 to-accent-500" />
         
         <div className="text-center mb-8 mt-2">

@@ -48,7 +48,7 @@ export function ResultsTabs({ records }: { records: MarkRecord[] }) {
           </thead>
           <tbody className="divide-y divide-border">
             {filteredRecords.length === 0 && (
-              <tr><td colSpan={3} className="px-4 py-8 text-center text-stone-500">No results found for {activeTab}.</td></tr>
+              <tr><td colSpan={3} className="px-4 py-4 sm:py-8 text-center text-stone-500">No results found for {activeTab}.</td></tr>
             )}
             {filteredRecords.map(r => (
               <tr key={r.id}>

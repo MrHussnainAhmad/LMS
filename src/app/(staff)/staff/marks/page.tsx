@@ -123,7 +123,7 @@ export default async function StaffMarksPage() {
                 <input name="title" required placeholder="e.g. Chapter 3 Quiz" className="w-full rounded-md border border-border px-3 py-2 text-sm" />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-stone-700 mb-1">Date</label>
                   <input name="date" type="date" required className="w-full rounded-md border border-border px-3 py-2 text-sm" />

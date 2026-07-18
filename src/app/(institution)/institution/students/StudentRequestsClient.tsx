@@ -99,7 +99,7 @@ export function StudentRequestsClient({
         </CardHeader>
         <CardContent className="p-0">
           {requests.length === 0 ? (
-            <p className="p-8 text-sm text-stone-500">No student profile requests yet.</p>
+            <p className="p-4 sm:p-8 text-sm text-stone-500">No student profile requests yet.</p>
           ) : (
             <div className="divide-y divide-border">
               {requests.map((request) => (

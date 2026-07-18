@@ -46,7 +46,7 @@ export default function LmsPakistanLanding() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-8 w-full">
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-stone-100">
+          <div className="bg-white p-4 sm:p-8 rounded-2xl shadow-sm border border-stone-100">
             <h2 className="text-2xl font-bold mb-4">Why choose Nisaab360?</h2>
             <ul className="space-y-4">
               {["Built for local fee structures & challans", "WhatsApp & SMS notifications integration", "Urdu/English bilingual support architecture", "Customizable report cards & grading rules"].map((feat, i) => (
@@ -57,7 +57,7 @@ export default function LmsPakistanLanding() {
               ))}
             </ul>
           </div>
-          <div className="bg-brand-50 p-8 rounded-2xl shadow-sm border border-brand-100">
+          <div className="bg-brand-50 p-4 sm:p-8 rounded-2xl shadow-sm border border-brand-100">
             <h2 className="text-2xl font-bold mb-4 text-brand-900">Modernize Your Campus</h2>
             <p className="text-brand-800 mb-6">
               Replace outdated desktop software and messy spreadsheets with a cloud-native, real-time dashboard accessible from anywhere in Pakistan.

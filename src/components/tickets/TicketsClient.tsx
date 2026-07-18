@@ -125,9 +125,9 @@ export function TicketsClient() {
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex items-center justify-center gap-2 p-10 text-sm text-stone-500"><Loader2 className="h-4 w-4 animate-spin" />Loading tickets...</div>
+            <div className="flex items-center justify-center gap-2 p-6 sm:p-10 text-sm text-stone-500"><Loader2 className="h-4 w-4 animate-spin" />Loading tickets...</div>
           ) : tickets.length === 0 ? (
-            <div className="p-10 text-center text-stone-500"><Ticket className="mx-auto mb-3 h-10 w-10 text-stone-300" /><p>No support tickets yet.</p></div>
+            <div className="p-6 sm:p-10 text-center text-stone-500"><Ticket className="mx-auto mb-3 h-10 w-10 text-stone-300" /><p>No support tickets yet.</p></div>
           ) : (
             <>
               <div className="divide-y divide-border">

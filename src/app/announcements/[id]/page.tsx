@@ -36,7 +36,7 @@ export default async function AnnouncementDetailPage({ params }: { params: Promi
   return (
     <div className="min-h-screen bg-background">
       <div className="border-b border-border bg-brand-950 text-white">
-        <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-4 sm:py-8 sm:px-6 lg:px-8">
           <Link
             href={portalHref(session.role)}
             className="inline-flex w-fit items-center gap-2 rounded-md border border-white/15 bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/15"

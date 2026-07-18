@@ -77,7 +77,7 @@ export default function DiaryMonitorClient({ classes }: { classes: any[] }) {
       </div>
 
       {hasSearched && !isLoading && entries.length === 0 && (
-        <div className="text-center py-12 bg-white rounded-xl border border-stone-200 border-dashed">
+        <div className="text-center py-6 sm:py-12 bg-white rounded-xl border border-stone-200 border-dashed">
           <BookOpen className="w-12 h-12 text-stone-300 mx-auto mb-3" />
           <h3 className="text-lg font-medium text-stone-900">No entries found</h3>
           <p className="text-stone-500">No teachers have submitted a diary for this class on this date.</p>

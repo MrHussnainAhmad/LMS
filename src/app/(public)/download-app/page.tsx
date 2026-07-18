@@ -39,7 +39,7 @@ export default function DownloadAppPage() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-5xl gap-8 px-6 py-12 lg:grid-cols-[1.35fr_0.65fr] lg:py-16">
+      <section className="mx-auto grid max-w-5xl gap-8 px-6 py-6 sm:py-12 lg:grid-cols-[1.35fr_0.65fr] lg:py-16">
         <div className="rounded-3xl border border-stone-200 bg-white p-7 shadow-xl shadow-stone-900/5 sm:p-10">
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
             <div className="flex gap-3">

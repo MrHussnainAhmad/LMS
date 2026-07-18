@@ -61,7 +61,7 @@ export default async function StudentTestsPage() {
         </CardHeader>
         <CardContent className="p-0">
           {rows.length === 0 ? (
-            <p className="p-8 text-sm text-stone-500">No online tests are available for your class right now.</p>
+            <p className="p-4 sm:p-8 text-sm text-stone-500">No online tests are available for your class right now.</p>
           ) : (
             <div className="divide-y divide-border">
               {rows.map(({ onlineTest, test, subjectName }) => (

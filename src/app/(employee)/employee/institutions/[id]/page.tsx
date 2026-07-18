@@ -59,7 +59,7 @@ export default async function EmployeeInstitutionDetailPage({ params }: { params
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-stone-500">Username</p>
                 <p className="font-medium text-stone-900">{institution.username}</p>
@@ -121,7 +121,7 @@ export default async function EmployeeInstitutionDetailPage({ params }: { params
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="flex flex-col items-center justify-center py-4 sm:py-8 text-center">
                 <FileCheck className="h-12 w-12 text-stone-300 mb-3" />
                 <p className="text-stone-500 mb-1">No owner details found.</p>
                 <p className="text-sm text-stone-400">The institution owner has not completed their onboarding yet.</p>

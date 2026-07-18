@@ -588,7 +588,7 @@ export function StudentsClient({
                 <Input name="name" defaultValue={editStudent.name} required />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Class</label>
                   <select name="classId" defaultValue={editStudent.classId} className="w-full h-10 rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">

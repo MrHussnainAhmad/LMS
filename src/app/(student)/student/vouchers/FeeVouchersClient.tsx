@@ -265,11 +265,11 @@ export function FeeVouchersClient() {
             </CardHeader>
             <CardContent className="p-6">
               {loading ? (
-                <div className="flex justify-center py-10">
+                <div className="flex justify-center py-6 sm:py-10">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div>
                 </div>
               ) : vouchers.length === 0 ? (
-                <div className="text-center py-10 text-stone-500 bg-stone-50 rounded-lg border border-dashed border-stone-200">
+                <div className="text-center py-6 sm:py-10 text-stone-500 bg-stone-50 rounded-lg border border-dashed border-stone-200">
                   <Receipt className="h-10 w-10 mx-auto mb-3 text-stone-400 opacity-50" />
                   <p>You haven't uploaded any fee vouchers yet.</p>
                 </div>

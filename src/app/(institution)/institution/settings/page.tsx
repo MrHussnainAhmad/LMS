@@ -57,7 +57,7 @@ export default async function InstitutionSettingsPage() {
               <div className="border-t border-border" />
               <InstitutionSignatureUploader currentSignatureKey={profile.signatureKey} />
               <div className="border-t border-border" />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-stone-500 uppercase tracking-wider">Institution Name</label>
                   <p className="mt-1 font-semibold text-brand-950">{profile.name}</p>

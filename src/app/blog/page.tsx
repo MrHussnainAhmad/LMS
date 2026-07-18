@@ -50,7 +50,7 @@ export default async function BlogIndexPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {publishedBlogs.map((post) => (
               <Link key={post.id} href={`/blog/${post.slug}`} className="group bg-white rounded-2xl shadow-sm hover:shadow-xl border border-stone-100 transition-all duration-300 overflow-hidden flex flex-col">
-                <div className="p-8 flex-1">
+                <div className="p-4 sm:p-8 flex-1">
                   <h2 className="font-bold font-display tracking-tight text-2xl text-stone-900 mb-3 group-hover:text-brand-600 transition-colors line-clamp-2">
                     {post.title}
                   </h2>
@@ -58,7 +58,7 @@ export default async function BlogIndexPage() {
                     {post.excerpt || post.content.replace(/[#*`_>-]/g, "").substring(0, 150) + '...'}
                   </p>
                 </div>
-                <div className="px-8 py-4 bg-stone-50/50 border-t border-stone-100/50 flex items-center justify-between">
+                <div className="px-4 sm:px-8 py-4 bg-stone-50/50 border-t border-stone-100/50 flex items-center justify-between">
                   <span className="text-sm font-medium text-stone-500">
                     {post.authorRole.replace('_', ' ')}
                   </span>
@@ -72,7 +72,7 @@ export default async function BlogIndexPage() {
         )}
       </main>
 
-      <footer className="w-full bg-white border-t border-stone-200 py-10 px-6 text-center">
+      <footer className="w-full bg-white border-t border-stone-200 py-6 sm:py-10 px-6 text-center">
         <p className="text-stone-400 text-sm">&copy; {new Date().getFullYear()} Nisaab360 Inc. All rights reserved.</p>
       </footer>
     </div>
