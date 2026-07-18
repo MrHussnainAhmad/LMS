@@ -2,60 +2,62 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { Download, Upload } from "lucide-react";
+import { Download, Upload, Link as LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function DownloadAppUploader() {
-  const [file, setFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [url, setUrl] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function upload(event: FormEvent<HTMLFormElement>) {
+  async function saveLink(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file) return;
+    if (!url) return;
 
-    setIsUploading(true);
+    setIsSaving(true);
     setMessage(null);
     setError(null);
     try {
-      const data = new FormData();
-      data.append("file", file);
-      const response = await fetch("/api/download-app", { method: "POST", body: data });
+      const response = await fetch("/api/download-app", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Upload failed.");
-      setMessage(body.message || "Android app replaced successfully.");
-      setFile(null);
-      event.currentTarget.reset();
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Upload failed.");
+      if (!response.ok) throw new Error(body.error || "Update failed.");
+      setMessage(body.message || "App download link updated successfully.");
+      setUrl("");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Update failed.");
     } finally {
-      setIsUploading(false);
+      setIsSaving(false);
     }
   }
 
   return (
-    <form onSubmit={upload} className="max-w-xl space-y-5 rounded-xl border border-border bg-surface p-6 shadow-sm">
+    <form onSubmit={saveLink} className="max-w-xl space-y-5 rounded-xl border border-border bg-surface p-6 shadow-sm">
       <div>
-        <h2 className="text-lg font-semibold text-brand-950">Replace Android app</h2>
-        <p className="mt-1 text-sm text-stone-600">Upload one APK (up to 200 MB). Uploading a new file permanently removes the previous app file.</p>
+        <h2 className="text-lg font-semibold text-brand-950">Replace App Download Link</h2>
+        <p className="mt-1 text-sm text-stone-600">Enter a direct download link (e.g. from GitHub Releases).</p>
       </div>
       <input
-        type="file"
-        accept=".apk,application/vnd.android.package-archive"
-        onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+        type="url"
+        placeholder="https://github.com/..."
+        value={url}
+        onChange={(event) => setUrl(event.target.value)}
         className="block w-full rounded-md border border-border bg-white p-2 text-sm"
         required
       />
       {message && <p className="text-sm font-medium text-success">{message}</p>}
       {error && <p className="text-sm font-medium text-danger">{error}</p>}
       <div className="flex flex-wrap gap-3">
-        <Button type="submit" disabled={!file || isUploading}>
-          <Upload className="mr-2 h-4 w-4" />
-          {isUploading ? "Replacing…" : "Upload and replace"}
+        <Button type="submit" disabled={!url || isSaving}>
+          <LinkIcon className="mr-2 h-4 w-4" />
+          {isSaving ? "Saving…" : "Save link"}
         </Button>
         <Button asChild variant="outline">
-          <Link href="/api/download-app" prefetch={false}><Download className="mr-2 h-4 w-4" />Current download</Link>
+          <a href="/api/download-app"><Download className="mr-2 h-4 w-4" />Test download link</a>
         </Button>
       </div>
     </form>

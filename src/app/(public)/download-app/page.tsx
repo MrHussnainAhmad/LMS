@@ -58,10 +58,10 @@ export default function DownloadAppPage() {
             Use the button below to download the latest Nisaab360 APK directly from our official website. This package is intended for Android devices.
           </p>
           <Button asChild size="lg" className="mt-7 rounded-full">
-            <Link href="/api/download-app" prefetch={false}>
+            <a href="/api/download-app">
               <Download className="mr-2 h-5 w-5" />
-              Download Nisaab360 APK
-            </Link>
+              Download Nisaab360 App
+            </a>
           </Button>
           <p className="mt-4 flex items-center gap-2 text-sm text-stone-500"><ShieldCheck className="h-4 w-4 text-success" /> Download only from this official Nisaab360 page.</p>
         </div>
