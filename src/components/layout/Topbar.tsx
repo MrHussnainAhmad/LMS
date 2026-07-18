@@ -29,9 +29,16 @@ export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
   const handleLogout = async () => {
     try {
       await api.post("/api/auth/logout", {});
-      // replace() instead of href — removes current page from history stack
-      // so back button can't return to authenticated page
-      window.location.replace("/login");
+      // redirect back to the correct main domain login page
+      const isLocal = window.location.hostname.includes("localhost");
+      const protocol = isLocal ? "http://" : "https://";
+      const baseHost = isLocal ? "localhost:3000" : "nisaab360.app";
+      let loginPath = "/login";
+      if (role === "SUPER_ADMIN") loginPath = "/login/super-admin";
+      else if (role === "EMPLOYEE") loginPath = "/employee-login";
+      else if (role === "INSTITUTION" || role === "INSTITUTION_ADMIN") loginPath = "/institution-login";
+      
+      window.location.replace(`${protocol}${baseHost}${loginPath}`);
     } catch (err) {
       console.error(err);
     }
