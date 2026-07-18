@@ -11,6 +11,10 @@ const MDPreview = dynamic(() => import("@uiw/react-md-editor").then(mod => mod.d
 
 export default function BlogClient() {
   const [blogs, setBlogs] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [content, setContent] = useState("");
@@ -26,16 +30,25 @@ export default function BlogClient() {
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchBlogs();
-  }, []);
+    fetchBlogs(page);
+  }, [page]);
 
-  const fetchBlogs = async () => {
+  const fetchBlogs = async (currentPage = 1) => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/admin/blogs");
+      const res = await fetch(`/api/admin/blogs?page=${currentPage}`);
       if (res.ok) {
         const data = await res.json();
-        setBlogs(data);
+        // Check if data is array (old format) or paginated format
+        if (Array.isArray(data)) {
+          setBlogs(data);
+          setTotalCount(data.length);
+          setTotalPages(1);
+        } else {
+          setBlogs(data.blogs);
+          setTotalCount(data.totalCount);
+          setTotalPages(Math.ceil(data.totalCount / data.limit));
+        }
       }
     } catch (error) {
       console.error("Failed to fetch blogs", error);
@@ -328,6 +341,28 @@ export default function BlogClient() {
               </div>
             ))}
           </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 mt-8">
+              <Button
+                variant="outline"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <span className="text-sm font-medium text-stone-500">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

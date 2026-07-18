@@ -36,7 +36,10 @@ export default function SessionWatcher() {
             } catch (e) {
               // ignore network error on logout
             }
-            window.location.replace("/login");
+            const isLocal = window.location.hostname.includes("localhost");
+            const protocol = isLocal ? "http://" : "https://";
+            const baseHost = isLocal ? "localhost:3000" : "nisaab360.app";
+            window.location.replace(`${protocol}${baseHost}/login`);
           }
         }
       } catch (err) {

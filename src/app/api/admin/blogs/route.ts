@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { blogs } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { eq } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 
 const blogSchema = z.object({
@@ -24,8 +24,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const allBlogs = await db.select().from(blogs).orderBy(blogs.createdAt);
-    return NextResponse.json(allBlogs);
+    const { searchParams } = new URL(req.url);
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = 4;
+    const offset = (page - 1) * limit;
+
+    const [paginatedBlogs, [{ totalCount }]] = await Promise.all([
+      db.select()
+        .from(blogs)
+        .orderBy(desc(blogs.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ totalCount: sql<number>`cast(count(${blogs.id}) as integer)` })
+        .from(blogs)
+    ]);
+
+    return NextResponse.json({ blogs: paginatedBlogs, totalCount, limit, page });
   } catch (error) {
     console.error("Error fetching blogs:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
