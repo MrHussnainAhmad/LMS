@@ -1,8 +1,8 @@
 import { db } from "@/db";
 import { blogs } from "@/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import Link from "next/link";
-import { ArrowLeft, BookOpen } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -12,11 +12,25 @@ export const metadata = {
   description: "Read the latest news, updates, and articles about Nisaab360 LMS.",
 };
 
-export default async function BlogIndexPage() {
-  const publishedBlogs = await db.select()
-    .from(blogs)
-    .where(eq(blogs.status, 'PUBLISHED'))
-    .orderBy(desc(blogs.createdAt));
+export default async function BlogIndexPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const resolvedParams = await searchParams;
+  const page = parseInt(resolvedParams.page || "1", 10);
+  const limit = 4;
+  const offset = (page - 1) * limit;
+
+  const [publishedBlogs, [{ totalCount }]] = await Promise.all([
+    db.select()
+      .from(blogs)
+      .where(eq(blogs.status, 'PUBLISHED'))
+      .orderBy(desc(blogs.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ totalCount: sql<number>`cast(count(${blogs.id}) as integer)` })
+      .from(blogs)
+      .where(eq(blogs.status, 'PUBLISHED'))
+  ]);
+
+  const totalPages = Math.ceil(totalCount / limit);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FDFCFB] selection:bg-brand-500 selection:text-white">
@@ -47,28 +61,58 @@ export default async function BlogIndexPage() {
             <p className="text-stone-500">No blog posts found. Check back later!</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {publishedBlogs.map((post) => (
-              <Link key={post.id} href={`/${post.slug}`} className="group bg-white rounded-2xl shadow-sm hover:shadow-xl border border-stone-100 transition-all duration-300 overflow-hidden flex flex-col">
-                <div className="p-4 sm:p-8 flex-1">
-                  <h2 className="font-bold font-display tracking-tight text-2xl text-stone-900 mb-3 group-hover:text-brand-600 transition-colors line-clamp-2">
-                    {post.title}
-                  </h2>
-                  <p className="text-stone-500 line-clamp-3 mb-6">
-                    {post.excerpt || post.content.replace(/[#*`_>-]/g, "").substring(0, 150) + '...'}
-                  </p>
-                </div>
-                <div className="px-4 sm:px-8 py-4 bg-stone-50/50 border-t border-stone-100/50 flex items-center justify-between">
-                  <span className="text-sm font-medium text-stone-500">
-                    {post.authorRole.replace('_', ' ')}
-                  </span>
-                  <time className="text-sm text-stone-400">
-                    {new Date(post.publishedAt || post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </time>
-                </div>
-              </Link>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+              {publishedBlogs.map((post) => (
+                <Link key={post.id} href={`/${post.slug}`} className="group bg-white rounded-2xl shadow-sm hover:shadow-xl border border-stone-100 transition-all duration-300 overflow-hidden flex flex-col">
+                  <div className="p-4 sm:p-8 flex-1">
+                    <h2 className="font-bold font-display tracking-tight text-2xl text-stone-900 mb-3 group-hover:text-brand-600 transition-colors line-clamp-2">
+                      {post.title}
+                    </h2>
+                    <p className="text-stone-500 line-clamp-3 mb-6">
+                      {post.excerpt || post.content.replace(/[#*`_>-]/g, "").substring(0, 150) + '...'}
+                    </p>
+                  </div>
+                  <div className="px-4 sm:px-8 py-4 bg-stone-50/50 border-t border-stone-100/50 flex items-center justify-between">
+                    <span className="text-sm font-medium text-stone-500">
+                      {post.authorRole.replace('_', ' ')}
+                    </span>
+                    <time className="text-sm text-stone-400">
+                      {new Date(post.publishedAt || post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </time>
+                  </div>
+                </Link>
+              ))}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-4">
+                {page > 1 ? (
+                  <Link href={`?page=${page - 1}`} className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 font-medium transition-colors">
+                    <ChevronLeft className="w-4 h-4" /> Previous
+                  </Link>
+                ) : (
+                  <div className="flex items-center gap-2 px-4 py-2 border border-transparent text-stone-300 font-medium cursor-not-allowed">
+                    <ChevronLeft className="w-4 h-4" /> Previous
+                  </div>
+                )}
+                
+                <span className="text-sm font-medium text-stone-500">
+                  Page {page} of {totalPages}
+                </span>
+
+                {page < totalPages ? (
+                  <Link href={`?page=${page + 1}`} className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 font-medium transition-colors">
+                    Next <ChevronRight className="w-4 h-4" />
+                  </Link>
+                ) : (
+                  <div className="flex items-center gap-2 px-4 py-2 border border-transparent text-stone-300 font-medium cursor-not-allowed">
+                    Next <ChevronRight className="w-4 h-4" />
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </main>
 

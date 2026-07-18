@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toaster";
-import { Loader2, Plus, Sparkles, Settings2, Eye, PenTool } from "lucide-react";
+import { Loader2, Plus, Sparkles, Settings2, Eye, PenTool, Trash2, X } from "lucide-react";
 
 const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false });
 const MDPreview = dynamic(() => import("@uiw/react-md-editor").then(mod => mod.default.Markdown), { ssr: false });
@@ -22,6 +22,7 @@ export default function BlogClient() {
   
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -59,8 +60,10 @@ export default function BlogClient() {
     }
 
     try {
-      const res = await fetch("/api/admin/blogs", {
-        method: "POST",
+      const url = editingId ? `/api/admin/blogs/${editingId}` : "/api/admin/blogs";
+      const method = editingId ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           title, 
@@ -79,21 +82,52 @@ export default function BlogClient() {
         throw new Error(data.error || "Failed to save");
       }
 
-      toast({ title: "Success", description: "Blog saved successfully." });
-      setTitle("");
-      setSlug("");
-      setContent("");
-      setExcerpt("");
-      setMetaTitle("");
-      setMetaDescription("");
-      setStatus("PUBLISHED");
-      setPublishedAt("");
+      toast({ title: "Success", description: `Blog ${editingId ? 'updated' : 'saved'} successfully.` });
+      resetForm();
       await fetchBlogs();
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to save blog.", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleEdit = (blog: any) => {
+    setEditingId(blog.id);
+    setTitle(blog.title);
+    setSlug(blog.slug);
+    setContent(blog.content);
+    setExcerpt(blog.excerpt || "");
+    setMetaTitle(blog.metaTitle || "");
+    setMetaDescription(blog.metaDescription || "");
+    setStatus(blog.status);
+    setPublishedAt(blog.publishedAt ? new Date(blog.publishedAt).toISOString().slice(0, 16) : "");
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this blog?")) return;
+    try {
+      const res = await fetch(`/api/admin/blogs/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+      toast({ title: "Success", description: "Blog deleted successfully." });
+      if (editingId === id) resetForm();
+      await fetchBlogs();
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to delete blog.", variant: "destructive" });
+    }
+  };
+
+  const resetForm = () => {
+    setEditingId(null);
+    setTitle("");
+    setSlug("");
+    setContent("");
+    setExcerpt("");
+    setMetaTitle("");
+    setMetaDescription("");
+    setStatus("PUBLISHED");
+    setPublishedAt("");
   };
 
   if (isLoading && blogs.length === 0) {
@@ -116,11 +150,20 @@ export default function BlogClient() {
           <div className="relative group">
             <div className="absolute -inset-0.5 bg-gradient-to-r from-brand-500 to-indigo-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
             <div className="relative bg-white p-4 sm:p-8 rounded-2xl shadow-sm border border-stone-100/50 backdrop-blur-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2.5 bg-brand-50 rounded-xl">
-                  <PenTool className="w-5 h-5 text-brand-600" />
+              <div className="flex items-center justify-between gap-3 mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-brand-50 rounded-xl">
+                    <PenTool className="w-5 h-5 text-brand-600" />
+                  </div>
+                  <h2 className="text-xl font-bold font-display text-stone-900 tracking-tight">
+                    {editingId ? "Edit Content" : "Write Content"}
+                  </h2>
                 </div>
-                <h2 className="text-xl font-bold font-display text-stone-900 tracking-tight">Write Content</h2>
+                {editingId && (
+                  <Button variant="ghost" size="sm" onClick={resetForm} className="text-stone-500 hover:text-stone-700">
+                    <X className="w-4 h-4 mr-1" /> Cancel Edit
+                  </Button>
+                )}
               </div>
               
               <div className="space-y-6">
@@ -238,7 +281,7 @@ export default function BlogClient() {
             className="w-full bg-brand-600 hover:bg-brand-700 text-white rounded-xl py-6 h-auto font-medium shadow-lg shadow-brand-500/20 transition-all hover:shadow-brand-500/40 hover:-translate-y-0.5"
           >
             {isSaving ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Sparkles className="w-5 h-5 mr-2" />}
-            Save & Publish
+            {editingId ? "Save Changes" : "Save & Publish"}
           </Button>
         </div>
       </div>
@@ -271,9 +314,16 @@ export default function BlogClient() {
                   </p>
                 </div>
                 
-                <div className="px-6 py-4 bg-white flex justify-between items-center text-sm font-medium text-stone-500 border-t border-stone-100">
-                  <span>/{b.slug}</span>
-                  <span className="text-brand-600 hover:underline cursor-pointer">Edit</span>
+                <div className="px-6 py-4 bg-white flex justify-between items-center text-sm font-medium border-t border-stone-100">
+                  <span className="text-stone-500">/{b.slug}</span>
+                  <div className="flex gap-4">
+                    <span onClick={() => handleEdit(b)} className="text-brand-600 hover:text-brand-700 hover:underline cursor-pointer flex items-center gap-1">
+                      Edit
+                    </span>
+                    <span onClick={() => handleDelete(b.id)} className="text-red-500 hover:text-red-600 hover:underline cursor-pointer flex items-center gap-1">
+                      <Trash2 className="w-4 h-4" /> Delete
+                    </span>
+                  </div>
                 </div>
               </div>
             ))}
