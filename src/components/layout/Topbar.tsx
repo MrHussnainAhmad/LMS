@@ -29,6 +29,16 @@ export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
   const handleLogout = async () => {
     try {
       await api.post("/api/auth/logout", {});
+    } catch (err) {
+      console.error("Logout API blocked or failed:", err);
+    } finally {
+      // Robust client-side fallback: forcibly delete cookies on the root domain
+      const isProd = process.env.NODE_ENV === "production";
+      const domain = isProd ? "domain=.nisaab360.app;" : "";
+      document.cookie = `access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; ${domain}`;
+      document.cookie = `refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; ${domain}`;
+      document.cookie = `session_exp=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; ${domain}`;
+
       // redirect back to the correct main domain login page
       const isLocal = window.location.hostname.includes("localhost");
       const protocol = isLocal ? "http://" : "https://";
@@ -39,8 +49,6 @@ export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
       else if (role === "INSTITUTION" || role === "INSTITUTION_ADMIN") loginPath = "/institution-login";
       
       window.location.replace(`${protocol}${baseHost}${loginPath}`);
-    } catch (err) {
-      console.error(err);
     }
   };
 
