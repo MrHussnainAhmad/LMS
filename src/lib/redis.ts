@@ -2,16 +2,25 @@ import { Redis } from 'ioredis';
 
 const redisUrl = process.env.REDIS_URL || 'redis://valkey:6379';
 
-export const redis = new Redis(redisUrl, {
-  maxRetriesPerRequest: 3,
-  retryStrategy(times) {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  },
-});
+const isBuildPhase = process.env.npm_lifecycle_event === 'build' || process.env.NEXT_PHASE === 'phase-production-build';
 
+export const redis = isBuildPhase 
+  ? ({ status: 'end', get: async () => null, setex: async () => null, on: () => {} } as unknown as Redis)
+  : new Redis(redisUrl, {
+      maxRetriesPerRequest: 3,
+      retryStrategy(times) {
+        const delay = Math.min(times * 50, 2000);
+        return delay;
+      },
+    });
+
+let errorLogged = false;
 redis.on('error', (err) => {
-  console.warn('Valkey/Redis connection error (fallback to DB):', err.message);
+  if (!errorLogged) {
+    console.warn('Valkey/Redis connection error (fallback to DB):', err.message);
+    console.warn('Suppressing further Redis connection errors...');
+    errorLogged = true;
+  }
 });
 
 const inFlightRequests = new Map<string, Promise<any>>();

@@ -2,7 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { attendances, students } from "@/db/schema";
 import { db } from "@/db";
 import { getSession } from "@/lib/auth";
-import { and, desc, eq } from "drizzle-orm";
+import { windowRange } from "@/lib/month-window";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { AlertCircle, CalendarDays, CheckSquare } from "lucide-react";
 import { redirect } from "next/navigation";
 
@@ -20,9 +21,16 @@ export default async function StudentAttendancePage() {
   const [student] = await db.select().from(students).where(eq(students.id, session.userId)).limit(1);
   if (!student || student.institutionId !== session.institutionId) redirect("/login");
 
+  const { from, to } = windowRange(new Date(), 1);
+
   const records = await db.select()
     .from(attendances)
-    .where(and(eq(attendances.studentId, student.id), eq(attendances.institutionId, session.institutionId)))
+    .where(and(
+      eq(attendances.studentId, student.id),
+      eq(attendances.institutionId, session.institutionId),
+      gte(attendances.date, from),
+      lte(attendances.date, to),
+    ))
     .orderBy(desc(attendances.date));
 
   const totals = records.reduce(

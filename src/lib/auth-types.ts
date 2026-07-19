@@ -7,4 +7,6 @@ export interface JWTPayload {
   campusId?: number | null;
   mustChangePassword?: boolean;
   isSuperAdmin?: boolean;
+  /** ISO timestamp of when the user account was created — used to scope notifications. */
+  createdAt?: string;
 }

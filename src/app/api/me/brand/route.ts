@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { institutions } from "@/db/schema";
 import { getSessionFromRequest } from "@/lib/auth";
 import { eq } from "drizzle-orm";
+import { getCachedOrFetch } from "@/lib/redis";
 
 function dashboardHref(role: string) {
   if (role === "SUPER_ADMIN") return "/sa/dashboard";
@@ -35,19 +36,27 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const [institution] = await db.select({
-    name: institutions.name,
-    logoKey: institutions.logoKey,
-  })
-    .from(institutions)
-    .where(eq(institutions.id, institutionId))
-    .limit(1);
+  const brand = await getCachedOrFetch(`cache:brand:${institutionId}`, 300, async () => {
+    const [institution] = await db.select({
+      name: institutions.name,
+      logoKey: institutions.logoKey,
+    })
+      .from(institutions)
+      .where(eq(institutions.id, institutionId))
+      .limit(1);
+
+    return {
+      name: institution?.name || "Nisaab360",
+      logoKey: institution?.logoKey || null,
+      isInstitutionBrand: Boolean(institution),
+    };
+  });
 
   return NextResponse.json({
-    name: institution?.name || "Nisaab360",
-    logoKey: institution?.logoKey || null,
+    name: brand.name,
+    logoKey: brand.logoKey,
     href: dashboardHref(session.role),
-    isInstitutionBrand: Boolean(institution),
+    isInstitutionBrand: brand.isInstitutionBrand,
     role: session.role,
   });
 }

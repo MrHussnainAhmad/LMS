@@ -1,7 +1,8 @@
 import { db } from "@/db";
 import { students, classes, sections, attendances, marks, tests, submissions, assignments, batchExams, batchExamSubjects, batchExamResults, feeVouchers } from "@/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, gte, lte } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { windowRange } from "@/lib/month-window";
 import { redirect } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,12 +46,19 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
 
   if (!student) redirect("/institution/students");
 
+  // Institution profile: current month + 2 earlier (3 months total).
+  const { from, to } = windowRange(new Date(), 2);
+
   const [attendanceRecords, marksRecords, submissionRecords, rawBatchResults, studentVouchers] = await Promise.all([
     db.select()
       .from(attendances)
-      .where(and(eq(attendances.studentId, studentId), eq(attendances.institutionId, institutionId)))
-      .orderBy(desc(attendances.date))
-      .limit(30),
+      .where(and(
+        eq(attendances.studentId, studentId),
+        eq(attendances.institutionId, institutionId),
+        gte(attendances.date, from),
+        lte(attendances.date, to),
+      ))
+      .orderBy(desc(attendances.date)),
     db.select({
       id: marks.id,
       marksObtained: marks.marksObtained,
@@ -61,7 +69,12 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
     })
       .from(marks)
       .innerJoin(tests, eq(marks.testId, tests.id))
-      .where(and(eq(marks.studentId, studentId), eq(marks.institutionId, institutionId)))
+      .where(and(
+        eq(marks.studentId, studentId),
+        eq(marks.institutionId, institutionId),
+        gte(tests.date, from),
+        lte(tests.date, to),
+      ))
       .orderBy(desc(tests.date)),
     db.select({
       id: submissions.id,

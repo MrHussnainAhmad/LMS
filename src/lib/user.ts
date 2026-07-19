@@ -4,6 +4,18 @@ import { eq } from "drizzle-orm";
 import { redis } from "./redis";
 import type { JWTPayload, UserRole } from "./auth-types";
 
+/**
+ * Prefer createdAt embedded in the JWT (set at login/refresh). Falls back to a
+ * DB lookup for older tokens that predate the claim.
+ */
+export async function resolveUserCreatedAt(session: JWTPayload): Promise<Date> {
+  if (session.createdAt) {
+    const parsed = new Date(session.createdAt);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return getUserCreatedAt(session);
+}
+
 export async function getUserCreatedAt(session: JWTPayload): Promise<Date> {
   const defaultDate = new Date(0);
   switch (session.role) {

@@ -7,7 +7,7 @@ import { requireRole } from '@/lib/rbac';
 import { changePasswordSchema } from '@/lib/validators/auth';
 import { logAudit } from '@/lib/audit';
 import { createTokens, setAuthCookies } from '@/lib/auth';
-import { invalidateUserValidity } from '@/lib/user';
+import { invalidateUserValidity, resolveUserCreatedAt } from '@/lib/user';
 
 async function getPasswordHashForSession(role: string, userId: number) {
   if (role === 'EMPLOYEE') {
@@ -77,12 +77,15 @@ export const POST = requireRole(['EMPLOYEE', 'STAFF', 'STUDENT'], async (req: Ne
   });
 
   if (returnTokens) {
+    const createdAt = session.createdAt
+      ?? (await resolveUserCreatedAt(session)).toISOString();
     const { accessToken, refreshToken } = await createTokens({
       userId: session.userId,
       role: session.role,
       institutionId: session.institutionId,
       campusId: session.campusId,
       mustChangePassword: false,
+      createdAt,
     });
     await setAuthCookies(accessToken, refreshToken);
 

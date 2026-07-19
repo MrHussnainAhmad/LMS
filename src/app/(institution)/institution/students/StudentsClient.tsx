@@ -72,6 +72,13 @@ export function StudentsClient({
 }) {
   const { toast } = useToast();
   const router = useRouter();
+  const [rows, setRows] = useState<StudentRow[]>(students);
+  const [studentsProp, setStudentsProp] = useState(students);
+
+  if (students !== studentsProp) {
+    setStudentsProp(students);
+    setRows(students);
+  }
   
   // Modals state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -101,7 +108,7 @@ export function StudentsClient({
 
   // Prepare table data with combined search field
   const tableData = useMemo(() => {
-    let filtered = students;
+    let filtered = rows;
     if (filterClassId) {
       filtered = filtered.filter(s => s.classId === parseInt(filterClassId));
     }
@@ -112,7 +119,7 @@ export function StudentsClient({
       ...s,
       searchString: `${s.name} ${s.loginRollNumber}`
     }));
-  }, [students, filterClassId, filterSectionId]);
+  }, [rows, filterClassId, filterSectionId]);
 
   const columns: StudentColumn[] = [
     { header: "Roll Number", accessorKey: "loginRollNumber" as const, sortable: true },
@@ -129,9 +136,11 @@ export function StudentsClient({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => router.push(`/institution/students/${s.id}`)}>
-              <Eye className="h-4 w-4 mr-2" /> View Profile
-            </DropdownMenuItem>
+            {s.id > 0 && (
+              <DropdownMenuItem onClick={() => router.push(`/institution/students/${s.id}`)}>
+                <Eye className="h-4 w-4 mr-2" /> View Profile
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => setEditStudent(s)}>
               <Edit className="h-4 w-4 mr-2" /> Edit Student
             </DropdownMenuItem>
@@ -158,7 +167,27 @@ export function StudentsClient({
         variant: "success" 
       });
       setIsCreateOpen(false);
-      router.refresh();
+
+      const classId = Number(data.classId);
+      const sectionIdRaw = data.sectionId ? Number(data.sectionId) : NaN;
+      const sectionId = Number.isInteger(sectionIdRaw) && sectionIdRaw > 0
+        ? sectionIdRaw
+        : (sections.find((s) => s.classId === classId)?.id ?? 0);
+
+      setRows((current) => [
+        {
+          id: -Date.now(),
+          loginRollNumber: res.credentials?.loginRollNumber || "",
+          name: `${String(data.firstName || "")} ${String(data.lastName || "")}`.trim(),
+          gender: String(data.gender || "MALE"),
+          yearOfJoining: Number(data.yearOfJoining) || new Date().getFullYear(),
+          classId,
+          sectionId,
+          classRollNumber: String(data.classRollNumber || ""),
+          phone: data.phone ? String(data.phone) : null,
+        },
+        ...current,
+      ]);
     } catch (err: unknown) {
       toast({ title: "Error", description: errorMessage(err), variant: "destructive" });
     } finally {
@@ -213,6 +242,7 @@ export function StudentsClient({
       });
       setImportFile(null);
       setIsImportOpen(false);
+      // Bulk import returns only a count — refresh to load the new page of rows.
       router.refresh();
     } catch (err: unknown) {
       toast({ title: "Import failed", description: errorMessage(err), variant: "destructive" });
@@ -231,8 +261,19 @@ export function StudentsClient({
     try {
       await api.patch(`/api/institution/students/${editStudent.id}`, data);
       toast({ title: "Student Updated", variant: "success" });
+      setRows((current) => current.map((student) => (
+        student.id === editStudent.id
+          ? {
+              ...student,
+              name: String(data.name || student.name),
+              classId: Number(data.classId) || student.classId,
+              sectionId: Number(data.sectionId) || student.sectionId,
+              classRollNumber: String(data.classRollNumber || student.classRollNumber),
+              phone: data.phone !== undefined ? (data.phone ? String(data.phone) : null) : student.phone,
+            }
+          : student
+      )));
       setEditStudent(null);
-      router.refresh();
     } catch (err: unknown) {
       toast({ title: "Error", description: errorMessage(err), variant: "destructive" });
     } finally {
@@ -245,8 +286,8 @@ export function StudentsClient({
     try {
       await api.delete(`/api/institution/students/${deleteStudent.id}`);
       toast({ title: "Student Deleted", variant: "success" });
+      setRows((current) => current.filter((student) => student.id !== deleteStudent.id));
       setDeleteStudent(null);
-      router.refresh();
     } catch (err: unknown) {
       toast({ title: "Error", description: errorMessage(err), variant: "destructive" });
     }

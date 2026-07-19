@@ -7,7 +7,6 @@ import { Check, X, Clock, HelpCircle } from "lucide-react";
 import { useToast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 import { submitAttendanceAction } from "@/app/actions/staff-actions";
-import { useRouter } from "next/navigation";
 
 const STATUS_STATES = [
   { value: "PRESENT", label: "P", color: "bg-success text-white border-success", icon: Check },
@@ -16,23 +15,36 @@ const STATUS_STATES = [
   { value: "LEAVE", label: "LV", color: "bg-stone-500 text-white border-stone-500", icon: HelpCircle },
 ];
 
+type AttendanceStudent = {
+  id: number;
+  name: string;
+  loginRollNumber?: string;
+  status?: string;
+};
+
+type AssignedSection = {
+  id: number;
+  name: string;
+  className?: string;
+};
+
 export function AttendanceClient({ 
   assignedSections, 
   studentsBySection,
   todayAttendanceBySection = {}
 }: { 
-  assignedSections: any[], 
-  studentsBySection: Record<number, any[]>,
+  assignedSections: AssignedSection[], 
+  studentsBySection: Record<number, AttendanceStudent[]>,
   todayAttendanceBySection?: Record<number, boolean>
 }) {
   const [selectedSectionId, setSelectedSectionId] = useState<number>(assignedSections[0]?.id || 0);
   
   const initialStudents = selectedSectionId ? studentsBySection[selectedSectionId]?.map(s => ({ ...s, status: "PRESENT" })) || [] : [];
   
-  const [students, setStudents] = useState<any[]>(initialStudents);
+  const [students, setStudents] = useState<(AttendanceStudent & { status: string })[]>(initialStudents);
+  const [markedSections, setMarkedSections] = useState<Record<number, boolean>>(todayAttendanceBySection);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
-  const router = useRouter();
 
   const handleSectionChange = (id: number) => {
     setSelectedSectionId(id);
@@ -53,19 +65,19 @@ export function AttendanceClient({
     if (!selectedSectionId) return;
     setIsSubmitting(true);
     try {
-      const records = students.map(s => ({ studentId: s.id, status: s.status as any }));
+      const records = students.map(s => ({ studentId: s.id, status: s.status as "PRESENT" | "ABSENT" | "LATE" | "LEAVE" }));
       await submitAttendanceAction(selectedSectionId, new Date(), records);
       toast({ title: "Success", description: "Attendance submitted successfully", variant: "success" });
-      router.refresh();
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setMarkedSections((current) => ({ ...current, [selectedSectionId]: true }));
+    } catch (error: unknown) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to submit", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const presentCount = students.filter(s => s.status === "PRESENT").length;
-  const isAlreadyMarked = Boolean(todayAttendanceBySection[selectedSectionId]);
+  const isAlreadyMarked = Boolean(markedSections[selectedSectionId]);
 
   return (
     <div className="space-y-6 animate-fade-in pb-24 lg:pb-0">
@@ -109,9 +121,6 @@ export function AttendanceClient({
             </div>
           )}
           {students.map((student) => {
-            const statusConfig = STATUS_STATES.find(s => s.value === student.status)!;
-            const Icon = statusConfig.icon;
-            
             return (
               <div 
                 key={student.id}

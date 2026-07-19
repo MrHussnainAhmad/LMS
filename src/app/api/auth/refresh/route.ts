@@ -10,19 +10,40 @@ import { cookies } from 'next/headers';
 async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPayload | null> {
   switch (role) {
     case 'SUPER_ADMIN': {
-      const [user] = await db.select({ isSuperAdmin: superAdmins.isSuperAdmin })
-        .from(superAdmins).where(eq(superAdmins.id, userId)).limit(1);
-      return user ? { userId, role, isSuperAdmin: user.isSuperAdmin } : null;
+      const [user] = await db.select({
+        isSuperAdmin: superAdmins.isSuperAdmin,
+        createdAt: superAdmins.createdAt,
+      }).from(superAdmins).where(eq(superAdmins.id, userId)).limit(1);
+      return user ? {
+        userId,
+        role,
+        isSuperAdmin: user.isSuperAdmin,
+        createdAt: user.createdAt.toISOString(),
+      } : null;
     }
     case 'EMPLOYEE': {
-      const [user] = await db.select({ mustChangePassword: employees.mustChangePassword })
-        .from(employees).where(eq(employees.id, userId)).limit(1);
-      return user ? { userId, role, mustChangePassword: user.mustChangePassword } : null;
+      const [user] = await db.select({
+        mustChangePassword: employees.mustChangePassword,
+        createdAt: employees.createdAt,
+      }).from(employees).where(eq(employees.id, userId)).limit(1);
+      return user ? {
+        userId,
+        role,
+        mustChangePassword: user.mustChangePassword,
+        createdAt: user.createdAt.toISOString(),
+      } : null;
     }
     case 'INSTITUTION': {
-      const [user] = await db.select({ status: institutions.status })
-        .from(institutions).where(eq(institutions.id, userId)).limit(1);
-      return user?.status === 'APPROVED' ? { userId, role, institutionId: userId } : null;
+      const [user] = await db.select({
+        status: institutions.status,
+        createdAt: institutions.createdAt,
+      }).from(institutions).where(eq(institutions.id, userId)).limit(1);
+      return user?.status === 'APPROVED' ? {
+        userId,
+        role,
+        institutionId: userId,
+        createdAt: user.createdAt.toISOString(),
+      } : null;
     }
     case 'STAFF': {
       const [user] = await db.select({
@@ -30,6 +51,7 @@ async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPay
         campusId: staff.campusId,
         mustChangePassword: staff.mustChangePassword,
         isActive: staff.isActive,
+        createdAt: staff.createdAt,
       }).from(staff).where(eq(staff.id, userId)).limit(1);
       return user?.isActive ? {
         userId,
@@ -37,6 +59,7 @@ async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPay
         institutionId: user.institutionId,
         campusId: user.campusId,
         mustChangePassword: user.mustChangePassword,
+        createdAt: user.createdAt.toISOString(),
       } : null;
     }
     case 'STUDENT': {
@@ -44,20 +67,28 @@ async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPay
         institutionId: students.institutionId,
         mustChangePassword: students.mustChangePassword,
         isActive: students.isActive,
+        createdAt: students.createdAt,
       }).from(students).where(eq(students.id, userId)).limit(1);
       return user?.isActive ? {
         userId,
         role,
         institutionId: user.institutionId,
         mustChangePassword: user.mustChangePassword,
+        createdAt: user.createdAt.toISOString(),
       } : null;
     }
     case 'INSTITUTION_ADMIN': {
-      // For now, assume it's valid if it exists
       const { institutionAdmins } = await import('@/db/schema');
-      const [user] = await db.select({ institutionId: institutionAdmins.institutionId })
-        .from(institutionAdmins).where(eq(institutionAdmins.id, userId)).limit(1);
-      return user ? { userId, role, institutionId: user.institutionId } : null;
+      const [user] = await db.select({
+        institutionId: institutionAdmins.institutionId,
+        createdAt: institutionAdmins.createdAt,
+      }).from(institutionAdmins).where(eq(institutionAdmins.id, userId)).limit(1);
+      return user ? {
+        userId,
+        role,
+        institutionId: user.institutionId,
+        createdAt: user.createdAt.toISOString(),
+      } : null;
     }
     default:
       return null;

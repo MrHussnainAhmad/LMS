@@ -9,6 +9,7 @@ import { PlatformLoginKind, withPlatformLoginRateLimit, withRateLimit } from '@/
 import { logAudit } from '@/lib/audit';
 import { loginSchema } from '@/lib/validators/auth';
 import { sendEmail, LoginNotificationEmail } from '@/lib/email';
+import { getUserCreatedAt } from '@/lib/user';
 
 const MAX_FAILED_LOGINS = Number(process.env.AUTH_LOCKOUT_MAX_FAILED || 5);
 const LOCKOUT_WINDOW_MINUTES = Number(process.env.AUTH_LOCKOUT_WINDOW_MINUTES || 15);
@@ -494,6 +495,8 @@ export async function POST(req: NextRequest) {
       await redis.setex(cacheKey, 300, role).catch(() => null);
     }
 
+    const createdAt = (await getUserCreatedAt({ userId: user.id, role, institutionId })).toISOString();
+
     const payload: JWTPayload = {
       userId: user.id,
       role,
@@ -501,6 +504,7 @@ export async function POST(req: NextRequest) {
       campusId,
       mustChangePassword,
       isSuperAdmin: role === 'SUPER_ADMIN' ? user.isSuperAdmin : undefined,
+      createdAt,
     };
 
     const [{ accessToken, refreshToken }] = await Promise.all([

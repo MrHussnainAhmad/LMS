@@ -5,6 +5,7 @@ import { requireRole } from "@/lib/rbac";
 import { eq, and } from "drizzle-orm";
 import { getVisibleAnnouncements } from "@/lib/announcements";
 import { announcementReads } from "@/db/schema";
+import { redis } from "@/lib/redis";
 
 export const PATCH = requireRole(["STUDENT", "STAFF", "INSTITUTION", "EMPLOYEE", "SUPER_ADMIN"], async (req: NextRequest, { session }) => {
   try {
@@ -27,6 +28,18 @@ export const PATCH = requireRole(["STUDENT", "STAFF", "INSTITUTION", "EMPLOYEE",
         userId: session.userId,
       }));
       await db.insert(announcementReads).values(values).onConflictDoNothing();
+    }
+
+    try {
+      if (redis.status === "ready") {
+        const inst = session.institutionId ?? "none";
+        await redis.del(
+          `cache:notifications:${session.role}:${session.userId}:${inst}`,
+          `cache:notifications:unread:${session.role}:${session.userId}:${inst}`,
+        );
+      }
+    } catch (error) {
+      console.warn("Failed to invalidate notification caches", error);
     }
 
     return NextResponse.json({ success: true });

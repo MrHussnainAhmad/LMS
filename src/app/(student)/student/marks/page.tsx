@@ -2,13 +2,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/db";
 import { marks, subjects, tests, onlineTests } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { and, desc, eq } from "drizzle-orm";
+import { windowRange } from "@/lib/month-window";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { FileText, Trophy } from "lucide-react";
 import { redirect } from "next/navigation";
 
 export default async function StudentMarksPage() {
   const session = await getSession();
   if (!session || session.role !== "STUDENT" || !session.institutionId) redirect("/login");
+
+  const { from, to } = windowRange(new Date(), 1);
 
   const rows = await db.select({
     mark: marks,
@@ -20,7 +23,12 @@ export default async function StudentMarksPage() {
     .innerJoin(tests, eq(marks.testId, tests.id))
     .leftJoin(subjects, eq(tests.subjectId, subjects.id))
     .leftJoin(onlineTests, eq(tests.id, onlineTests.testId))
-    .where(and(eq(marks.studentId, session.userId), eq(marks.institutionId, session.institutionId)))
+    .where(and(
+      eq(marks.studentId, session.userId),
+      eq(marks.institutionId, session.institutionId),
+      gte(tests.date, from),
+      lte(tests.date, to),
+    ))
     .orderBy(desc(marks.createdAt));
 
   return (

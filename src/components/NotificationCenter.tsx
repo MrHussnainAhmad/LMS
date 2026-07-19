@@ -21,13 +21,24 @@ export function NotificationCenter() {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
 
+  const { data: unreadData } = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: async () => {
+      const res = await api.get<{ unreadCount: number }>("/api/me/notifications/unread-count");
+      return res;
+    },
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   const { data } = useQuery({
     queryKey: ["notifications"],
     queryFn: async () => {
       const res = await api.get<{ notifications: Notification[], unreadCount: number }>("/api/me/notifications");
       return res;
     },
-    refetchInterval: 60_000,
+    enabled: open,
+    refetchInterval: open ? 60_000 : false,
     refetchOnWindowFocus: false,
   });
 
@@ -49,7 +60,7 @@ export function NotificationCenter() {
     }
   });
 
-  const unreadCount = data?.unreadCount || 0;
+  const unreadCount = unreadData?.unreadCount ?? data?.unreadCount ?? 0;
   const notifications = data?.notifications || [];
 
   return (
