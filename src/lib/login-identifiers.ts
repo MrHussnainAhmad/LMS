@@ -12,7 +12,7 @@ type SectionLike = {
 };
 
 function appDomain() {
-  return (process.env.NEXT_PUBLIC_APP_DOMAIN || process.env.APP_DOMAIN || "myapp.pk").trim();
+  return (process.env.NEXT_PUBLIC_APP_DOMAIN || "myapp.pk").trim();
 }
 
 function cleanAlphaNumeric(value: string) {
