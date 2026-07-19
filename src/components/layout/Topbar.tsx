@@ -27,29 +27,37 @@ export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
   const router = useRouter();
 
   const handleLogout = async () => {
+    // Compute redirect URL first, before anything can fail
+    const isLocal = window.location.hostname.includes("localhost");
+    const protocol = isLocal ? "http://" : "https://";
+    const baseHost = isLocal ? "localhost:3000" : "nisaab360.app";
+    let loginPath = "/login";
+    if (role === "SUPER_ADMIN") loginPath = "/login/super-admin";
+    else if (role === "EMPLOYEE") loginPath = "/employee-login";
+    else if (role === "INSTITUTION" || role === "INSTITUTION_ADMIN") loginPath = "/institution-login";
+    const redirectUrl = `${protocol}${baseHost}${loginPath}`;
+
     try {
       await api.post("/api/auth/logout", {});
     } catch (err) {
-      console.error("Logout API blocked or failed:", err);
-    } finally {
-      // Robust client-side fallback: forcibly delete cookies on the root domain
-      const isProd = process.env.NODE_ENV === "production";
-      const domain = isProd ? "domain=.nisaab360.app;" : "";
-      document.cookie = `access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; ${domain}`;
-      document.cookie = `refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; ${domain}`;
-      document.cookie = `session_exp=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; ${domain}`;
-
-      // redirect back to the correct main domain login page
-      const isLocal = window.location.hostname.includes("localhost");
-      const protocol = isLocal ? "http://" : "https://";
-      const baseHost = isLocal ? "localhost:3000" : "nisaab360.app";
-      let loginPath = "/login";
-      if (role === "SUPER_ADMIN") loginPath = "/login/super-admin";
-      else if (role === "EMPLOYEE") loginPath = "/employee-login";
-      else if (role === "INSTITUTION" || role === "INSTITUTION_ADMIN") loginPath = "/institution-login";
-      
-      window.location.replace(`${protocol}${baseHost}${loginPath}`);
+      console.error("Logout API failed:", err);
     }
+
+    // Client-side cookie cleanup (session_exp is not httpOnly, so this works)
+    // Delete with both domain variations to cover all cookies
+    const past = "expires=Thu, 01 Jan 1970 00:00:00 UTC";
+    // Without domain (cookies set before subdomain changes)
+    document.cookie = `access_token=; ${past}; path=/;`;
+    document.cookie = `refresh_token=; ${past}; path=/;`;
+    document.cookie = `session_exp=; ${past}; path=/;`;
+    if (!isLocal) {
+      // With root domain (cookies set after subdomain changes)
+      document.cookie = `access_token=; ${past}; path=/; domain=.nisaab360.app;`;
+      document.cookie = `refresh_token=; ${past}; path=/; domain=.nisaab360.app;`;
+      document.cookie = `session_exp=; ${past}; path=/; domain=.nisaab360.app;`;
+    }
+
+    window.location.replace(redirectUrl);
   };
 
   return (

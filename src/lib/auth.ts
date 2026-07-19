@@ -77,9 +77,17 @@ export async function setAuthCookies(accessToken: string, refreshToken: string) 
 
 export async function clearAuthCookies() {
   const cookieStore = await cookies();
-  cookieStore.delete('access_token');
-  cookieStore.delete('refresh_token');
-  cookieStore.delete('session_exp');
+  const domain = process.env.NODE_ENV === 'production' ? '.nisaab360.app' : undefined;
+  const cookieNames = ['access_token', 'refresh_token', 'session_exp'];
+  
+  for (const name of cookieNames) {
+    // Delete without domain (covers cookies set before subdomain changes)
+    cookieStore.delete(name);
+    // Delete with domain (covers cookies set with domain: '.nisaab360.app')
+    if (domain) {
+      cookieStore.set(name, '', { path: '/', domain, maxAge: 0 });
+    }
+  }
 }
 
 export async function getSession(): Promise<JWTPayload | null> {
