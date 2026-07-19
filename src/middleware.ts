@@ -38,12 +38,17 @@ export async function middleware(request: NextRequest) {
   const virtualPath = rewritePath || path;
 
   // Redirect Android mobile users to app download page
-  if (virtualPath !== '/download-app') {
-    const androidPaths = virtualPath === '/' || virtualPath === '/login' || virtualPath.startsWith('/student') || virtualPath.startsWith('/staff');
-    if (androidPaths) {
+  // Check original path to prevent infinite loops on subdomains
+  if (path !== '/download-app') {
+    const checkPaths = virtualPath === '/' || virtualPath === '/login' || virtualPath.startsWith('/student') || virtualPath.startsWith('/staff');
+    if (checkPaths) {
       const { device, os } = userAgent(request);
+      // Strictly mobile phones (not tablets) on Android
       if (device.type === 'mobile' && os.name === 'Android') {
-        return NextResponse.redirect(new URL('/download-app', request.url));
+        const isLocal = hostname.includes('localhost');
+        const protocol = isLocal ? 'http://' : 'https://';
+        const baseHost = isLocal ? 'localhost:3000' : 'nisaab360.app';
+        return NextResponse.redirect(`${protocol}${baseHost}/download-app`);
       }
     }
   }
