@@ -51,10 +51,20 @@ export default function SaLoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-brand-950 p-4 relative">
-      <Link href="/" className="absolute top-6 left-6 flex items-center gap-2 text-sm font-medium text-brand-300 hover:text-white transition-colors">
+      <a 
+        href="#"
+        onClick={(e) => {
+          e.preventDefault();
+          const isLocal = window.location.hostname.includes("localhost");
+          const protocol = isLocal ? "http://" : "https://";
+          const baseHost = isLocal ? "localhost:3000" : "nisaab360.app";
+          window.location.href = `${protocol}${baseHost}/`;
+        }}
+        className="absolute top-6 left-6 flex items-center gap-2 text-sm font-medium text-brand-300 hover:text-white transition-colors"
+      >
         <ArrowLeft className="h-4 w-4" />
         Back to Home
-      </Link>
+      </a>
       <div className="w-full max-w-[400px]">
         <div className="text-center mb-8 flex flex-col items-center">
           <ShieldCheck className="h-12 w-12 text-brand-400 mb-4" />
