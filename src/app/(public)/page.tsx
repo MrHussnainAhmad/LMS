@@ -3,7 +3,7 @@ import { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, CheckCircle2, LayoutDashboard, Calendar, Bell, Star, MessageSquareQuote } from "lucide-react";
+import { ArrowRight, CheckCircle2, LayoutDashboard, Calendar, Bell, Star, MessageSquareQuote, Gift, Sparkles, Tag } from "lucide-react";
 import { FadeIn, HeroFadeIn, StaggerContainer, StaggerItem, ScaleIn } from "@/components/ui/scroll-animation";
 import { AnimatedBackground, FloatingIcons } from "@/components/ui/animated-background";
 import { db } from "@/db";
@@ -14,21 +14,38 @@ import { InteractiveFeatures } from "@/components/ui/interactive-features";
 import { unstable_cache } from "next/cache";
 import { LandingHeader } from "@/components/layout/LandingHeader";
 
+// Base rate: PKR 25 / student / month
+// Promotional rate: PKR 15 / student / month (Valid until 21st of next month - August 21, 2026)
+const PROMO_END_DATE = "August 21, 2026";
+
 const pricingPlans = [
   {
     name: "Small School",
+    capacity: 300,
     students: "Up to 300 students",
-    price: "PKR 7,000",
+    regularPrice: "PKR 7,500", // 300 * PKR 25
+    salePrice: "PKR 4,500",    // 300 * PKR 15
+    savings: "Save PKR 3,000/mo",
+    badge: "Popular for Single Campuses",
   },
   {
     name: "Medium School",
+    capacity: 700,
     students: "Up to 700 students",
-    price: "PKR 12,000",
+    regularPrice: "PKR 17,500", // 700 * PKR 25
+    salePrice: "PKR 10,500",    // 700 * PKR 15
+    savings: "Save PKR 7,000/mo",
+    badge: "Best Value for Growing Schools",
+    featured: true,
   },
   {
     name: "Large School",
-    students: "Up to 1000 students",
-    price: "PKR 20,000",
+    capacity: 1000,
+    students: "Up to 1,000 students",
+    regularPrice: "PKR 25,000", // 1000 * PKR 25
+    salePrice: "PKR 15,000",    // 1000 * PKR 15
+    savings: "Save PKR 10,000/mo",
+    badge: "Full Campus Enterprise",
   },
 ];
 
@@ -61,7 +78,7 @@ const jsonLd = {
   "offers": {
     "@type": "Offer",
     "priceCurrency": "PKR",
-    "price": "7000"
+    "price": "4500"
   },
   "aggregateRating": {
     "@type": "AggregateRating",
@@ -211,7 +228,7 @@ export default async function LandingPage() {
                  </div>
                </div>
             </div>
-          </HeroFadeIn>
+          HeroFadeIn>
         </section>
 
         {/* --- Dynamic Social Proof Marquee --- */}
@@ -320,47 +337,117 @@ export default async function LandingPage() {
           </section>
         )}
 
-        {/* --- Final CTA --- */}
+        {/* --- Final CTA & Pricing --- */}
         <section id="pricing" className="w-full py-24 px-6 md:px-12">
           <ScaleIn className="relative mx-auto max-w-6xl overflow-hidden rounded-[3rem] bg-stone-900 p-4 sm:p-8 text-center shadow-2xl md:p-14 lg:p-16">
              <div className="absolute right-0 top-0 h-[500px] w-[500px] -translate-y-1/2 translate-x-1/2 rounded-full bg-brand-500/20" />
              <div className="absolute bottom-0 left-0 h-[500px] w-[500px] translate-y-1/2 -translate-x-1/2 rounded-full bg-indigo-500/20" />
              
              <div className="relative z-10">
-               <FadeIn direction="up" delay={0.2} className="mb-10">
-                 <p className="text-sm font-bold uppercase tracking-[0.2em] text-brand-200 mb-4">Pricing</p>
-                 <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-6">Simple plans for every institution.</h2>
-                 <p className="text-lg md:text-xl text-stone-300 max-w-2xl mx-auto">Start with a one-time setup, then choose the monthly plan that matches your student strength.</p>
+               {/* Promotional Sale Ribbon Banner */}
+               <FadeIn direction="down" delay={0.1} className="mb-8 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-red-500/20 px-5 py-2.5 border border-amber-500/40 text-amber-300 shadow-lg backdrop-blur-md">
+                 <Gift className="h-5 w-5 text-amber-400 animate-bounce" />
+                 <span className="text-xs sm:text-sm font-bold uppercase tracking-wider">
+                   Special Promotional Offer — Valid Till {PROMO_END_DATE}!
+                 </span>
+                 <Sparkles className="h-4 w-4 text-amber-300" />
                </FadeIn>
 
-               <FadeIn direction="up" delay={0.3} className="mx-auto mb-6 max-w-xl rounded-2xl border border-white/10 bg-white/10 p-5 text-left">
-                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+               <FadeIn direction="up" delay={0.2} className="mb-10">
+                 <p className="text-sm font-bold uppercase tracking-[0.2em] text-brand-200 mb-3">Affordable Per-Student Pricing</p>
+                 <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">Transparent plans for every school.</h2>
+                 <p className="text-lg md:text-xl text-stone-300 max-w-2xl mx-auto">
+                   Fair pricing scaled by student count: <span className="line-through text-stone-400 font-semibold">PKR 25</span> <strong className="text-amber-400 font-extrabold text-xl underline decoration-amber-400">PKR 15 / student / month</strong> during special sale!
+                 </p>
+               </FadeIn>
+
+               {/* One-Time Setup Fee Offer Card */}
+               <FadeIn direction="up" delay={0.3} className="mx-auto mb-8 max-w-xl rounded-2xl border border-amber-500/30 bg-gradient-to-r from-white/10 via-amber-500/10 to-white/10 p-5 text-left backdrop-blur-sm shadow-xl">
+                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                    <div>
-                     <p className="text-sm font-semibold uppercase tracking-wider text-stone-300">One-time setup fee</p>
-                     <p className="mt-1 text-sm text-stone-200">Institution setup, onboarding, and basic configuration.</p>
+                     <div className="flex items-center gap-2">
+                       <Tag className="h-4 w-4 text-amber-400" />
+                       <p className="text-xs font-bold uppercase tracking-wider text-amber-300">Limited-Time Setup Discount</p>
+                     </div>
+                     <p className="mt-1 text-sm font-medium text-stone-200">Full institution onboarding, domain setup & administrator training.</p>
                    </div>
-                   <p className="text-2xl font-display font-bold text-white">PKR 15,000</p>
+                   <div className="text-right sm:shrink-0">
+                     <span className="text-sm line-through text-stone-400 font-bold mr-2">PKR 15,000</span>
+                     <span className="text-2xl sm:text-3xl font-display font-extrabold text-white bg-clip-text text-transparent bg-gradient-to-r from-amber-200 to-amber-400">
+                       PKR 10,000
+                     </span>
+                     <p className="text-[11px] font-semibold text-amber-300/90">One-time setup fee</p>
+                   </div>
                  </div>
                </FadeIn>
 
-               <StaggerContainer className="grid gap-4 md:grid-cols-3 mb-10 text-left">
+               {/* 3 Package Cards */}
+               <StaggerContainer className="grid gap-6 md:grid-cols-3 mb-10 text-left">
                  {pricingPlans.map((plan) => (
-                   <StaggerItem key={plan.name} className="landing-hover rounded-2xl border border-white/10 bg-white p-6 shadow-xl shadow-black/10">
-                     <p className="text-sm font-bold uppercase tracking-wider text-brand-700">{plan.name}</p>
-                     <h3 className="mt-3 text-3xl font-display font-extrabold text-stone-950">{plan.price}</h3>
-                     <p className="mt-1 text-sm font-semibold text-stone-500">per month</p>
-                     <div className="mt-5 flex items-center gap-2 rounded-xl bg-stone-50 px-3 py-2 text-sm font-semibold text-stone-700">
-                       <CheckCircle2 className="h-4 w-4 text-brand-600" />
-                       {plan.students}
+                   <StaggerItem key={plan.name} className={`landing-hover relative rounded-3xl border p-6 shadow-xl flex flex-col justify-between ${
+                     plan.featured 
+                       ? "border-amber-400/80 bg-white ring-4 ring-amber-400/20 shadow-2xl scale-[1.02]" 
+                       : "border-white/10 bg-white"
+                   }`}>
+                     {plan.featured && (
+                       <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-1 text-[11px] font-extrabold uppercase tracking-wider text-white shadow-md">
+                         🔥 Best Value Offer
+                       </div>
+                     )}
+
+                     <div>
+                       <div className="flex items-center justify-between mb-2">
+                         <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{plan.name}</p>
+                         <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
+                           {plan.savings}
+                         </span>
+                       </div>
+
+                       <div className="mt-2 flex items-baseline gap-2">
+                         <span className="text-3xl sm:text-4xl font-display font-extrabold text-stone-950">{plan.salePrice}</span>
+                         <span className="text-sm font-bold text-stone-400 line-through">{plan.regularPrice}</span>
+                       </div>
+                       <p className="mt-0.5 text-xs font-semibold text-stone-500">per month (PKR 15 / student)</p>
+
+                       <div className="mt-5 flex items-center gap-2 rounded-xl bg-stone-50 px-3.5 py-2.5 text-sm font-semibold text-stone-800 border border-stone-200">
+                         <CheckCircle2 className="h-4 w-4 text-brand-600 shrink-0" />
+                         {plan.students}
+                       </div>
+
+                       <ul className="mt-4 space-y-2 text-xs font-medium text-stone-600">
+                         <li className="flex items-center gap-2">
+                           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                           Full Access to Attendance, Timetables & Marks
+                         </li>
+                         <li className="flex items-center gap-2">
+                           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                           Student & Parent App Portals
+                         </li>
+                         <li className="flex items-center gap-2">
+                           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                           Free Instant Updates & Support
+                         </li>
+                       </ul>
+                     </div>
+
+                     <div className="mt-6 pt-4 border-t border-stone-100 text-center">
+                       <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 rounded-lg py-1 px-2 border border-amber-200/60">
+                         🎁 Sale Rate valid till {PROMO_END_DATE}
+                       </p>
                      </div>
                    </StaggerItem>
                  ))}
                </StaggerContainer>
 
-               <FadeIn direction="up" delay={0.4} className="flex justify-center w-full px-4">
-                 <Button size="lg" className="landing-hover h-auto min-h-[3.5rem] py-3 rounded-3xl sm:rounded-full bg-white px-4 sm:px-10 text-sm sm:text-base font-bold text-stone-900 hover:bg-stone-100 shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-100 whitespace-normal text-center w-full sm:w-auto" asChild>
-                   <a href="mailto:hello@nisaab360.app">Contact Sales: hello@nisaab360.app</a>
+               <FadeIn direction="up" delay={0.4} className="flex flex-col items-center justify-center w-full px-4 gap-3">
+                 <Button size="lg" className="landing-hover h-auto min-h-[3.5rem] py-3 rounded-3xl sm:rounded-full bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 px-6 sm:px-10 text-sm sm:text-base font-extrabold text-stone-950 shadow-xl shadow-amber-500/25 active:scale-100 whitespace-normal text-center w-full sm:w-auto" asChild>
+                   <a href="mailto:hello@nisaab360.app">
+                     Claim Special Offer (hello@nisaab360.app)
+                   </a>
                  </Button>
+                 <p className="text-xs font-medium text-stone-400">
+                   Regular pricing (PKR 25/student & PKR 15,000 setup) resumes after {PROMO_END_DATE}.
+                 </p>
                </FadeIn>
              </div>
           </ScaleIn>
