@@ -228,7 +228,7 @@ export default async function LandingPage() {
                  </div>
                </div>
             </div>
-          HeroFadeIn>
+          </HeroFadeIn>
         </section>
 
         {/* --- Dynamic Social Proof Marquee --- */}
