@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { classes, institutions, sections, students } from "@/db/schema";
+import { classes, sections, students } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { requireRole, getTenantContext } from "@/lib/rbac";
-import { generateStudentLoginRollNumber } from "@/lib/login-identifiers";
 import { invalidateUserValidity } from "@/lib/user";
+import { invalidateInstitutionRosterCaches } from "@/lib/redis";
 
 export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { params, session }) => {
   const { id } = await params;
@@ -43,28 +43,17 @@ export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { par
       return NextResponse.json({ error: "Class roll number is required" }, { status: 400 });
     }
 
-    const [institution] = await db.select().from(institutions).where(eq(institutions.id, tenantId)).limit(1);
     const [classRow] = await db.select().from(classes).where(and(eq(classes.id, classId), eq(classes.institutionId, tenantId))).limit(1);
     const [sectionRow] = await db.select().from(sections).where(and(eq(sections.id, sectionId), eq(sections.institutionId, tenantId))).limit(1);
-    if (!institution || !classRow || !sectionRow || sectionRow.classId !== classId) {
+    if (!classRow || !sectionRow || sectionRow.classId !== classId) {
       return NextResponse.json({ error: "Class or section not found" }, { status: 400 });
     }
-
-    const loginRollNumber = generateStudentLoginRollNumber({
-      institution,
-      classRow,
-      sectionRow,
-      yearOfJoining: student.yearOfJoining,
-      gender: student.gender,
-      classRollNumber,
-    });
 
     const [updated] = await db.update(students)
       .set({
         name: body.name,
         classId,
         sectionId,
-        loginRollNumber,
         classRollNumber,
         phone: body.phone || null
       })
@@ -104,6 +93,7 @@ export const DELETE = requireRole(["INSTITUTION"], async (req: NextRequest, { pa
     }
 
     await invalidateUserValidity("STUDENT", deleted.id);
+    await invalidateInstitutionRosterCaches(tenantId);
 
     return NextResponse.json({ message: "Student deleted successfully" });
   } catch (error) {

@@ -1,6 +1,6 @@
 import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { accountLockouts, auditLogs, superAdmins, employees, institutions, staff, students, institutionAdmins } from '@/db/schema';
+import { accountLockouts, superAdmins, employees, institutions, staff, students, institutionAdmins } from '@/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
 import { verifyPassword as verify } from '@/lib/argon2-pool';
 import { createTokens, setAuthCookies, UserRole } from '@/lib/auth';
@@ -8,7 +8,6 @@ import { JWTPayload } from '@/lib/auth-types';
 import { PlatformLoginKind, withPlatformLoginRateLimit, withRateLimit } from '@/lib/rate-limit';
 import { logAudit } from '@/lib/audit';
 import { loginSchema } from '@/lib/validators/auth';
-import { sendEmail, LoginNotificationEmail } from '@/lib/email';
 import { getUserCreatedAt } from '@/lib/user';
 
 const MAX_FAILED_LOGINS = Number(process.env.AUTH_LOCKOUT_MAX_FAILED || 5);
@@ -27,6 +26,7 @@ type LoginCandidate = {
   campus_id: number | null;
   must_change_password: boolean | null;
   account_status: string | null;
+  graduated_access_allowed: boolean | null;
   email: string | null;
   contact_email: string | null;
 };
@@ -36,7 +36,7 @@ type EmployeeLogin = { id: number; email: string; passwordHash: string; mustChan
 type InstitutionLogin = { id: number; contactEmail: string; adminPasswordHash: string; status: string };
 type InstitutionAdminLogin = { id: number; email?: string; passwordHash: string; institutionId: number };
 type StaffLogin = { id: number; email?: string; passwordHash: string; isActive: boolean; institutionId: number; campusId: number | null; mustChangePassword: boolean };
-type StudentLogin = { id: number; loginRollNumber?: string; passwordHash: string; isActive: boolean; institutionId: number; mustChangePassword: boolean };
+type StudentLogin = { id: number; loginRollNumber?: string; passwordHash: string; isActive: boolean; institutionId: number; mustChangePassword: boolean; academicStatus: 'ACTIVE' | 'GRADUATED'; graduatedAccessAllowed: boolean };
 
 async function findUnhintedLoginCandidate(loginIdentifier: string): Promise<LoginCandidate | null> {
   const result = await db.execute(sql`
@@ -47,16 +47,19 @@ async function findUnhintedLoginCandidate(loginIdentifier: string): Promise<Logi
       SELECT 'STUDENT'::text AS role, 1 AS priority, s.id, s.password_hash,
         NULL::text AS security_answer_hash, NULL::boolean AS is_super_admin,
         s.is_active, s.institution_id, NULL::integer AS campus_id,
-        s.must_change_password, NULL::text AS account_status,
+        s.must_change_password, s.academic_status::text AS account_status,
+        i3.allow_graduated_student_access AS graduated_access_allowed,
         NULL::text AS email, NULL::text AS contact_email
-      FROM students AS s CROSS JOIN login_input AS i
+      FROM students AS s
+      INNER JOIN institutions AS i3 ON i3.id = s.institution_id
+      CROSS JOIN login_input AS i
       WHERE lower(s.login_roll_number) = i.identifier
 
       UNION ALL
 
       SELECT 'STAFF'::text, 2, s.id, s.password_hash,
         NULL::text, NULL::boolean, s.is_active, s.institution_id, s.campus_id,
-        s.must_change_password, NULL::text, NULL::text, NULL::text
+        s.must_change_password, NULL::text, NULL::boolean, NULL::text, NULL::text
       FROM staff AS s CROSS JOIN login_input AS i
       WHERE lower(s.email) = i.identifier
 
@@ -64,7 +67,7 @@ async function findUnhintedLoginCandidate(loginIdentifier: string): Promise<Logi
 
       SELECT 'INSTITUTION'::text, 3, i2.id, i2.admin_password_hash,
         NULL::text, NULL::boolean, NULL::boolean, i2.id, NULL::integer,
-        NULL::boolean, i2.status::text, NULL::text, i2.contact_email::text
+        NULL::boolean, i2.status::text, NULL::boolean, NULL::text, i2.contact_email::text
       FROM institutions AS i2 CROSS JOIN login_input AS i
       WHERE lower(i2.contact_email) = i.identifier
 
@@ -72,7 +75,7 @@ async function findUnhintedLoginCandidate(loginIdentifier: string): Promise<Logi
 
       SELECT 'INSTITUTION_ADMIN'::text, 4, ia.id, ia.password_hash,
         NULL::text, NULL::boolean, NULL::boolean, ia.institution_id, NULL::integer,
-        NULL::boolean, NULL::text, NULL::text, NULL::text
+        NULL::boolean, NULL::text, NULL::boolean, NULL::text, NULL::text
       FROM institution_admins AS ia CROSS JOIN login_input AS i
       WHERE lower(ia.email) = i.identifier
 
@@ -80,7 +83,7 @@ async function findUnhintedLoginCandidate(loginIdentifier: string): Promise<Logi
 
       SELECT 'EMPLOYEE'::text, 5, e.id, e.password_hash,
         NULL::text, NULL::boolean, NULL::boolean, NULL::integer, NULL::integer,
-        e.must_change_password, NULL::text, e.email::text, NULL::text
+        e.must_change_password, NULL::text, NULL::boolean, e.email::text, NULL::text
       FROM employees AS e CROSS JOIN login_input AS i
       WHERE lower(e.email) = i.identifier
 
@@ -88,12 +91,12 @@ async function findUnhintedLoginCandidate(loginIdentifier: string): Promise<Logi
 
       SELECT 'SUPER_ADMIN'::text, 6, sa.id, sa.password_hash,
         sa.security_answer_hash, sa.is_super_admin, NULL::boolean, NULL::integer,
-        NULL::integer, NULL::boolean, NULL::text, NULL::text, NULL::text
+        NULL::integer, NULL::boolean, NULL::text, NULL::boolean, NULL::text, NULL::text
       FROM super_admins AS sa CROSS JOIN login_input AS i
       WHERE lower(sa.email) = i.identifier
     )
     SELECT role, id, password_hash, security_answer_hash, is_super_admin, is_active,
-      institution_id, campus_id, must_change_password, account_status, email, contact_email
+      institution_id, campus_id, must_change_password, account_status, graduated_access_allowed, email, contact_email
     FROM candidates
     ORDER BY priority
     LIMIT 1
@@ -177,24 +180,13 @@ function getLoginLookupRoles(roleHint?: UserRole) {
 
 async function runPostLoginSideEffects(params: {
   role: UserRole;
-  user: { id: number; email?: string; contactEmail?: string };
+  user: { id: number };
   institutionId?: number;
   ip: string;
-  userAgent: string;
 }) {
-  const { role, user, institutionId, ip, userAgent } = params;
-  const shouldSendLoginEmail = role === 'EMPLOYEE' || role === 'INSTITUTION';
+  const { role, user, institutionId, ip } = params;
 
   try {
-    const previousLogin = shouldSendLoginEmail ? await db.select({ id: auditLogs.id })
-      .from(auditLogs)
-      .where(and(
-        eq(auditLogs.actorId, user.id),
-        eq(auditLogs.actorRole, role),
-        eq(auditLogs.action, 'LOGIN')
-      ))
-      .limit(1) : [];
-
     await logAudit({
       institutionId,
       actorId: user.id,
@@ -203,24 +195,6 @@ async function runPostLoginSideEffects(params: {
       target: 'Self',
       ip,
     });
-
-    if (!shouldSendLoginEmail) return;
-
-    const loginEmail = role === 'EMPLOYEE' ? user.email : user.contactEmail;
-    const isFirstLogin = previousLogin.length === 0;
-
-    if (loginEmail) {
-      await sendEmail({
-        to: loginEmail,
-        subject: isFirstLogin ? 'New Login Detected' : 'Login Alert',
-        html: LoginNotificationEmail({
-          ip,
-          userAgent,
-          time: new Date().toISOString(),
-          isFirstLogin,
-        }),
-      });
-    }
   } catch (err) {
     console.error('Post-login side effect failed:', err);
   }
@@ -237,8 +211,22 @@ export async function POST(req: NextRequest) {
     const { emailOrUsername, password, roleHint, securityAnswer, returnTokens } = parsed.data;
     const loginIdentifier = emailOrUsername.trim().toLowerCase();
     const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';
-    const userAgent = req.headers.get('user-agent') ?? 'Unknown';
     const lookupRoles = getLoginLookupRoles(roleHint);
+
+    // Rate-limit before any DB / hash work so brute-force storms don't waste CPU.
+    const earlyPlatformKind: PlatformLoginKind | null =
+      roleHint === 'SUPER_ADMIN' ? 'super-admin'
+      : roleHint === 'EMPLOYEE' ? 'employee'
+      : null;
+    const earlyRateLimit = earlyPlatformKind
+      ? await withPlatformLoginRateLimit(req, earlyPlatformKind, loginIdentifier)
+      : await withRateLimit(req, 'auth');
+    if (!earlyRateLimit.success) {
+      return NextResponse.json(
+        { error: 'Too many login attempts. Please try again in one minute.' },
+        { status: 429 },
+      );
+    }
 
     let user: { id: number; email?: string; contactEmail?: string; isSuperAdmin?: boolean } | null = null;
     let role: UserRole | null = null;
@@ -310,6 +298,8 @@ export async function POST(req: NextRequest) {
           isActive: candidate.is_active!,
           institutionId: candidate.institution_id!,
           mustChangePassword: candidate.must_change_password!,
+          academicStatus: candidate.account_status as 'ACTIVE' | 'GRADUATED',
+          graduatedAccessAllowed: candidate.graduated_access_allowed!,
         };
       }
     } else for (const lookupRole of lookupRoles) {
@@ -380,7 +370,13 @@ export async function POST(req: NextRequest) {
           isActive: students.isActive,
           institutionId: students.institutionId,
           mustChangePassword: students.mustChangePassword,
-        }).from(students).where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`).limit(1);
+          academicStatus: students.academicStatus,
+          graduatedAccessAllowed: institutions.allowGraduatedStudentAccess,
+        })
+          .from(students)
+          .innerJoin(institutions, eq(students.institutionId, institutions.id))
+          .where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`)
+          .limit(1);
         if (rows.length > 0) {
           stu = rows[0];
           break;
@@ -399,15 +395,16 @@ export async function POST(req: NextRequest) {
       platformLoginKind = 'super-admin';
     }
 
-    const rateLimit = platformLoginKind
-      ? await withPlatformLoginRateLimit(req, platformLoginKind, loginIdentifier)
-      : await withRateLimit(req, 'auth');
-
-    if (!rateLimit.success) {
-      return NextResponse.json(
-        { error: 'Too many login attempts. Please try again in one minute.' },
-        { status: 429 },
-      );
+    // Re-check platform bucket when discovery found an admin/employee without a roleHint
+    // (early check used the generic auth bucket in that case).
+    if (platformLoginKind && !earlyPlatformKind) {
+      const platformRateLimit = await withPlatformLoginRateLimit(req, platformLoginKind, loginIdentifier);
+      if (!platformRateLimit.success) {
+        return NextResponse.json(
+          { error: 'Too many login attempts. Please try again in one minute.' },
+          { status: 429 },
+        );
+      }
     }
 
     if (admin) {
@@ -475,6 +472,9 @@ export async function POST(req: NextRequest) {
       if (!stu.isActive) {
         return NextResponse.json({ error: 'Account deactivated' }, { status: 403 });
       }
+      if (stu.academicStatus === 'GRADUATED' && !stu.graduatedAccessAllowed) {
+        return NextResponse.json({ error: 'Graduate access is restricted by your institution' }, { status: 403 });
+      }
       await assertNotLocked('STUDENT', stu.id);
       const isValid = await verify(stu.passwordHash, password);
       if (isValid) {
@@ -505,6 +505,8 @@ export async function POST(req: NextRequest) {
       mustChangePassword,
       isSuperAdmin: role === 'SUPER_ADMIN' ? user.isSuperAdmin : undefined,
       createdAt,
+      studentAcademicStatus: role === 'STUDENT' ? stu?.academicStatus : undefined,
+      graduatedStudentAccessAllowed: role === 'STUDENT' ? stu?.graduatedAccessAllowed : undefined,
     };
 
     const [{ accessToken, refreshToken }] = await Promise.all([
@@ -519,7 +521,6 @@ export async function POST(req: NextRequest) {
       user,
       institutionId,
       ip,
-      userAgent,
     }));
 
     return NextResponse.json({

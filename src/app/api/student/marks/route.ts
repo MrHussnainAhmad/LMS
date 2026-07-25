@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { marks, tests, subjects, onlineTests } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
+import { windowRange } from "@/lib/month-window";
 import { eq, and, desc, gte, lte, lt, or } from "drizzle-orm";
+
+const DEFAULT_WINDOW_MONTHS_BACK = 1; // current month + 1 prior = 2 months total
+const DEFAULT_LIMIT = 50;
 
 export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -12,42 +16,47 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
     const searchParams = req.nextUrl.searchParams;
     const paginated = ["limit", "cursor", "from", "to"].some((key) => searchParams.has(key));
 
-    // Preserve the original unlimited response for callers that do not opt in.
+    // Unpaginated callers get a bounded default window instead of an unlimited
+    // full-history scan, to keep old callers from full-scanning the table.
     if (!paginated) {
-    const formattedMarks = await getCachedOrFetch(`cache:student:marks:${session.userId}`, 60, async () => {
-      const studentMarks = await db
-        .select({
-          id: marks.id,
-          testId: marks.testId,
-          marksObtained: marks.marksObtained,
-          totalMarks: marks.totalMarks,
-          testTitle: tests.title,
-          testDate: tests.date,
-          testType: tests.type,
-          subjectName: subjects.name,
-          isOnline: onlineTests.id, // Will be non-null if online
-          onlineTestId: onlineTests.id,
-        })
-        .from(marks)
-        .innerJoin(tests, eq(marks.testId, tests.id))
-        .innerJoin(subjects, eq(tests.subjectId, subjects.id))
-        .leftJoin(onlineTests, eq(tests.id, onlineTests.testId))
-        .where(
-          and(
-            eq(marks.studentId, session.userId),
-            eq(marks.institutionId, session.institutionId!)
+      const { from, to } = windowRange(new Date(), DEFAULT_WINDOW_MONTHS_BACK);
+      const formattedMarks = await getCachedOrFetch(`cache:student:marks:${session.userId}:default`, 60, async () => {
+        const studentMarks = await db
+          .select({
+            id: marks.id,
+            testId: marks.testId,
+            marksObtained: marks.marksObtained,
+            totalMarks: marks.totalMarks,
+            testTitle: tests.title,
+            testDate: tests.date,
+            testType: tests.type,
+            subjectName: subjects.name,
+            isOnline: onlineTests.id, // Will be non-null if online
+            onlineTestId: onlineTests.id,
+          })
+          .from(marks)
+          .innerJoin(tests, eq(marks.testId, tests.id))
+          .innerJoin(subjects, eq(tests.subjectId, subjects.id))
+          .leftJoin(onlineTests, eq(tests.id, onlineTests.testId))
+          .where(
+            and(
+              eq(marks.studentId, session.userId),
+              eq(marks.institutionId, session.institutionId!),
+              gte(tests.date, from),
+              lte(tests.date, to),
+            )
           )
-        )
-        .orderBy(desc(tests.date));
+          .orderBy(desc(tests.date), desc(marks.id))
+          .limit(DEFAULT_LIMIT);
 
-      // Normalize the boolean
-      return studentMarks.map((m) => ({
-        ...m,
-        isOnline: !!m.isOnline,
-      }));
-    });
+        // Normalize the boolean
+        return studentMarks.map((m) => ({
+          ...m,
+          isOnline: !!m.isOnline,
+        }));
+      });
 
-    return NextResponse.json({ marks: formattedMarks });
+      return NextResponse.json({ marks: formattedMarks });
     }
 
     const limitValue = Number(searchParams.get("limit") ?? 50);

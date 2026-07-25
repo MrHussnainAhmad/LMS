@@ -46,6 +46,7 @@ export default async function StudentAnnouncementsPage({ searchParams }: { searc
             <Link
               key={announcement.id}
               href={`/announcements/${announcement.id}`}
+              prefetch={false}
               className={cn(
                 "block rounded-lg border bg-surface p-4 shadow-sm transition-colors hover:bg-stone-50",
                 announcement.isRead ? "border-border" : "border-brand-200 bg-brand-50/40"

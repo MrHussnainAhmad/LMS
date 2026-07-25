@@ -22,6 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       maxMarks: batchExamSubjects.maxMarks,
       subjectName: subjects.name,
       examTitle: batchExams.title,
+      examType: batchExams.type,
       className: classes.name,
       sectionName: sections.name,
     })

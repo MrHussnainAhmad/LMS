@@ -92,7 +92,7 @@ export default function StaffBatchResultsPage() {
                   )}
                 </div>
                 
-                <Link href={`/batch-results/${res.id}`} className="w-full">
+                <Link href={`/batch-results/${res.id}`} prefetch={false} className="w-full">
                   <Button variant="outline" className="w-full justify-between group">
                     View Details
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />

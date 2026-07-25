@@ -13,7 +13,11 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [student] = await db.select().from(students)
+  const [student] = await db.select({
+    id: students.id,
+    classId: students.classId,
+    sectionId: students.sectionId,
+  }).from(students)
     .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
     .limit(1);
 

@@ -27,5 +27,14 @@ export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { ses
     .set({ logoKey: resource.secure_url })
     .where(eq(institutions.id, session.userId));
 
+  try {
+    const { redis } = await import("@/lib/redis");
+    if (redis.status === "ready") {
+      await redis.del(`cache:brand:${session.userId}`);
+    }
+  } catch {
+    // Brand cache miss is acceptable until TTL
+  }
+
   return NextResponse.json({ message: "Institution logo updated" });
 });

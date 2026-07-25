@@ -2,10 +2,6 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "@/components/Providers";
 import UpdateNotifier from "@/components/UpdateNotifier";
-import { Inter, Bricolage_Grotesque } from "next/font/google";
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
-const bricolage = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-bricolage", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://nisaab360.app'),
@@ -63,7 +59,7 @@ export default function RootLayout({
     <html lang="en">
       <head>
       </head>
-      <body className={`bg-background text-foreground antialiased min-h-screen flex flex-col ${inter.variable} ${bricolage.variable}`}>
+      <body className="bg-background text-foreground antialiased min-h-screen flex flex-col">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

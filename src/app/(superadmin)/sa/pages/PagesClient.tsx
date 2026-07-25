@@ -29,21 +29,29 @@ const DEFAULT_PAGES = [
   { slug: "pricing", title: "Pricing" },
 ];
 
-export default function PagesClient({ role }: { role?: string }) {
+export default function PagesClient({
+  role,
+  initialPages,
+}: {
+  role?: string;
+  initialPages?: PageData[];
+}) {
   const availablePages = DEFAULT_PAGES.filter(p => p.slug !== "pricing" || role !== "EMPLOYEE");
+  const seededFromServer = initialPages !== undefined;
   
-  const [pages, setPages] = useState<PageData[]>([]);
+  const [pages, setPages] = useState<PageData[]>(initialPages ?? []);
   const [selectedSlug, setSelectedSlug] = useState<string>(availablePages[0].slug);
   const [content, setContent] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(!seededFromServer);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
   const currentDefaultPage = availablePages.find(p => p.slug === selectedSlug);
 
   useEffect(() => {
+    if (seededFromServer) return;
     fetchPages();
-  }, []);
+  }, [seededFromServer]);
 
   useEffect(() => {
     // When selected page changes, update the content in the editor

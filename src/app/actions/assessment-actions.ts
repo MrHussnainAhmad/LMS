@@ -20,7 +20,7 @@ import { revalidatePath } from "next/cache";
 import cloudinary from "@/lib/cloudinary";
 
 const STAFF_TEST_TYPES = new Set(["DAILY", "WEEKLY", "QUIZ"]);
-const INSTITUTION_EXAM_TYPES = new Set(["MONTHLY", "MID", "FINAL"]);
+const INSTITUTION_EXAM_TYPES = new Set(["MONTHLY", "MID", "FINAL", "PROMOTION"]);
 const MAX_SUBMISSION_BYTES = 5 * 1024 * 1024;
 const ALLOWED_SUBMISSION_FORMATS = new Set(["pdf", "docx", "jpg", "jpeg", "png", "webp"]);
 
@@ -236,7 +236,7 @@ export async function createInstitutionExamAction(formData: FormData) {
   const institutionId = session.userId;
   const classId = toNumber(formData.get("classId"), "Class");
   const type = String(formData.get("type") || "");
-  if (!INSTITUTION_EXAM_TYPES.has(type)) throw new Error("Institution exams must be Monthly, Mid, or Final");
+  if (!INSTITUTION_EXAM_TYPES.has(type)) throw new Error("Institution exams must be Monthly, Mid, Final, or Promotion");
 
   const title = String(formData.get("title") || "").trim();
   const maxMarks = Number(formData.get("maxMarks"));
@@ -259,7 +259,7 @@ export async function createInstitutionExamAction(formData: FormData) {
       subjectId,
       staffId: null,
       createdByRole: "INSTITUTION",
-      type: type as "MONTHLY" | "MID" | "FINAL",
+      type: type as "MONTHLY" | "MID" | "FINAL" | "PROMOTION",
       title,
       maxMarks,
       date: examSchedule.dates[index],
@@ -269,14 +269,8 @@ export async function createInstitutionExamAction(formData: FormData) {
 
   await createExamAnnouncement(institutionId, classId, title, type, examSchedule.startDate, examSchedule.endDate, validSubjectIds.length, "created");
 
-  revalidatePath("/institution/timetable");
   revalidatePath("/institution/exams");
-  revalidatePath("/announcements");
-  revalidatePath("/staff/dashboard");
-  revalidatePath("/staff/marks");
   revalidatePath("/staff/exams");
-  revalidatePath("/student/dashboard");
-  revalidatePath("/student/marks");
   revalidatePath("/student/exams");
 }
 
@@ -298,7 +292,7 @@ export async function updateInstitutionExamAction(formData: FormData) {
   const examIds = parseExamIds(formData.get("examIds"));
   const classId = toNumber(formData.get("classId"), "Class");
   const type = String(formData.get("type") || "");
-  if (!INSTITUTION_EXAM_TYPES.has(type)) throw new Error("Institution exams must be Monthly, Mid, or Final");
+  if (!INSTITUTION_EXAM_TYPES.has(type)) throw new Error("Institution exams must be Monthly, Mid, Final, or Promotion");
 
   const title = String(formData.get("title") || "").trim();
   const maxMarks = Number(formData.get("maxMarks"));
@@ -330,7 +324,7 @@ export async function updateInstitutionExamAction(formData: FormData) {
       subjectId,
       staffId: null,
       createdByRole: "INSTITUTION" as const,
-      type: type as "MONTHLY" | "MID" | "FINAL",
+      type: type as "MONTHLY" | "MID" | "FINAL" | "PROMOTION",
       title,
       maxMarks,
       date: examSchedule.dates[index],
@@ -360,14 +354,8 @@ export async function updateInstitutionExamAction(formData: FormData) {
 
   await createExamAnnouncement(institutionId, classId, title, type, examSchedule.startDate, examSchedule.endDate, validSubjectIds.length, "updated");
 
-  revalidatePath("/institution/timetable");
   revalidatePath("/institution/exams");
-  revalidatePath("/announcements");
-  revalidatePath("/staff/dashboard");
-  revalidatePath("/staff/marks");
   revalidatePath("/staff/exams");
-  revalidatePath("/student/dashboard");
-  revalidatePath("/student/marks");
   revalidatePath("/student/exams");
 }
 
@@ -403,14 +391,8 @@ export async function deleteInstitutionExamAction(formData: FormData) {
     );
   }
 
-  revalidatePath("/institution/timetable");
   revalidatePath("/institution/exams");
-  revalidatePath("/announcements");
-  revalidatePath("/staff/dashboard");
-  revalidatePath("/staff/marks");
   revalidatePath("/staff/exams");
-  revalidatePath("/student/dashboard");
-  revalidatePath("/student/marks");
   revalidatePath("/student/exams");
 }
 

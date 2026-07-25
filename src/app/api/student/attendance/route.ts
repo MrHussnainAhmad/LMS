@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { attendances, sections } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
+import { windowRange } from "@/lib/month-window";
 import { eq, and, desc, gte, lte, lt } from "drizzle-orm";
+
+const DEFAULT_WINDOW_MONTHS_BACK = 1; // current month + 1 prior = 2 months total
+const DEFAULT_LIMIT = 50;
 
 export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -12,28 +16,33 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
     const searchParams = req.nextUrl.searchParams;
     const paginated = ["limit", "cursor", "from", "to"].some((key) => searchParams.has(key));
 
-    // Preserve the original unlimited response for callers that do not opt in.
+    // Unpaginated callers get a bounded default window instead of an unlimited
+    // full-history scan, to keep old callers from full-scanning the table.
     if (!paginated) {
-    const studentAttendance = await getCachedOrFetch(`cache:student:attendance:${session.userId}`, 120, async () => {
-      return await db
-        .select({
-          id: attendances.id,
-          date: attendances.date,
-          status: attendances.status,
-          sectionName: sections.name,
-        })
-        .from(attendances)
-        .innerJoin(sections, eq(attendances.sectionId, sections.id))
-        .where(
-          and(
-            eq(attendances.studentId, session.userId),
-            eq(attendances.institutionId, session.institutionId!)
+      const { from, to } = windowRange(new Date(), DEFAULT_WINDOW_MONTHS_BACK);
+      const studentAttendance = await getCachedOrFetch(`cache:student:attendance:${session.userId}:default`, 120, async () => {
+        return await db
+          .select({
+            id: attendances.id,
+            date: attendances.date,
+            status: attendances.status,
+            sectionName: sections.name,
+          })
+          .from(attendances)
+          .innerJoin(sections, eq(attendances.sectionId, sections.id))
+          .where(
+            and(
+              eq(attendances.studentId, session.userId),
+              eq(attendances.institutionId, session.institutionId!),
+              gte(attendances.date, from),
+              lte(attendances.date, to),
+            )
           )
-        )
-        .orderBy(desc(attendances.date));
-    });
+          .orderBy(desc(attendances.date))
+          .limit(DEFAULT_LIMIT);
+      });
 
-    return NextResponse.json({ attendance: studentAttendance });
+      return NextResponse.json({ attendance: studentAttendance });
     }
 
     const limitValue = Number(searchParams.get("limit") ?? 50);

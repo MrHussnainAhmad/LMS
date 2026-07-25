@@ -6,27 +6,61 @@ import { db } from "@/db";
 import { employees, institutions, students, systemSettings } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { getVisibleAnnouncements } from "@/lib/announcements";
+import { getCachedOrFetch } from "@/lib/redis";
 import { count, desc, eq, isNull } from "drizzle-orm";
 import { Building2, CheckCircle, FileCheck, Users } from "lucide-react";
 import { redirect } from "next/navigation";
 
+/**
+ * Super-admin dashboard counts.
+ *
+ * Cache key: cache:sa:dashboard:overview
+ * Scope: platform-wide (no tenant)
+ * TTL: 60s
+ * Invalidation: TTL-only (registration volume is low relative to TTL)
+ * Acceptable staleness: ~60s for aggregate counts
+ * Fallback: Valkey miss → Postgres
+ */
 export default async function SuperAdminDashboard() {
   const session = await getSession();
   if (!session || session.role !== "SUPER_ADMIN") redirect("/login/super-admin");
 
-  const [totalInstRows, pendingInstRows, activeEmpRows, totalStudRows, recentAnnouncements, recentRegistrations, settingsData] = await Promise.all([
-    db.select({ value: count() }).from(institutions),
-    db.select({ value: count() }).from(institutions).where(eq(institutions.status, "PENDING")),
-    db.select({ value: count() }).from(employees).where(isNull(employees.deletedAt)),
-    db.select({ value: count() }).from(students),
+  const [overview, recentAnnouncements, recentRegistrations, settingsData] = await Promise.all([
+    getCachedOrFetch("cache:sa:dashboard:overview", 60, async () => {
+      const [totalInstRows, pendingInstRows, activeEmpRows, totalStudRows] = await Promise.all([
+        db.select({ value: count() }).from(institutions),
+        db.select({ value: count() }).from(institutions).where(eq(institutions.status, "PENDING")),
+        db.select({ value: count() }).from(employees).where(isNull(employees.deletedAt)),
+        db.select({ value: count() }).from(students),
+      ]);
+      return {
+        totalInsts: totalInstRows[0]?.value ?? 0,
+        pendingInsts: pendingInstRows[0]?.value ?? 0,
+        activeEmps: activeEmpRows[0]?.value ?? 0,
+        totalStuds: totalStudRows[0]?.value ?? 0,
+      };
+    }),
     getVisibleAnnouncements(session, 4),
-    db.select().from(institutions).orderBy(desc(institutions.createdAt)).limit(5),
-    db.select().from(systemSettings).limit(1),
+    getCachedOrFetch("cache:sa:dashboard:recent-regs", 60, async () =>
+      db
+        .select({
+          id: institutions.id,
+          name: institutions.name,
+          type: institutions.type,
+          city: institutions.city,
+          country: institutions.country,
+          status: institutions.status,
+          createdAt: institutions.createdAt,
+        })
+        .from(institutions)
+        .orderBy(desc(institutions.createdAt))
+        .limit(5)
+    ),
+    getCachedOrFetch("cache:sa:system-settings", 300, async () =>
+      db.select({ mobileAppVersion: systemSettings.mobileAppVersion }).from(systemSettings).limit(1)
+    ),
   ]);
-  const totalInsts = totalInstRows[0];
-  const pendingInsts = pendingInstRows[0];
-  const activeEmps = activeEmpRows[0];
-  const totalStuds = totalStudRows[0];
+
   const currentAppVersion = settingsData[0]?.mobileAppVersion || "1.0.0";
 
   return (
@@ -39,10 +73,10 @@ export default async function SuperAdminDashboard() {
       <MobileAppVersionUpdater currentVersion={currentAppVersion} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Total Institutions" value={totalInsts.value.toString()} icon={Building2} />
-        <StatCard title="Pending Verifications" value={pendingInsts.value.toString()} icon={FileCheck} />
-        <StatCard title="Active Employees" value={activeEmps.value.toString()} icon={Users} />
-        <StatCard title="Total Students" value={totalStuds.value.toString()} icon={CheckCircle} />
+        <StatCard title="Total Institutions" value={overview.totalInsts.toString()} icon={Building2} />
+        <StatCard title="Pending Verifications" value={overview.pendingInsts.toString()} icon={FileCheck} />
+        <StatCard title="Active Employees" value={overview.activeEmps.toString()} icon={Users} />
+        <StatCard title="Total Students" value={overview.totalStuds.toString()} icon={CheckCircle} />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
@@ -63,14 +97,20 @@ export default async function SuperAdminDashboard() {
                     </div>
                     <div>
                       <p className="font-semibold text-brand-900">{inst.name}</p>
-                      <p className="text-sm text-stone-500">{inst.city}, {inst.country} - {inst.type}</p>
+                      <p className="text-sm text-stone-500">
+                        {inst.city}, {inst.country} - {inst.type}
+                      </p>
                     </div>
                   </div>
-                  <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                    inst.status === "PENDING" ? "bg-warning/20 text-yellow-700" :
-                    inst.status === "APPROVED" ? "bg-success/20 text-emerald-700" :
-                    "bg-danger/20 text-red-700"
-                  }`}>
+                  <span
+                    className={`px-2.5 py-1 text-xs font-medium rounded-full ${
+                      inst.status === "PENDING"
+                        ? "bg-warning/20 text-yellow-700"
+                        : inst.status === "APPROVED"
+                          ? "bg-success/20 text-emerald-700"
+                          : "bg-danger/20 text-red-700"
+                    }`}
+                  >
                     {inst.status}
                   </span>
                 </div>

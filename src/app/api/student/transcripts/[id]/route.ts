@@ -16,6 +16,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const rawResults = await db.select({
       examTitle: batchExams.title,
+      examType: batchExams.type,
+      officialPublishedAt: batchExams.officialPublishedAt,
       examCreatedAt: batchExams.createdAt,
       subjectName: subjects.name,
       maxMarks: batchExamSubjects.maxMarks,
@@ -40,13 +42,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const now = new Date();
     const allPublished = rawResults.every(r => r.isPublished || now > r.reviewDeadline);
+    const isOfficiallyPublished = rawResults[0].examType !== "PROMOTION" || Boolean(rawResults[0].officialPublishedAt);
     
-    if (!allPublished) {
+    if (!allPublished || !isOfficiallyPublished) {
       return NextResponse.json({ error: "Transcript is pending review" }, { status: 400 });
     }
 
     return NextResponse.json({
       examTitle: rawResults[0].examTitle,
+      examType: rawResults[0].examType,
       examCreatedAt: rawResults[0].examCreatedAt,
       results: rawResults.map(r => ({
         subjectName: r.subjectName,

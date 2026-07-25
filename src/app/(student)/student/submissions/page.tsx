@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { assignments, students, subjects, submissions } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { studentPlacementColumns } from "@/lib/student-columns";
 import { and, eq, isNull, or } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { SubmissionsClient } from "./SubmissionsClient";
@@ -9,8 +10,12 @@ export default async function StudentSubmissionsPage() {
   const session = await getSession();
   if (!session || session.role !== "STUDENT" || !session.institutionId) redirect("/login");
 
-  const [student] = await db.select().from(students).where(eq(students.id, session.userId)).limit(1);
-  if (!student || student.institutionId !== session.institutionId) redirect("/login");
+  const [student] = await db
+    .select(studentPlacementColumns)
+    .from(students)
+    .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
+    .limit(1);
+  if (!student) redirect("/login");
 
   const rows = await db.select({
     assignment: assignments,

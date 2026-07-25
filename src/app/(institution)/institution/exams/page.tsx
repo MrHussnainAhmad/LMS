@@ -1,16 +1,15 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InstitutionExamForm } from "@/components/exams/InstitutionExamForm";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { deleteInstitutionExamAction, updateInstitutionExamAction } from "@/app/actions/assessment-actions";
 import { db } from "@/db";
-import { classes, subjects, tests, sections } from "@/db/schema";
+import { classes, subjects, tests } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { CalendarDays, ClipboardList, Pencil, Trash2 } from "lucide-react";
 import { redirect } from "next/navigation";
-import { PublishResultsForm } from "@/components/institution/PublishResultsForm";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ExamsPageTabs } from "./ExamsPageTabs";
 
 function formatExamDate(value: string) {
   return new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, {
@@ -39,10 +38,11 @@ export default async function InstitutionExamsPage() {
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) redirect("/login");
 
   const institutionId = session.institutionId || session.userId;
-  const [allClasses, allSubjects, allSections, examRows] = await Promise.all([
+  // Sections are only needed by the Publish Results tab; fetched lazily on the client
+  // once that tab is opened so the Timetable tab doesn't force that extra query.
+  const [allClasses, allSubjects, examRows] = await Promise.all([
     db.select().from(classes).where(eq(classes.institutionId, institutionId)).orderBy(classes.level),
     db.select().from(subjects).where(eq(subjects.institutionId, institutionId)),
-    db.select().from(sections).where(eq(sections.institutionId, institutionId)),
     db.select({
       id: tests.id,
       title: tests.title,
@@ -61,7 +61,7 @@ export default async function InstitutionExamsPage() {
       .where(and(
         eq(tests.institutionId, institutionId),
         eq(tests.createdByRole, "INSTITUTION"),
-        inArray(tests.type, ["MONTHLY", "MID", "FINAL"])
+        inArray(tests.type, ["MONTHLY", "MID", "FINAL", "PROMOTION"])
       ))
       .orderBy(desc(tests.createdAt)),
   ]);
@@ -115,13 +115,11 @@ export default async function InstitutionExamsPage() {
         <p className="text-stone-500 mt-1">Create institution exams for classes. Monthly, Mid, and Final exams are scheduled here without questions or MCQs.</p>
       </div>
 
-      <Tabs defaultValue="timetable" className="w-full">
-        <TabsList className="mb-4">
-          <TabsTrigger value="timetable">Exam Timetable</TabsTrigger>
-          <TabsTrigger value="publish">Publish Results</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="timetable" className="grid gap-6 lg:grid-cols-[420px_1fr]">
+      <ExamsPageTabs
+        classes={allClasses}
+        subjects={allSubjects}
+        timetable={
+          <>
           <Card className="h-fit">
             <CardHeader className="border-b border-border bg-stone-50/70">
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -198,7 +196,7 @@ export default async function InstitutionExamsPage() {
                                   hiddenFields={{ examIds: group.examIds.join(",") }}
                                   initialValues={{
                                     classId: group.classId,
-                                    type: group.type as "MONTHLY" | "MID" | "FINAL",
+                                    type: group.type as "MONTHLY" | "MID" | "FINAL" | "PROMOTION",
                                     title: group.title,
                                     maxMarks: group.maxMarks,
                                     date: group.startDate,
@@ -252,18 +250,9 @@ export default async function InstitutionExamsPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="publish">
-          <div className="max-w-4xl">
-            <PublishResultsForm
-              classes={allClasses}
-              sections={allSections}
-              subjects={allSubjects}
-            />
-          </div>
-        </TabsContent>
-      </Tabs>
+          </>
+        }
+      />
     </div>
   );
 }

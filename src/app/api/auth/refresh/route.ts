@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { clearAuthCookies, createAccessToken, setAuthCookies } from '@/lib/auth';
 import type { JWTPayload, UserRole } from '@/lib/auth';
 import { cookies } from 'next/headers';
+import { withRateLimit } from '@/lib/rate-limit';
 
 async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPayload | null> {
   switch (role) {
@@ -67,13 +68,21 @@ async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPay
         institutionId: students.institutionId,
         mustChangePassword: students.mustChangePassword,
         isActive: students.isActive,
+        academicStatus: students.academicStatus,
+        graduatedAccessAllowed: institutions.allowGraduatedStudentAccess,
         createdAt: students.createdAt,
-      }).from(students).where(eq(students.id, userId)).limit(1);
-      return user?.isActive ? {
+      })
+        .from(students)
+        .innerJoin(institutions, eq(students.institutionId, institutions.id))
+        .where(eq(students.id, userId))
+        .limit(1);
+      return user?.isActive && (user.academicStatus !== 'GRADUATED' || user.graduatedAccessAllowed) ? {
         userId,
         role,
         institutionId: user.institutionId,
         mustChangePassword: user.mustChangePassword,
+        studentAcademicStatus: user.academicStatus,
+        graduatedStudentAccessAllowed: user.graduatedAccessAllowed,
         createdAt: user.createdAt.toISOString(),
       } : null;
     }
@@ -96,6 +105,11 @@ async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPay
 }
 
 export async function POST(req: NextRequest) {
+  const rateLimit = await withRateLimit(req, 'refresh');
+  if (!rateLimit.success) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   const cookieStore = await cookies();
   const body = await req.json().catch(() => ({}));
   const refreshToken = typeof body.refreshToken === 'string'

@@ -18,6 +18,7 @@ export default function BatchResultDetailsPage({ params }: { params: Promise<{ i
   const [isPublishing, setIsPublishing] = useState(false);
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [promotionMessage, setPromotionMessage] = useState("");
 
   const fetchDetails = () => {
     fetch(`/api/staff/batch-results/${resolvedParams.id}`)
@@ -80,6 +81,15 @@ export default function BatchResultDetailsPage({ params }: { params: Promise<{ i
       const d = await res.json();
       if (!res.ok) throw new Error(d.error);
       setIsPublishModalOpen(false);
+      if (d.autoPromotion?.promoted) {
+        setPromotionMessage(`Promotion completed: ${d.autoPromotion.promotedCount} promoted, ${d.autoPromotion.retainedCount} retained${d.autoPromotion.graduatedCount ? `, ${d.autoPromotion.graduatedCount} graduated` : ""}.`);
+      } else if (d.autoPromotion?.reason === "awaiting_subjects") {
+        setPromotionMessage("This subject is published. Promotion will run automatically when every subject result is published.");
+      } else if (d.autoPromotion?.reason === "missing_grading_scale") {
+        setPromotionMessage("Promotion could not run: the institution must configure a grading scale first.");
+      } else if (d.autoPromotion?.reason && d.autoPromotion.reason !== "not_promotion") {
+        setPromotionMessage(`Promotion could not run: ${d.autoPromotion.reason.replaceAll("_", " ")}.`);
+      }
       fetchDetails();
     } catch (err: any) {
       alert(err.message);
@@ -98,7 +108,7 @@ export default function BatchResultDetailsPage({ params }: { params: Promise<{ i
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-4">
-        <Link href="/batch-results">
+        <Link href="/batch-results" prefetch={false}>
           <Button variant="outline" size="icon" className="h-8 w-8">
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -135,6 +145,8 @@ export default function BatchResultDetailsPage({ params }: { params: Promise<{ i
           )}
         </div>
       </div>
+
+      {promotionMessage && <div className="rounded-md border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">{promotionMessage}</div>}
 
       <Card>
         <div className="overflow-x-auto">

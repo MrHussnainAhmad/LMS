@@ -150,6 +150,20 @@ export async function updateInstitutionStatusAction(institutionId: number, newSt
     await invalidateUserValidity("INSTITUTION", institutionId);
   }
 
+  try {
+    const { redis } = await import("@/lib/redis");
+    if (redis.status === "ready") {
+      await redis.del(
+        "cache:sa:dashboard:overview",
+        "cache:sa:dashboard:recent-regs",
+        "cache:employee:dashboard:overview",
+        "cache:employee:dashboard:pending-list",
+      );
+    }
+  } catch {
+    // TTL covers eventual consistency
+  }
+
   revalidatePath("/sa/institutions");
   revalidatePath("/sa/dashboard");
   revalidatePath("/employee/institutions");

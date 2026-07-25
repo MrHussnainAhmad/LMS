@@ -11,7 +11,9 @@ export interface SidebarItem {
   label: string;
   href: string;
   icon: LucideIcon;
-  availabilityKey?: "studentTests" | "examTimetable" | "feeVouchers";
+  /** @deprecated Nav no longer hides links via business-data probes. Kept optional for call-site compat. */
+  availabilityKey?: "activeStudent" | "studentTests" | "examTimetable" | "feeVouchers";
+  /** @deprecated Leave badges are loaded on the Leaves page, not on shell mount. */
   notificationKey?: "staffLeaves" | "institutionLeaves";
   hasNotification?: boolean;
 }
@@ -33,6 +35,7 @@ export function Sidebar({ items, role, brand, onClose, isCollapsed = false, onTo
       <div className={cn("h-16 flex items-center justify-between border-b border-border", isCollapsed ? "px-4 lg:justify-center" : "px-6")}>
         <Link
           href={brand.href}
+          prefetch={false}
           className={cn("flex min-w-0 items-center gap-2", isCollapsed && "lg:justify-center")}
           onClick={onClose}
           title={brand.name}
@@ -61,6 +64,7 @@ export function Sidebar({ items, role, brand, onClose, isCollapsed = false, onTo
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               onClick={onClose}
               title={isCollapsed ? item.label : undefined}
               className={cn(

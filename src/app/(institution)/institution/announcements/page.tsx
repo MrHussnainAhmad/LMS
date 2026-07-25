@@ -98,7 +98,7 @@ export default async function InstitutionAnnouncementsPage({ searchParams }: { s
                     {paginatedAnnouncements.map((ann) => (
                       <tr key={ann.id} className="hover:bg-stone-50/50 transition-colors">
                         <td className="px-6 py-4 font-semibold text-brand-950">
-                          <Link href={`/announcements/${ann.id}`} className="hover:text-brand-700 hover:underline">
+                          <Link href={`/announcements/${ann.id}`} prefetch={false} className="hover:text-brand-700 hover:underline">
                             {ann.title}
                           </Link>
                         </td>

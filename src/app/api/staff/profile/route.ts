@@ -23,9 +23,14 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
 
     if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
-    const allCampuses = await db.select({ id: campuses.id, name: campuses.name })
-      .from(campuses)
-      .where(eq(campuses.institutionId, session.institutionId));
+    // Campuses only matter for the "request profile change" flow — skip the
+    // extra query unless the client explicitly asks for them.
+    const includeCampuses = req.nextUrl.searchParams.get("campuses") === "1";
+    const allCampuses = includeCampuses
+      ? await db.select({ id: campuses.id, name: campuses.name })
+        .from(campuses)
+        .where(eq(campuses.institutionId, session.institutionId))
+      : [];
 
     return NextResponse.json({ profile, campuses: allCampuses });
   } catch (error) {

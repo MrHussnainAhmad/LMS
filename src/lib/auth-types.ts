@@ -7,6 +7,8 @@ export interface JWTPayload {
   campusId?: number | null;
   mustChangePassword?: boolean;
   isSuperAdmin?: boolean;
+  studentAcademicStatus?: 'ACTIVE' | 'GRADUATED';
+  graduatedStudentAccessAllowed?: boolean;
   /** ISO timestamp of when the user account was created — used to scope notifications. */
   createdAt?: string;
 }

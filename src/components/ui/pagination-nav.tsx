@@ -45,6 +45,7 @@ export function PaginationNav({ currentPage, totalPages, basePath }: PaginationN
       <div className="flex items-center gap-1">
         <Link
           href={pageHref(basePath, previousPage)}
+          prefetch={false}
           aria-disabled={previousDisabled}
           aria-label="Previous page"
           className={cn(
@@ -63,6 +64,7 @@ export function PaginationNav({ currentPage, totalPages, basePath }: PaginationN
             <Link
               key={item}
               href={pageHref(basePath, item)}
+              prefetch={false}
               aria-current={item === currentPage ? "page" : undefined}
               className={cn(
                 "inline-flex h-9 min-w-9 items-center justify-center rounded-md px-3 text-sm font-semibold transition-colors",
@@ -77,6 +79,7 @@ export function PaginationNav({ currentPage, totalPages, basePath }: PaginationN
         ))}
         <Link
           href={pageHref(basePath, nextPage)}
+          prefetch={false}
           aria-disabled={nextDisabled}
           aria-label="Next page"
           className={cn(

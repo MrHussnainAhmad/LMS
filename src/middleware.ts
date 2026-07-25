@@ -13,7 +13,7 @@ export async function middleware(request: NextRequest) {
 
   const session = await getSessionEdge(request.cookies);
   const path = request.nextUrl.pathname;
-  const hostname = request.headers.get('host') || '';
+  const hostname = (request.headers.get('host') || '').split(':')[0].toLowerCase();
 
   let rewritePath: string | null = null;
   const isStaticOrApi = path.match(/\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf)$/i) || path.startsWith('/api');
@@ -49,7 +49,7 @@ export async function middleware(request: NextRequest) {
       virtualPath === '/login/super-admin')
   ) {
     return keepWebSessionAlive(
-      NextResponse.redirect(new URL(getDashboardPath(session.role, request), request.url)),
+      NextResponse.redirect(new URL(getDashboardPath(session, request), request.url)),
       request
     );
   }
@@ -59,7 +59,7 @@ export async function middleware(request: NextRequest) {
     if (!session) return NextResponse.redirect(new URL('/login', request.url));
     if (!session.mustChangePassword) {
       return keepWebSessionAlive(
-        NextResponse.redirect(new URL(getDashboardPath(session.role, request), request.url)),
+        NextResponse.redirect(new URL(getDashboardPath(session, request), request.url)),
         request
       );
     }
@@ -106,6 +106,23 @@ export async function middleware(request: NextRequest) {
     if (!session || session.role !== 'STUDENT') {
       return NextResponse.redirect(new URL('/login', request.url));
     }
+    if (session.studentAcademicStatus === 'GRADUATED') {
+      const allowedGraduatePaths = [
+        '/student/dashboard',
+        '/student/profile',
+        '/student/transcripts',
+        '/student/attendance',
+      ];
+      const isAllowedGraduatePath = allowedGraduatePaths.some((allowedPath) => (
+        virtualPath === allowedPath || virtualPath.startsWith(`${allowedPath}/`)
+      ));
+      if (!isAllowedGraduatePath) {
+        return keepWebSessionAlive(
+          NextResponse.redirect(new URL('/student/profile', request.url)),
+          request
+        );
+      }
+    }
   }
 
   const requestHeaders = new Headers(request.headers);
@@ -126,13 +143,25 @@ export async function middleware(request: NextRequest) {
   return session ? keepWebSessionAlive(nextRes, request) : nextRes;
 }
 
-function getDashboardPath(role: string, request: NextRequest) {
+function getDashboardPath(session: { role: string; studentAcademicStatus?: string }, request: NextRequest) {
   const host = request.headers.get('host') || 'nisaab360.app';
-  const isLocal = host.includes('localhost');
+  const isLocal = host.toLowerCase().includes('localhost');
   const protocol = isLocal ? 'http://' : 'https://';
-  const baseHost = isLocal ? 'localhost:3000' : 'nisaab360.app';
+  const hostPort = host.match(/:(\d+)$/)?.[0] || '';
+  const baseHost = isLocal ? `localhost${hostPort}` : 'nisaab360.app';
+  if (isLocal) {
+    switch (session.role) {
+      case 'SUPER_ADMIN': return '/sa/dashboard';
+      case 'EMPLOYEE': return '/employee/dashboard';
+      case 'INSTITUTION':
+      case 'INSTITUTION_ADMIN': return '/institution/dashboard';
+      case 'STAFF': return '/staff/dashboard';
+      case 'STUDENT': return '/student/dashboard';
+      default: return '/login';
+    }
+  }
   
-  switch (role) {
+  switch (session.role) {
     case 'SUPER_ADMIN': return `${protocol}sa.${baseHost}/dashboard`;
     case 'EMPLOYEE': return `${protocol}employee.${baseHost}/dashboard`;
     case 'INSTITUTION':
@@ -144,10 +173,22 @@ function getDashboardPath(role: string, request: NextRequest) {
 }
 
 function keepWebSessionAlive(response: NextResponse, request: NextRequest) {
+  // Sliding cookie rewrite is only needed near expiry. Rewriting Set-Cookie on
+  // every HTML navigation is expensive and unnecessary while the session has
+  // more than ~2 days remaining.
+  const sessionExpRaw = request.cookies.get('session_exp')?.value;
+  if (sessionExpRaw) {
+    const remainingMs = parseInt(sessionExpRaw, 10) - Date.now();
+    if (Number.isFinite(remainingMs) && remainingMs > 2 * 24 * 60 * 60 * 1000) {
+      return response;
+    }
+  }
+
   const accessToken = request.cookies.get('access_token')?.value;
   const refreshToken = request.cookies.get('refresh_token')?.value;
-  const secure = process.env.NODE_ENV === 'production';
-  const domain = process.env.NODE_ENV === 'production' ? '.nisaab360.app' : undefined;
+  const host = (request.headers.get('host') || '').split(':')[0].toLowerCase();
+  const domain = host === 'nisaab360.app' || host.endsWith('.nisaab360.app') ? '.nisaab360.app' : undefined;
+  const secure = domain !== undefined && (request.headers.get('x-forwarded-proto') === 'https' || request.nextUrl.protocol === 'https:');
 
   if (accessToken) {
     response.cookies.set('access_token', accessToken, {
@@ -170,6 +211,15 @@ function keepWebSessionAlive(response: NextResponse, request: NextRequest) {
       domain,
     });
   }
+
+  response.cookies.set('session_exp', String(Date.now() + WEB_SESSION_MAX_AGE * 1000), {
+    httpOnly: false,
+    secure,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: WEB_SESSION_MAX_AGE,
+    domain,
+  });
 
   return response;
 }

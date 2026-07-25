@@ -1,12 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { db } from "@/db";
-import { classes, marks, sections, staffAssignments, students, subjects, tests } from "@/db/schema";
-import { createStaffAssessmentAction, enterMarksManuallyAction, uploadMarksCsvAction } from "@/app/actions/assessment-actions";
+import { classes, marks, sections, staffAssignments, subjects, tests } from "@/db/schema";
+import { createStaffAssessmentAction, uploadMarksCsvAction } from "@/app/actions/assessment-actions";
 import { getSession } from "@/lib/auth";
-import { and, eq } from "drizzle-orm";
-import { ClipboardList, FileEdit, PenLine, Upload } from "lucide-react";
+import { and, count, eq, inArray, isNull, or } from "drizzle-orm";
+import { ClipboardList, FileEdit, Upload } from "lucide-react";
 import { redirect } from "next/navigation";
+import { TestMarksEntry } from "./TestMarksEntry";
 
 export default async function StaffMarksPage() {
   const session = await getSession();
@@ -35,51 +36,40 @@ export default async function StaffMarksPage() {
     ).values()
   );
 
-  const classIds = new Set(assignedSlots.map((slot) => slot.classId));
-  const subjectIds = new Set(assignedSlots.map((slot) => slot.subjectId).filter((id): id is number => Boolean(id)));
+  const classIds = Array.from(new Set(assignedSlots.map((slot) => slot.classId)));
+  const sectionIds = Array.from(new Set(assignedSlots.map((slot) => slot.sectionId)));
+  const subjectIds = Array.from(new Set(assignedSlots.map((slot) => slot.subjectId).filter((id): id is number => Boolean(id))));
 
-  const [allInstitutionTests, markRows, classStudents] = await Promise.all([
-    db.select({
-      test: tests,
-      subjectName: subjects.name,
-      className: classes.name,
-      sectionName: sections.name,
-    })
-      .from(tests)
-      .innerJoin(classes, eq(tests.classId, classes.id))
-      .leftJoin(sections, eq(tests.sectionId, sections.id))
-      .leftJoin(subjects, eq(tests.subjectId, subjects.id))
-      .where(eq(tests.institutionId, session.institutionId)),
-    db.select().from(marks).where(eq(marks.institutionId, session.institutionId)),
-    db.select().from(students).where(eq(students.institutionId, session.institutionId)),
-  ]);
+  const eligibleTestRows = sectionIds.length === 0 ? [] : await db.select({
+    test: tests,
+    subjectName: subjects.name,
+    className: classes.name,
+    sectionName: sections.name,
+  })
+    .from(tests)
+    .innerJoin(classes, eq(tests.classId, classes.id))
+    .leftJoin(sections, eq(tests.sectionId, sections.id))
+    .leftJoin(subjects, eq(tests.subjectId, subjects.id))
+    .where(and(eq(tests.institutionId, session.institutionId), or(
+      and(eq(tests.createdByRole, "STAFF"), eq(tests.staffId, session.userId), inArray(tests.sectionId, sectionIds)),
+      and(eq(tests.createdByRole, "INSTITUTION"), inArray(tests.classId, classIds), inArray(tests.subjectId, subjectIds), or(inArray(tests.sectionId, sectionIds), isNull(tests.sectionId)))
+    )));
 
-  const eligibleTests = allInstitutionTests.filter(({ test }) => {
-    if (test.createdByRole === "STAFF") return test.staffId === session.userId;
-    return classIds.has(test.classId) && subjectIds.has(test.subjectId);
-  });
+  const eligibleTests = eligibleTestRows;
+  const testIds = eligibleTests.map(({ test }) => test.id);
+
+  // Aggregate-only: per-student rosters and existing marks are intentionally not
+  // loaded here to avoid pulling every student/mark row on each page visit.
+  // TestMarksEntry fetches the scoped roster (+ any existing marks) lazily when
+  // a staff member opens manual entry for a specific test.
+  const uploadedCountRows = testIds.length ? await db.select({
+    testId: marks.testId,
+    uploadedCount: count(),
+  }).from(marks).where(and(eq(marks.institutionId, session.institutionId), inArray(marks.testId, testIds))).groupBy(marks.testId) : [];
 
   const marksByTest = new Map<number, number>();
-  const marksByTestAndStudent = new Map<string, number>();
-  for (const row of markRows) {
-    marksByTest.set(row.testId, (marksByTest.get(row.testId) || 0) + 1);
-    marksByTestAndStudent.set(`${row.testId}:${row.studentId}`, row.marksObtained);
-  }
-
-  const studentsByClass = new Map<number, typeof students.$inferSelect[]>();
-  for (const student of classStudents) {
-    const existing = studentsByClass.get(student.classId) || [];
-    existing.push(student);
-    studentsByClass.set(student.classId, existing);
-  }
-
-  for (const list of studentsByClass.values()) {
-    list.sort((a, b) => {
-      const numA = parseInt(a.classRollNumber, 10);
-      const numB = parseInt(b.classRollNumber, 10);
-      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-      return a.classRollNumber.localeCompare(b.classRollNumber);
-    });
+  for (const row of uploadedCountRows) {
+    marksByTest.set(row.testId, row.uploadedCount);
   }
 
   return (
@@ -164,7 +154,6 @@ export default async function StaffMarksPage() {
             ) : (
               <div className="divide-y divide-border">
                 {eligibleTests.map(({ test, className, sectionName, subjectName }) => {
-                  const studentsForTest = studentsByClass.get(test.classId) || [];
                   return (
                   <div key={test.id} className="p-5 grid gap-4 xl:grid-cols-[1fr_360px] xl:items-center">
                     <div>
@@ -178,48 +167,13 @@ export default async function StaffMarksPage() {
                     </div>
 
                     <div className="space-y-4 xl:col-span-2">
-                      <details className="rounded-md border border-border bg-surface">
-                        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-brand-900 flex items-center gap-2">
-                          <PenLine className="h-4 w-4" />
-                          Write marks student by student
-                        </summary>
-                        <form action={enterMarksManuallyAction} className="border-t border-border p-4 space-y-4">
-                          <input type="hidden" name="testId" value={test.id} />
-                          <input type="hidden" name="totalMarks" value={test.maxMarks} />
-                          {studentsForTest.length === 0 ? (
-                            <p className="text-sm text-stone-500">No students found for this class.</p>
-                          ) : (
-                            <div className="max-h-80 overflow-y-auto rounded-md border border-border">
-                              <div className="grid grid-cols-[110px_1fr_130px] gap-3 bg-stone-50 px-3 py-2 text-xs font-semibold text-stone-600">
-                                <span>Roll No.</span>
-                                <span>Student</span>
-                                <span>Marks</span>
-                              </div>
-                              {studentsForTest.map((student) => (
-                                <div key={student.id} className="grid grid-cols-[110px_1fr_130px] gap-3 items-center border-t border-border px-3 py-2">
-                                  <input type="hidden" name="rollNumber" value={student.classRollNumber} />
-                                  <span className="text-sm font-medium text-brand-900">{student.classRollNumber}</span>
-                                  <span className="text-sm text-stone-700 truncate">{student.name}</span>
-                                  <input
-                                    name="marksObtained"
-                                    type="number"
-                                    min="0"
-                                    max={test.maxMarks}
-                                    step="0.01"
-                                    required
-                                    defaultValue={marksByTestAndStudent.get(`${test.id}:${student.id}`) ?? ""}
-                                    className="w-full rounded-md border border-border px-2 py-1.5 text-sm"
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <SubmitButton>
-                            <PenLine className="h-4 w-4 mr-2" />
-                            Save Manual Marks
-                          </SubmitButton>
-                        </form>
-                      </details>
+                      <TestMarksEntry
+                        testId={test.id}
+                        classId={test.classId}
+                        maxMarks={Number(test.maxMarks)}
+                        fixedSectionId={test.sectionId}
+                        sectionOptions={sectionOptions}
+                      />
 
                       <form action={uploadMarksCsvAction} className="flex flex-col sm:flex-row gap-2 rounded-md border border-border bg-stone-50 p-3">
                         <input type="hidden" name="testId" value={test.id} />

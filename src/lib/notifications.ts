@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { expoPushTickets, notifications, staff, students } from "@/db/schema";
 import { resolveAnnouncementRecipients } from "@/lib/announcements";
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, eq, inArray, lt, or, sql, SQL } from "drizzle-orm";
 import { after } from "next/server";
 
 type NotificationType = 'ANNOUNCEMENT' | 'EXAM_TIMETABLE' | 'ASSIGNMENT' | 'TEST' | 'MARKS' | 'ATTENDANCE' | 'GENERAL' | 'LEAVE_REQUEST' | 'DIARY';
@@ -47,8 +47,47 @@ type PushDeliverySummary = {
   ticketErrors: number;
 };
 
+const NOTIFICATION_INSERT_CHUNK_SIZE = 200;
+const ANNOUNCEMENT_RECIPIENT_CHUNK_SIZE = 2000;
+/** Cap parallel post-response push jobs so after() storms can't pin CPU/RAM. */
+const MAX_CONCURRENT_PUSH_JOBS = 2;
+
+let activePushJobs = 0;
+const pendingPushJobs: Array<() => void> = [];
+
+function acquirePushSlot(): Promise<void> {
+  if (activePushJobs < MAX_CONCURRENT_PUSH_JOBS) {
+    activePushJobs += 1;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    pendingPushJobs.push(() => {
+      activePushJobs += 1;
+      resolve();
+    });
+  });
+}
+
+function releasePushSlot() {
+  activePushJobs = Math.max(0, activePushJobs - 1);
+  const next = pendingPushJobs.shift();
+  if (next) next();
+}
+
+function debugLog(message: string, meta?: Record<string, unknown>) {
+  if (process.env.DEBUG_NOTIFICATIONS === "1") {
+    console.info(message, meta);
+  }
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 export async function createNotification(payload: NotificationPayload) {
-  console.info("Creating single notification", {
+  debugLog("Creating single notification", {
     type: payload.type,
     userRole: payload.userRole,
     userId: payload.userId,
@@ -61,7 +100,7 @@ export async function createNotification(payload: NotificationPayload) {
 }
 
 export async function createBulkNotifications(payloads: NotificationPayload[]) {
-  console.info("Creating bulk notifications", {
+  debugLog("Creating bulk notifications", {
     payloads: payloads.length,
     types: Array.from(new Set(payloads.map((payload) => payload.type))),
     studentRecipients: payloads.filter((payload) => payload.userRole === "STUDENT").length,
@@ -69,9 +108,13 @@ export async function createBulkNotifications(payloads: NotificationPayload[]) {
   });
 
   if (payloads.length === 0) return;
-  
-  const insertedRows = await db.insert(notifications).values(payloads).returning({ id: notifications.id });
-  console.info("Bulk notification rows inserted", {
+
+  const insertedRows: { id: number }[] = [];
+  for (const chunk of chunkArray(payloads, NOTIFICATION_INSERT_CHUNK_SIZE)) {
+    const chunkRows = await db.insert(notifications).values(chunk).returning({ id: notifications.id });
+    insertedRows.push(...chunkRows);
+  }
+  debugLog("Bulk notification rows inserted", {
     requested: payloads.length,
     inserted: insertedRows.length,
   });
@@ -86,10 +129,13 @@ export async function createBulkNotifications(payloads: NotificationPayload[]) {
 
 function scheduleExpoPushNotifications(deliveries: NotificationDelivery[]) {
   after(async () => {
+    await acquirePushSlot();
     try {
       await sendExpoPushNotifications(deliveries);
     } catch (error) {
       console.error("Expo push delivery failed:", error);
+    } finally {
+      releasePushSlot();
     }
   });
 }
@@ -195,7 +241,7 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]): Prom
       });
     }
 
-    console.info("Expo push token lookup", {
+    debugLog("Expo push token lookup", {
       studentRecipients: studentIds.length,
       studentTokens: Array.from(studentPushState.values()).filter((state) => Boolean(state.token)).length,
       staffRecipients: staffIds.length,
@@ -246,7 +292,7 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]): Prom
     summary.targets = targets.length;
 
     if (targets.length === 0) {
-      console.info("Expo push delivery summary", summary);
+      debugLog("Expo push delivery summary", summary);
       return summary;
     }
 
@@ -297,7 +343,7 @@ async function sendExpoPushNotifications(payloads: NotificationDelivery[]): Prom
       }
     }
 
-    console.info("Expo push delivery summary", summary);
+    debugLog("Expo push delivery summary", summary);
   } catch (err) {
     console.error("Error preparing push notifications:", err);
   }
@@ -323,7 +369,7 @@ export async function createDiaryNotifications({
     .from(students)
     .where(and(eq(students.institutionId, institutionId), eq(students.classId, classId)));
 
-  console.info("Processing diary notification", {
+  debugLog("Processing diary notification", {
     classId,
     studentRecipients: recipients.length,
   });
@@ -364,7 +410,7 @@ export async function createOnlineTestNotifications({
     .from(students)
     .where(and(eq(students.institutionId, institutionId), eq(students.sectionId, sectionId)));
 
-  console.info("Processing online test notification", {
+  debugLog("Processing online test notification", {
     onlineTestId,
     sectionId,
     studentRecipients: recipients.length,
@@ -435,45 +481,70 @@ export async function checkExpoPushReceipts() {
 
   const body = await response.json();
   const receipts = (body.data || {}) as Record<string, ExpoReceipt>;
-  let delivered = 0;
-  let failed = 0;
-  let tokensCleaned = 0;
 
-  await Promise.all(pendingTickets.map(async (ticket) => {
+  const deliveredIds: number[] = [];
+  const failedReasons = new Map<number, string>();
+  const studentTokenClears: { id: number; token: string }[] = [];
+  const staffTokenClears: { id: number; token: string }[] = [];
+
+  for (const ticket of pendingTickets) {
     const receipt = receipts[ticket.ticketId];
-    if (!receipt) return;
+    if (!receipt) continue;
 
     if (receipt.status === 'ok') {
-      delivered++;
-      await db.update(expoPushTickets)
-        .set({ status: 'DELIVERED', checkedAt: new Date() })
-        .where(eq(expoPushTickets.id, ticket.id));
-      return;
+      deliveredIds.push(ticket.id);
+      continue;
     }
 
-    failed++;
     const reason = receipt.details?.error || receipt.message || 'Unknown receipt error';
-    await db.update(expoPushTickets)
-      .set({ status: 'FAILED', error: reason, checkedAt: new Date() })
-      .where(eq(expoPushTickets.id, ticket.id));
-
+    failedReasons.set(ticket.id, reason);
     console.error("Expo Push Receipt Error:", { token: ticket.token, reason });
 
     if (receipt.details?.error === 'DeviceNotRegistered') {
-      tokensCleaned++;
-      if (ticket.userRole === 'STUDENT') {
-        await db.update(students)
-          .set({ expoPushToken: null })
-          .where(and(eq(students.id, ticket.userId), eq(students.expoPushToken, ticket.token)));
-      } else if (ticket.userRole === 'STAFF') {
-        await db.update(staff)
-          .set({ expoPushToken: null })
-          .where(and(eq(staff.id, ticket.userId), eq(staff.expoPushToken, ticket.token)));
-      }
+      if (ticket.userRole === 'STUDENT') studentTokenClears.push({ id: ticket.userId, token: ticket.token });
+      else if (ticket.userRole === 'STAFF') staffTokenClears.push({ id: ticket.userId, token: ticket.token });
     }
-  }));
+  }
 
-  return { ticketsChecked: pendingTickets.length, tokensCleaned, errors: failed };
+  const now = new Date();
+
+  // Batch the ticket status updates instead of one round trip per ticket.
+  if (deliveredIds.length > 0) {
+    await db.update(expoPushTickets)
+      .set({ status: 'DELIVERED', checkedAt: now })
+      .where(inArray(expoPushTickets.id, deliveredIds));
+  }
+
+  if (failedReasons.size > 0) {
+    const errorCase = errorReasonCase(failedReasons);
+    await db.update(expoPushTickets)
+      .set({ status: 'FAILED', error: errorCase, checkedAt: now })
+      .where(inArray(expoPushTickets.id, Array.from(failedReasons.keys())));
+  }
+
+  // Batch token-clear updates per role instead of one Promise per unregistered device.
+  await clearStaleExpoTokens(students, studentTokenClears);
+  await clearStaleExpoTokens(staff, staffTokenClears);
+
+  return {
+    ticketsChecked: pendingTickets.length,
+    tokensCleaned: studentTokenClears.length + staffTokenClears.length,
+    errors: failedReasons.size,
+  };
+}
+
+function errorReasonCase(reasons: Map<number, string>): SQL {
+  const chunks: SQL[] = [sql`CASE ${expoPushTickets.id}`];
+  for (const [id, reason] of reasons) chunks.push(sql`WHEN ${id} THEN ${reason}`);
+  chunks.push(sql`ELSE ${expoPushTickets.error} END`);
+  return sql.join(chunks, sql` `);
+}
+
+async function clearStaleExpoTokens(table: typeof students | typeof staff, entries: { id: number; token: string }[]) {
+  if (entries.length === 0) return;
+  const condition = or(...entries.map(({ id, token }) => and(eq(table.id, id), eq(table.expoPushToken, token))));
+  if (!condition) return;
+  await db.update(table).set({ expoPushToken: null }).where(condition);
 }
 
 export async function processAnnouncementNotification(announcementId: number) {
@@ -486,7 +557,7 @@ export async function processAnnouncementNotification(announcementId: number) {
     return;
   }
 
-  console.info("Processing announcement notification", {
+  debugLog("Processing announcement notification", {
     announcementId: announcement.id,
     targetType: announcement.targetType,
     targetCampusId: announcement.targetCampusId,
@@ -498,29 +569,37 @@ export async function processAnnouncementNotification(announcementId: number) {
     senderId: announcement.senderId,
   });
 
-  const payloads: NotificationPayload[] = [];
   const type = announcement.title.toLowerCase().includes("timetable") ? 'EXAM_TIMETABLE' : 'ANNOUNCEMENT';
+  const message = announcement.content.substring(0, 100) + (announcement.content.length > 100 ? '...' : '');
 
   const recipients = await resolveAnnouncementRecipients(announcement);
-  recipients.forEach((recipient) => {
-    payloads.push({
-      institutionId: announcement.institutionId,
-      userRole: recipient.userRole,
-      userId: recipient.userId,
-      type,
-      title: announcement.title,
-      message: announcement.content.substring(0, 100) + (announcement.content.length > 100 ? '...' : ''),
-      referenceId: announcement.id,
-    });
+  const toPayload = (recipient: { userRole: NotificationPayload["userRole"]; userId: number }): NotificationPayload => ({
+    institutionId: announcement.institutionId,
+    userRole: recipient.userRole,
+    userId: recipient.userId,
+    type,
+    title: announcement.title,
+    message,
+    referenceId: announcement.id,
   });
 
-  const insertedRows = await createBulkNotifications(payloads);
-  console.info("Announcement notification fan-out", {
+  let notificationsCreated = 0;
+  if (recipients.length > ANNOUNCEMENT_RECIPIENT_CHUNK_SIZE) {
+    for (const recipientChunk of chunkArray(recipients, ANNOUNCEMENT_RECIPIENT_CHUNK_SIZE)) {
+      const inserted = await createBulkNotifications(recipientChunk.map(toPayload));
+      notificationsCreated += inserted?.length ?? 0;
+    }
+  } else {
+    const inserted = await createBulkNotifications(recipients.map(toPayload));
+    notificationsCreated = inserted?.length ?? 0;
+  }
+
+  debugLog("Announcement notification fan-out", {
     announcementId: announcement.id,
     targetType: announcement.targetType,
     senderRole: announcement.senderRole,
     senderId: announcement.senderId,
-    recipients: payloads.length,
-    notificationsCreated: insertedRows?.length ?? 0,
+    recipients: recipients.length,
+    notificationsCreated,
   });
 }

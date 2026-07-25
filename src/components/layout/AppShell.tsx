@@ -5,88 +5,65 @@ import { Sidebar, SidebarItem } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { ShellBrand } from "./BrandMark";
 import { cn } from "@/lib/utils";
+import { clearShellClientCache, writeShellClientCache, shellCacheKey } from "@/lib/shell-client-cache";
 
 interface AppShellProps {
   children: React.ReactNode;
   sidebarItems: SidebarItem[];
   userRole: string;
+  /** Optional stable ids for scoped client brand cache (safe metadata only). */
+  userId?: number;
+  institutionId?: number | null;
+  /** When provided by an RSC layout, skip the /api/me/brand client round-trip. */
+  initialBrand?: ShellBrand;
 }
 
-type NavAvailability = Partial<Record<NonNullable<SidebarItem["availabilityKey"] | SidebarItem["notificationKey"]>, boolean>>;
+const DEFAULT_BRAND: ShellBrand = {
+  name: "Nisaab360",
+  logoKey: null,
+  href: "/",
+  isInstitutionBrand: false,
+};
 
-export function AppShell({ children, sidebarItems, userRole }: AppShellProps) {
+export function AppShell({
+  children,
+  sidebarItems,
+  userRole,
+  userId,
+  institutionId,
+  initialBrand,
+}: AppShellProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [navAvailability, setNavAvailability] = useState<NavAvailability>({});
-  const [brand, setBrand] = useState<ShellBrand>({
-    name: "Nisaab360",
-    logoKey: null,
-    href: "/",
-    isInstitutionBrand: false,
-  });
+  const [brand] = useState<ShellBrand>(() => initialBrand ?? DEFAULT_BRAND);
 
   React.useEffect(() => {
-    let ignore = false;
-
-    fetch("/api/me/brand")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: ShellBrand | null) => {
-        if (!ignore && data) {
-          setBrand(data);
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
-  React.useEffect(() => {
-    let ignore = false;
-
-    fetch("/api/me/nav-availability")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: NavAvailability | null) => {
-        if (!ignore && data) {
-          setNavAvailability(data);
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
-  const visibleSidebarItems = sidebarItems
-    .map((item) => ({
-      ...item,
-      hasNotification: item.notificationKey ? navAvailability[item.notificationKey] : item.hasNotification,
-    }))
-    .filter((item) => (
-      !item.availabilityKey || navAvailability[item.availabilityKey] === true
-    ));
+    if (!initialBrand || userId == null) return;
+    writeShellClientCache(
+      shellCacheKey({ role: userRole, userId, institutionId, key: "brand" }),
+      initialBrand
+    );
+  }, [initialBrand, userId, institutionId, userRole]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-brand-950/40 backdrop-blur-sm lg:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
-      <div className={cn(
-        "fixed inset-y-0 left-0 z-50 transform bg-surface border-r border-border transition-all duration-200 ease-in-out lg:static lg:translate-x-0",
-        isSidebarCollapsed ? "lg:w-20" : "lg:w-64",
-        "w-64",
-        isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
+      <div
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 transform bg-surface border-r border-border transition-all duration-200 ease-in-out lg:static lg:translate-x-0",
+          isSidebarCollapsed ? "lg:w-20" : "lg:w-64",
+          "w-64",
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
         <Sidebar
-          items={visibleSidebarItems}
+          items={sidebarItems}
           role={userRole}
           brand={brand}
           onClose={() => setIsSidebarOpen(false)}
@@ -95,14 +72,16 @@ export function AppShell({ children, sidebarItems, userRole }: AppShellProps) {
         />
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Topbar onMenuClick={() => setIsSidebarOpen(true)} role={userRole} brand={brand} />
-        
+        <Topbar
+          onMenuClick={() => setIsSidebarOpen(true)}
+          role={userRole}
+          brand={brand}
+          onLogoutStart={clearShellClientCache}
+        />
+
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto w-full h-full">
-            {children}
-          </div>
+          <div className="mx-auto w-full h-full">{children}</div>
         </main>
       </div>
     </div>

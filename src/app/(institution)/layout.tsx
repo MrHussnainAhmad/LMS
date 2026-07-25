@@ -3,6 +3,8 @@ import { getSession } from "@/lib/auth";
 import { db } from "@/db";
 import { institutionOwners } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { getCachedOrFetch } from "@/lib/redis";
+import { getShellBrandForSession } from "@/lib/shell-brand";
 import ClientLayout from "./client-layout";
 import { OwnerOnboardingForm } from "@/components/institution/OwnerOnboardingForm";
 
@@ -12,22 +14,42 @@ export default async function InstitutionLayoutServer({
   children: React.ReactNode;
 }) {
   const session = await getSession();
-  
+
   if (!session) {
     redirect("/login");
   }
 
-  // Allow INSTITUTION_ADMIN to bypass owner onboarding, 
-  // but block them if owner hasn't onboarded yet? Actually, admins shouldn't exist if owner hasn't onboarded.
+  const institutionId = session.institutionId || session.userId;
+
   if (session.role === "INSTITUTION") {
-    // Check if owner details are filled
-    const owner = await db.select().from(institutionOwners).where(eq(institutionOwners.institutionId, session.userId)).limit(1);
-    
-    if (owner.length === 0) {
-      // Return onboarding form instead of children
+    const hasOwner = await getCachedOrFetch(
+      `cache:institution:owner-exists:${session.userId}`,
+      300,
+      async () => {
+        const [owner] = await db
+          .select({ id: institutionOwners.id })
+          .from(institutionOwners)
+          .where(eq(institutionOwners.institutionId, session.userId))
+          .limit(1);
+        return { exists: Boolean(owner) };
+      }
+    );
+
+    if (!hasOwner.exists) {
       return <OwnerOnboardingForm />;
     }
   }
 
-  return <ClientLayout role={session.role as "INSTITUTION" | "INSTITUTION_ADMIN"}>{children}</ClientLayout>;
+  const brand = await getShellBrandForSession(session);
+
+  return (
+    <ClientLayout
+      role={session.role as "INSTITUTION" | "INSTITUTION_ADMIN"}
+      userId={session.userId}
+      institutionId={institutionId}
+      initialBrand={brand}
+    >
+      {children}
+    </ClientLayout>
+  );
 }

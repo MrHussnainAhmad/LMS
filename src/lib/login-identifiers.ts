@@ -3,13 +3,6 @@ type InstitutionLike = {
   username: string;
 };
 
-type ClassLike = {
-  name: string;
-};
-
-type SectionLike = {
-  name: string;
-};
 
 function appDomain() {
   return (process.env.NEXT_PUBLIC_APP_DOMAIN || "myapp.pk").trim();
@@ -19,41 +12,22 @@ function cleanAlphaNumeric(value: string) {
   return value.replace(/[^a-z0-9]/gi, "");
 }
 
-function sectionCode(sectionName: string) {
-  const tokens = sectionName.match(/[a-z0-9]+/gi) || [];
-  const compact = cleanAlphaNumeric(sectionName).toUpperCase();
-
-  return (tokens.at(-1) || compact).toUpperCase();
-}
-
 export function generateStudentLoginRollNumber({
   institution,
-  classRow,
-  sectionRow,
   yearOfJoining,
-  gender,
-  classRollNumber,
+  admissionSequence,
 }: {
   institution: InstitutionLike;
-  classRow: ClassLike;
-  sectionRow: SectionLike;
   yearOfJoining: number;
-  gender: string;
-  classRollNumber: string;
+  admissionSequence: number;
 }) {
   const typeLetter = institution.type.charAt(0).toUpperCase();
   const yearLastTwo = yearOfJoining.toString().slice(-2);
-  const genderCode = gender === "MALE" ? "M" : gender === "FEMALE" ? "F" : "";
-  const classNumberMatch = classRow.name.match(/\d+/);
-  const classNumber = classNumberMatch ? classNumberMatch[0] : cleanAlphaNumeric(classRow.name).substring(0, 3).toUpperCase();
-  const section = sectionCode(sectionRow.name);
 
   if (!typeLetter) throw new Error("Institution type is required to generate a student login ID");
-  if (!classNumber) throw new Error("Class name must contain at least one letter or number");
-  if (!section) throw new Error("Section name must contain at least one letter or number");
-  if (!genderCode) throw new Error("Gender must be MALE or FEMALE to generate a student login ID");
+  if (!Number.isInteger(admissionSequence) || admissionSequence < 1 || admissionSequence > 99_999_999) throw new Error("Invalid admission sequence");
 
-  return `${typeLetter}${yearLastTwo}${genderCode}${classNumber}${section}${classRollNumber}@${institution.username}.${appDomain()}`;
+  return `${typeLetter}${yearLastTwo}-${String(admissionSequence).padStart(8, "0")}@${institution.username}.${appDomain()}`;
 }
 
 export function generateStaffEmail({

@@ -9,6 +9,45 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
+    const assignmentIdParam = req.nextUrl.searchParams.get("assignmentId");
+    if (assignmentIdParam) {
+      const assignmentId = Number(assignmentIdParam);
+      if (!Number.isInteger(assignmentId) || assignmentId <= 0) {
+        return NextResponse.json({ error: "Invalid assignmentId" }, { status: 400 });
+      }
+
+      const [assignment] = await db.select({
+        id: assignments.id, classId: assignments.classId, sectionId: assignments.sectionId, dueAt: assignments.dueAt,
+      }).from(assignments)
+        .where(and(eq(assignments.id, assignmentId), eq(assignments.staffId, session.userId), eq(assignments.institutionId, session.institutionId)))
+        .limit(1);
+      if (!assignment) return NextResponse.json({ error: "Assignment not found" }, { status: 404 });
+
+      // Detail view for a single assignment (submitted + pending rosters) — loaded lazily
+      // by the client only when the staff member expands this assignment's details.
+      const [submittedRows, roster] = await Promise.all([
+        db.select({
+          submissionId: submissions.id, studentId: students.id, studentName: students.name,
+          rollNumber: students.classRollNumber, fileKey: submissions.fileKey, submittedAt: submissions.createdAt,
+        }).from(submissions).innerJoin(students, eq(submissions.studentId, students.id))
+          .where(and(eq(submissions.institutionId, session.institutionId), eq(submissions.assignmentId, assignmentId))),
+        db.select({ id: students.id, name: students.name, classRollNumber: students.classRollNumber })
+          .from(students)
+          .where(and(
+            eq(students.institutionId, session.institutionId),
+            eq(students.classId, assignment.classId),
+            ...(assignment.sectionId ? [eq(students.sectionId, assignment.sectionId)] : []),
+          )),
+      ]);
+
+      const submittedIds = new Set(submittedRows.map((row) => row.studentId));
+      const submittedStudents = submittedRows.map((row) => ({ ...row, isLate: new Date(row.submittedAt) > new Date(assignment.dueAt) }));
+      const pendingStudents = roster.filter((student) => !submittedIds.has(student.id))
+        .map((student) => ({ studentId: student.id, studentName: student.name, rollNumber: student.classRollNumber }));
+
+      return NextResponse.json({ submittedStudents, pendingStudents });
+    }
+
     const view = req.nextUrl.searchParams.get("view");
     const sectionIdParam = req.nextUrl.searchParams.get("sectionId");
     if (view || sectionIdParam) {
@@ -74,154 +113,7 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
       return NextResponse.json({ assignments: responseAssignments, sectionOptions, subjectOptions, page: { limit, nextCursor: hasMore && last ? Buffer.from(JSON.stringify({ createdAt: last.createdAt, id: last.id })).toString("base64url") : null } });
     }
 
-    // 1. Get assigned slots for dropdowns
-    const assignedSlotsRaw = await db.select({
-      sectionId: sections.id,
-      sectionName: sections.name,
-      classId: classes.id,
-      className: classes.name,
-      subjectId: subjects.id,
-      subjectName: subjects.name,
-    })
-      .from(staffAssignments)
-      .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
-      .innerJoin(classes, eq(sections.classId, classes.id))
-      .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-      .where(and(eq(staffAssignments.staffId, session.userId), eq(staffAssignments.institutionId, session.institutionId)));
-
-    // Extract unique sections
-    const sectionOptionsMap = new Map();
-    assignedSlotsRaw.forEach(slot => {
-      if (!sectionOptionsMap.has(slot.sectionId)) {
-        sectionOptionsMap.set(slot.sectionId, {
-          id: slot.sectionId,
-          name: slot.sectionName,
-          classId: slot.classId,
-          className: slot.className
-        });
-      }
-    });
-    const sectionOptions = Array.from(sectionOptionsMap.values());
-
-    // Extract unique subjects
-    const subjectOptionsMap = new Map();
-    assignedSlotsRaw.forEach(slot => {
-      if (slot.subjectId && slot.subjectName) {
-        if (!subjectOptionsMap.has(slot.subjectId)) {
-          subjectOptionsMap.set(slot.subjectId, {
-            id: slot.subjectId,
-            name: slot.subjectName
-          });
-        }
-      }
-    });
-    const subjectOptions = Array.from(subjectOptionsMap.values());
-
-    // 2. Fetch created assignments
-    const createdAssignments = await db.select({
-      id: assignments.id,
-      title: assignments.title,
-      description: assignments.description,
-      referenceFileUrl: assignments.referenceFileUrl,
-      referenceFileName: assignments.referenceFileName,
-      dueAt: assignments.dueAt,
-      classId: assignments.classId,
-      sectionId: assignments.sectionId,
-      subjectId: assignments.subjectId,
-      className: classes.name,
-      sectionName: sections.name,
-      subjectName: subjects.name,
-    })
-      .from(assignments)
-      .innerJoin(classes, eq(assignments.classId, classes.id))
-      .leftJoin(sections, eq(assignments.sectionId, sections.id))
-      .leftJoin(subjects, eq(assignments.subjectId, subjects.id))
-      .where(and(eq(assignments.staffId, session.userId), eq(assignments.institutionId, session.institutionId)))
-      .orderBy(desc(assignments.createdAt));
-
-    // 3. Fetch submissions and students to attach to assignments
-    const detailedSubmissions = await db.select({
-      submissionId: submissions.id,
-      assignmentId: submissions.assignmentId,
-      studentId: students.id,
-      studentName: students.name,
-      rollNumber: students.classRollNumber,
-      fileKey: submissions.fileKey,
-      submittedAt: submissions.createdAt
-    })
-      .from(submissions)
-      .innerJoin(students, eq(submissions.studentId, students.id))
-      .where(eq(submissions.institutionId, session.institutionId));
-
-    const studentRows = await db.select({
-      id: students.id,
-      name: students.name,
-      classId: students.classId,
-      sectionId: students.sectionId,
-      classRollNumber: students.classRollNumber
-    }).from(students).where(eq(students.institutionId, session.institutionId));
-
-    const studentsByClass = new Map<number, typeof studentRows>();
-    for (const student of studentRows) {
-      const existing = studentsByClass.get(student.classId) || [];
-      existing.push(student);
-      studentsByClass.set(student.classId, existing);
-    }
-
-    for (const list of studentsByClass.values()) {
-      list.sort((a, b) => {
-        const numA = parseInt(a.classRollNumber, 10);
-        const numB = parseInt(b.classRollNumber, 10);
-        if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-        return a.classRollNumber.localeCompare(b.classRollNumber);
-      });
-    }
-
-    const submissionsByAssignment = new Map<number, typeof detailedSubmissions>();
-    for (const sub of detailedSubmissions) {
-      const existing = submissionsByAssignment.get(sub.assignmentId) || [];
-      existing.push(sub);
-      submissionsByAssignment.set(sub.assignmentId, existing);
-    }
-
-    for (const list of submissionsByAssignment.values()) {
-      list.sort((a, b) => {
-        const numA = parseInt(a.rollNumber as any, 10);
-        const numB = parseInt(b.rollNumber as any, 10);
-        if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-        return String(a.rollNumber).localeCompare(String(b.rollNumber));
-      });
-    }
-
-    const assignmentsWithDetails = createdAssignments.map(assignment => {
-      const assignmentSubmissions = submissionsByAssignment.get(assignment.id) || [];
-      
-      const submittedStudentIds = new Set(assignmentSubmissions.map(s => s.studentId));
-      
-      const targetStudents = (studentsByClass.get(assignment.classId) || [])
-        .filter(student => !assignment.sectionId || student.sectionId === assignment.sectionId);
-      
-      const pendingStudents = targetStudents.filter(student => !submittedStudentIds.has(student.id));
-
-      return {
-        ...assignment,
-        submittedStudents: assignmentSubmissions.map(s => ({
-          ...s,
-          isLate: new Date(s.submittedAt) > new Date(assignment.dueAt)
-        })),
-        pendingStudents: pendingStudents.map(s => ({
-          studentId: s.id,
-          studentName: s.name,
-          rollNumber: s.classRollNumber
-        }))
-      };
-    });
-
-    return NextResponse.json({ 
-      assignments: assignmentsWithDetails,
-      sectionOptions,
-      subjectOptions
-    });
+    return NextResponse.json({ error: "Use ?view=metadata or ?sectionId=… to fetch assignments" }, { status: 400 });
   } catch (error) {
     console.error("Error fetching staff assignments:", error);
     return NextResponse.json({ error: "Failed to fetch assignments" }, { status: 500 });

@@ -15,26 +15,57 @@ export default async function SAInstitutionDetailPage({ params }: { params: Prom
     notFound();
   }
 
-  const [institution] = await db.select().from(institutions).where(eq(institutions.id, institutionId)).limit(1);
+  const [institution] = await db.select({
+    id: institutions.id,
+    name: institutions.name,
+    username: institutions.username,
+    type: institutions.type,
+    status: institutions.status,
+    city: institutions.city,
+    country: institutions.country,
+    address: institutions.address,
+    contactEmail: institutions.contactEmail,
+    contactPhone: institutions.contactPhone,
+    registrationNumber: institutions.registrationNumber,
+    createdAt: institutions.createdAt,
+  }).from(institutions).where(eq(institutions.id, institutionId)).limit(1);
   if (!institution) {
     notFound();
   }
 
-  const [owner] = await db.select().from(institutionOwners).where(eq(institutionOwners.institutionId, institutionId)).limit(1);
-
-  const [studentsCount] = await db.select({ value: count() }).from(students).where(eq(students.institutionId, institutionId));
-  const [staffCount] = await db.select({ value: count() }).from(staff).where(eq(staff.institutionId, institutionId));
-  const [classesCount] = await db.select({ value: count() }).from(classes).where(eq(classes.institutionId, institutionId));
-  const [sectionsCount] = await db.select({ value: count() }).from(sections).where(eq(sections.institutionId, institutionId));
-
-  const institutionClasses = await db.select({ name: classes.name }).from(classes).where(eq(classes.institutionId, institutionId));
-  const institutionSections = await db.select({ name: sections.name }).from(sections).where(eq(sections.institutionId, institutionId));
+  const [
+    ownerRows,
+    studentsCountRows,
+    staffCountRows,
+    classesCountRows,
+    sectionsCountRows,
+    institutionClasses,
+    institutionSections,
+  ] = await Promise.all([
+    db.select({
+      name: institutionOwners.name,
+      gender: institutionOwners.gender,
+      email: institutionOwners.email,
+      contactNumber: institutionOwners.contactNumber,
+    }).from(institutionOwners).where(eq(institutionOwners.institutionId, institutionId)).limit(1),
+    db.select({ value: count() }).from(students).where(eq(students.institutionId, institutionId)),
+    db.select({ value: count() }).from(staff).where(eq(staff.institutionId, institutionId)),
+    db.select({ value: count() }).from(classes).where(eq(classes.institutionId, institutionId)),
+    db.select({ value: count() }).from(sections).where(eq(sections.institutionId, institutionId)),
+    db.select({ name: classes.name }).from(classes).where(eq(classes.institutionId, institutionId)),
+    db.select({ name: sections.name }).from(sections).where(eq(sections.institutionId, institutionId)),
+  ]);
+  const owner = ownerRows[0];
+  const studentsCount = studentsCountRows[0];
+  const staffCount = staffCountRows[0];
+  const classesCount = classesCountRows[0];
+  const sectionsCount = sectionsCountRows[0];
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <Link href="/sa/institutions" className="text-sm text-stone-500 hover:text-brand-600 transition-colors">
+            <Link href="/sa/institutions" prefetch={false} className="text-sm text-stone-500 hover:text-brand-600 transition-colors">
               &larr; Back to Institutions
             </Link>
           </div>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { tickets, ticketHistory } from "@/db/schema";
 import { eq, and, desc, lt, or } from "drizzle-orm";
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSessionFromRequest, getLightSessionFromRequest } from "@/lib/auth";
 import { z } from "zod";
 
 const createTicketSchema = z.object({
@@ -34,7 +34,7 @@ function encodeTicketsCursor({ createdAt, id }: TicketsCursor) {
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getSessionFromRequest(req);
+    const user = await getLightSessionFromRequest(req);
     if (!user || (user.role !== "STUDENT" && user.role !== "STAFF")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -59,7 +59,13 @@ export async function GET(req: NextRequest) {
       if (cursorCondition) conditions.push(cursorCondition);
     }
 
-    const ticketPage = await db.select()
+    const ticketPage = await db.select({
+      id: tickets.id,
+      title: tickets.title,
+      description: tickets.description,
+      status: tickets.status,
+      createdAt: tickets.createdAt,
+    })
       .from(tickets)
       .where(and(...conditions))
       .orderBy(desc(tickets.createdAt), desc(tickets.id))

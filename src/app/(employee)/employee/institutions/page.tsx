@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { institutions } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Building2, FileSearch } from "lucide-react";
 import { getSession } from "@/lib/auth";
@@ -9,15 +9,40 @@ import { updateInstitutionStatusAction, deleteInstitutionAction } from "@/app/ac
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
-export default async function EmployeeVerificationQueuePage() {
+const STATUS_FILTERS = [
+  { value: "PENDING", label: "Pending" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "REJECTED", label: "Rejected" },
+  { value: "ALL", label: "All" },
+] as const;
+type StatusFilter = typeof STATUS_FILTERS[number]["value"];
+
+export default async function EmployeeVerificationQueuePage({ searchParams }: { searchParams: { status?: string } }) {
   const session = await getSession();
   if (!session || session.role !== "EMPLOYEE") {
     redirect("/login");
   }
 
-  const allInstitutions = await db.select()
+  const status: StatusFilter = STATUS_FILTERS.some((f) => f.value === searchParams.status)
+    ? (searchParams.status as StatusFilter)
+    : "PENDING";
+
+  // Default to PENDING applications only — the queue employees actually need to
+  // act on — instead of loading every institution regardless of status.
+  const allInstitutions = await db.select({
+    id: institutions.id,
+    name: institutions.name,
+    username: institutions.username,
+    type: institutions.type,
+    city: institutions.city,
+    country: institutions.country,
+    status: institutions.status,
+    createdAt: institutions.createdAt,
+  })
     .from(institutions)
+    .where(status === "ALL" ? undefined : eq(institutions.status, status))
     .orderBy(desc(institutions.createdAt));
 
   return (
@@ -31,10 +56,27 @@ export default async function EmployeeVerificationQueuePage() {
 
       <Card>
         <CardHeader className="border-b border-border bg-stone-50/50">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-brand-600" />
-            All Applications
-          </CardTitle>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-brand-600" />
+              Applications
+            </CardTitle>
+            <div className="flex gap-1 rounded-md bg-stone-100 p-1">
+              {STATUS_FILTERS.map((f) => (
+                <Link
+                  key={f.value}
+                  href={f.value === "PENDING" ? "/employee/institutions" : `/employee/institutions?status=${f.value}`}
+                  prefetch={false}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    status === f.value ? "bg-white text-brand-900 shadow-sm" : "text-stone-600 hover:text-brand-800"
+                  )}
+                >
+                  {f.label}
+                </Link>
+              ))}
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -69,7 +111,7 @@ export default async function EmployeeVerificationQueuePage() {
                           {inst.name.substring(0, 2).toUpperCase()}
                         </div>
                         <div>
-                          <Link href={`/employee/institutions/${inst.id}`} className="font-semibold text-brand-950 hover:underline">
+                          <Link href={`/employee/institutions/${inst.id}`} prefetch={false} className="font-semibold text-brand-950 hover:underline">
                             {inst.name}
                           </Link>
                           <p className="text-xs text-stone-500">{inst.username}</p>

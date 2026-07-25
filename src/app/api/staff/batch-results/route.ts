@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
       reviewDeadline: batchExamSubjects.reviewDeadline,
       subjectName: subjects.name,
       examTitle: batchExams.title,
+      examType: batchExams.type,
       className: classes.name,
       sectionName: sections.name,
       createdAt: batchExamSubjects.createdAt,

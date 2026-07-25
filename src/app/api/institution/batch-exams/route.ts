@@ -14,19 +14,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { title, classId, sectionId, subjects, studentMarks } = await req.json();
+    const { title, type = "FINAL", classId, sectionId, subjects: rawSubjects, studentMarks } = await req.json();
 
-    if (!title || !classId || !subjects || !studentMarks) {
+    if (!title || !classId || !rawSubjects || !studentMarks) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     const parsedClassId = Number(classId);
+    const resultType = String(type);
     const parsedSectionId = sectionId === null || sectionId === undefined || sectionId === ""
       ? null
       : Number(sectionId);
-    const requestedSubjects = Array.isArray(subjects)
-      ? subjects.map((subject: any) => ({ ...subject, subjectId: Number(subject.subjectId) }))
-      : [];
+    if (!Array.isArray(rawSubjects) || !Array.isArray(studentMarks)) {
+      return NextResponse.json({ error: "Subjects and student marks must be lists." }, { status: 400 });
+    }
+    if (rawSubjects.some((subject) => !subject || typeof subject !== "object")) {
+      return NextResponse.json({ error: "One or more result subjects are invalid. Re-process the CSV and try again." }, { status: 400 });
+    }
+    if (studentMarks.some((student) => !student || typeof student !== "object" || !student.marks || typeof student.marks !== "object")) {
+      return NextResponse.json({ error: "One or more student mark rows are invalid. Re-process the CSV and try again." }, { status: 400 });
+    }
+    const requestedSubjects = rawSubjects.map((subject: { subjectId?: unknown; maxMarks?: unknown; name?: unknown }) => ({
+      subjectId: Number(subject.subjectId),
+      maxMarks: Number(subject.maxMarks),
+      name: typeof subject.name === "string" ? subject.name : "",
+    }));
     const requestedSubjectIds = Array.from(new Set(requestedSubjects.map((subject) => subject.subjectId)));
 
     if (
@@ -35,6 +47,8 @@ export async function POST(req: NextRequest) {
       requestedSubjects.length === 0 ||
       requestedSubjectIds.length !== requestedSubjects.length ||
       requestedSubjectIds.some((subjectId) => !Number.isInteger(subjectId) || subjectId <= 0)
+      || requestedSubjects.some((subject) => !Number.isFinite(subject.maxMarks) || subject.maxMarks <= 0)
+      || !["MONTHLY", "MID", "FINAL", "PROMOTION"].includes(resultType)
     ) {
       return NextResponse.json({ error: "Invalid class, section, or subject selection" }, { status: 400 });
     }
@@ -74,7 +88,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Fetch students by roll numbers to get their IDs
-    const rollNumbers = studentMarks.map((s: any) => String(s.rollNumber));
+    const rollNumbers = studentMarks.map((s: { rollNumber?: unknown }) => String(s.rollNumber || "").trim());
     if (rollNumbers.length === 0) {
       return NextResponse.json({ error: "No students provided" }, { status: 400 });
     }
@@ -122,6 +136,7 @@ export async function POST(req: NextRequest) {
         classId: parsedClassId,
         sectionId: parsedSectionId,
         title,
+        type: resultType as "MONTHLY" | "MID" | "FINAL" | "PROMOTION",
       }).returning({ id: batchExams.id });
 
       const createdSubjects = await tx.insert(batchExamSubjects).values(
@@ -147,7 +162,7 @@ export async function POST(req: NextRequest) {
         const batchExamSubjectId = batchExamSubjectIdBySubjectId.get(subject.subjectId);
         if (!batchExamSubjectId) throw new Error("Failed to create batch exam subject");
 
-        for (const student of studentMarks) {
+        for (const student of studentMarks as Array<{ rollNumber: string; marks: Record<number, unknown> }>) {
           const studentId = studentIdMap.get(String(student.rollNumber));
           const marksObtained = student.marks[subject.subjectId];
           if (studentId && marksObtained !== undefined && marksObtained !== null) {

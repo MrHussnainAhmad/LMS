@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { ReactNode } from "react";
 import { DataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
@@ -55,7 +55,6 @@ function errorMessage(error: unknown) {
 
 export function StudentsClient({
   students,
-  campuses,
   classes,
   sections,
   totalCount,
@@ -63,7 +62,6 @@ export function StudentsClient({
   limit
 }: {
   students: StudentRow[];
-  campuses: { id: number; name: string }[];
   classes: { id: number; name: string }[];
   sections: { id: number; classId: number; name: string }[];
   totalCount?: number;
@@ -87,6 +85,8 @@ export function StudentsClient({
   const [importStep, setImportStep] = useState<"guide" | "upload">("guide");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [campuses, setCampuses] = useState<{ id: number; name: string }[] | null>(null);
+  const campusesLoading = isCreateOpen && campuses === null;
   
   const [editStudent, setEditStudent] = useState<StudentRow | null>(null);
   const [deleteStudent, setDeleteStudent] = useState<StudentRow | null>(null);
@@ -105,6 +105,26 @@ export function StudentsClient({
     ? sections.filter(s => s.classId === parseInt(filterClassId))
     : [];
   const rowsPerPage = filterClassId || filterSectionId ? 30 : 60;
+
+  useEffect(() => {
+    if (!isCreateOpen || campuses !== null) return;
+
+    let ignore = false;
+    api.get<{ campuses: { id: number; name: string }[] }>("/api/institution/campuses")
+      .then((data) => {
+        if (!ignore) setCampuses(data.campuses);
+      })
+      .catch(() => {
+        if (!ignore) {
+          setCampuses([]);
+          toast({ title: "Could not load campuses", variant: "destructive" });
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [isCreateOpen, campuses, toast]);
 
   // Prepare table data with combined search field
   const tableData = useMemo(() => {
@@ -558,9 +578,9 @@ export function StudentsClient({
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-stone-700">Campus</label>
-                <select name="campusId" required className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
-                  <option value="">Select Campus</option>
-                  {campuses.map(c => (
+                <select name="campusId" required className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring" disabled={campusesLoading || !campuses?.length}>
+                  <option value="">{campusesLoading ? "Loading campuses…" : "Select Campus"}</option>
+                  {(campuses || []).map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>

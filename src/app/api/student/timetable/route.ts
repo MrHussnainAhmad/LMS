@@ -8,7 +8,11 @@ import { getCachedOrFetch } from '@/lib/redis';
 export const GET = requireRole(['STUDENT'], async (req: NextRequest, { session }) => {
   const tenantId = getTenantContext(session);
 
-  const [student] = await db.select().from(students).where(eq(students.id, session.userId)).limit(1);
+  const [student] = await db.select({
+    id: students.id,
+    sectionId: students.sectionId,
+    institutionId: students.institutionId,
+  }).from(students).where(and(eq(students.id, session.userId), eq(students.institutionId, tenantId))).limit(1);
   if (!student) {
     return NextResponse.json({ error: 'Student not found' }, { status: 404 });
   }

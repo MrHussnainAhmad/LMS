@@ -14,7 +14,7 @@ import {
   tests,
 } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 type JsonAnswer = Record<string, string | number>;
@@ -298,17 +298,52 @@ export async function expireStaleOnlineSubmissions(institutionId: number) {
       lt(onlineTestSubmissions.lastHeartbeatAt, cutoff)
     ));
 
+  if (rows.length === 0) return;
+
+  const now = new Date();
+  const timedOutIds: number[] = [];
+  const disconnectedIds: number[] = [];
   for (const item of rows) {
-    const reason: OnlineViolationReason = getAttemptExpiresAt(item.submission.startedAt, item.onlineTest.durationMinutes) <= new Date()
-      ? "timeout"
-      : "disconnect";
-    await markOnlineTestFailed(
-      { onlineTest: item.onlineTest, test: item.test },
-      item.submission.studentId,
-      reason,
-      item.submission.id
-    );
+    const expired = getAttemptExpiresAt(item.submission.startedAt, item.onlineTest.durationMinutes) <= now;
+    (expired ? timedOutIds : disconnectedIds).push(item.submission.id);
   }
+
+  // Batch the status updates instead of one round trip per stale submission.
+  const statusGroups: { ids: number[]; status: "FAILED" | "ABANDONED"; reason: OnlineViolationReason }[] = [
+    { ids: timedOutIds, status: "FAILED", reason: "timeout" },
+    { ids: disconnectedIds, status: "ABANDONED", reason: "disconnect" },
+  ];
+  for (const group of statusGroups) {
+    if (group.ids.length === 0) continue;
+    await db.update(onlineTestSubmissions).set({
+      status: group.status,
+      violationReason: group.reason,
+      answers: { reason: group.reason },
+      mcqScore: 0,
+      shortScore: null,
+      totalScore: 0,
+      submittedAt: now,
+      lastHeartbeatAt: now,
+    }).where(and(
+      eq(onlineTestSubmissions.institutionId, institutionId),
+      inArray(onlineTestSubmissions.id, group.ids)
+    ));
+  }
+
+  const markValues = rows.map((item) => ({
+    institutionId,
+    testId: item.test.id,
+    studentId: item.submission.studentId,
+    marksObtained: 0,
+    totalMarks: Number(item.test.maxMarks),
+  }));
+  await db.insert(marks).values(markValues).onConflictDoUpdate({
+    target: [marks.testId, marks.studentId],
+    set: {
+      marksObtained: sql`EXCLUDED.marks_obtained`,
+      totalMarks: sql`EXCLUDED.total_marks`,
+    },
+  });
 }
 
 export async function startOnlineTestAttemptAction(onlineTestId: number) {
@@ -350,8 +385,8 @@ export async function startOnlineTestAttemptAction(onlineTestId: number) {
   return { expiresAt: getAttemptExpiresAt(now, row.onlineTest.durationMinutes).toISOString() };
 }
 
-export async function heartbeatOnlineTestAction(onlineTestId: number) {
-  const session = await getSession();
+export async function heartbeatOnlineTestAction(onlineTestId: number, providedSession?: { userId: number; role: string; institutionId?: number | null }) {
+  const session = providedSession ?? await getSession();
   if (!session || session.role !== "STUDENT" || !session.institutionId) throw new Error("Unauthorized");
 
   // Use Valkey for ephemeral liveness instead of DB WAL churn

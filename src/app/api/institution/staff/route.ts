@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { staff, staffTeachableSubjects, institutions, campuses, subjects } from '@/db/schema';
+import { staff, staffTeachableSubjects, institutions, campuses, subjects, institutionCustomRoles } from '@/db/schema';
 import { and, eq, inArray } from 'drizzle-orm';
 import { hashPassword as hash } from '@/lib/argon2-pool';
 import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStaffSchema } from '@/lib/validators/staff';
 import { logAudit } from '@/lib/audit';
 import { generateStaffEmail } from '@/lib/login-identifiers';
+
+// Lightweight staff options list (id + name only) for dropdowns like the class-teacher
+// select on the Add Section form. Fetched lazily on the client, never joined with requests.
+export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
+  const tenantId = getTenantContext(session);
+
+  const rows = await db.select({ id: staff.id, name: staff.name })
+    .from(staff)
+    .where(and(eq(staff.institutionId, tenantId), eq(staff.isActive, true)))
+    .orderBy(staff.name);
+
+  return NextResponse.json({ staff: rows });
+});
 
 export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { session }) => {
   const tenantId = getTenantContext(session);
@@ -17,10 +30,10 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const { name, phone, subjectIds, campusId } = parsed.data;
+  const { name, phone, subjectIds, campusId, customRoleId } = parsed.data;
   const uniqueSubjectIds = Array.from(new Set(subjectIds));
 
-  const [[inst], campusRows, subjectRows] = await Promise.all([
+  const [[inst], campusRows, subjectRows, customRoleRows] = await Promise.all([
     db.select().from(institutions).where(eq(institutions.id, tenantId)).limit(1),
     campusId ? db.select({ id: campuses.id })
       .from(campuses)
@@ -32,6 +45,10 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
         eq(subjects.institutionId, tenantId),
         inArray(subjects.id, uniqueSubjectIds)
       )) : Promise.resolve([]),
+    customRoleId ? db.select({ id: institutionCustomRoles.id })
+      .from(institutionCustomRoles)
+      .where(and(eq(institutionCustomRoles.id, customRoleId), eq(institutionCustomRoles.institutionId, tenantId)))
+      .limit(1) : Promise.resolve([]),
   ]);
 
   if (!inst) {
@@ -42,6 +59,9 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
   }
   if (subjectRows.length !== uniqueSubjectIds.length) {
     return NextResponse.json({ error: "One or more subjects were not found" }, { status: 400 });
+  }
+  if (customRoleId && !customRoleRows[0]) {
+    return NextResponse.json({ error: "Custom role not found" }, { status: 400 });
   }
 
   const baseEmail = generateStaffEmail({ name, phone, institution: inst });
@@ -64,6 +84,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
     const [newStaff] = await db.insert(staff).values({
       institutionId: tenantId,
       campusId: campusId || null,
+      customRoleId: customRoleId || null,
       name,
       email: generatedEmail,
       phone,

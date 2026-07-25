@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Check, X, Clock, HelpCircle } from "lucide-react";
+import { Check, X, Clock, HelpCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 import { submitAttendanceAction } from "@/app/actions/staff-actions";
@@ -28,27 +28,58 @@ type AssignedSection = {
   className?: string;
 };
 
-export function AttendanceClient({ 
-  assignedSections, 
-  studentsBySection,
-  todayAttendanceBySection = {}
-}: { 
-  assignedSections: AssignedSection[], 
-  studentsBySection: Record<number, AttendanceStudent[]>,
-  todayAttendanceBySection?: Record<number, boolean>
+export function AttendanceClient({
+  assignedSections,
+  initialSectionId,
+  initialStudents,
+  initialAlreadyMarked,
+}: {
+  assignedSections: AssignedSection[],
+  initialSectionId: number | null,
+  initialStudents: AttendanceStudent[],
+  initialAlreadyMarked: boolean,
 }) {
-  const [selectedSectionId, setSelectedSectionId] = useState<number>(assignedSections[0]?.id || 0);
-  
-  const initialStudents = selectedSectionId ? studentsBySection[selectedSectionId]?.map(s => ({ ...s, status: "PRESENT" })) || [] : [];
-  
-  const [students, setStudents] = useState<(AttendanceStudent & { status: string })[]>(initialStudents);
-  const [markedSections, setMarkedSections] = useState<Record<number, boolean>>(todayAttendanceBySection);
+  const [selectedSectionId, setSelectedSectionId] = useState<number>(initialSectionId || 0);
+
+  // Roster cache keyed by sectionId — sections are fetched from the API only
+  // the first time they're selected, never all at once on page load.
+  const [studentsBySection, setStudentsBySection] = useState<Record<number, AttendanceStudent[]>>(
+    initialSectionId ? { [initialSectionId]: initialStudents } : {}
+  );
+  const [markedSections, setMarkedSections] = useState<Record<number, boolean>>(
+    initialSectionId ? { [initialSectionId]: initialAlreadyMarked } : {}
+  );
+  const [isLoadingSection, setIsLoadingSection] = useState(false);
+
+  const initialRoster = (initialSectionId ? initialStudents : []).map(s => ({ ...s, status: "PRESENT" }));
+
+  const [students, setStudents] = useState<(AttendanceStudent & { status: string })[]>(initialRoster);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
-  const handleSectionChange = (id: number) => {
+  const handleSectionChange = async (id: number) => {
     setSelectedSectionId(id);
-    setStudents(studentsBySection[id]?.map(s => ({ ...s, status: "PRESENT" })) || []);
+
+    const cached = studentsBySection[id];
+    if (cached) {
+      setStudents(cached.map(s => ({ ...s, status: "PRESENT" })));
+      return;
+    }
+
+    setIsLoadingSection(true);
+    try {
+      const res = await fetch(`/api/staff/attendance?view=mark&sectionId=${id}`);
+      if (!res.ok) throw new Error("Failed to load section roster");
+      const data = await res.json();
+      const sectionStudents: AttendanceStudent[] = data.students || [];
+      setStudentsBySection((prev) => ({ ...prev, [id]: sectionStudents }));
+      setMarkedSections((prev) => ({ ...prev, [id]: Boolean(data.alreadyMarkedToday) }));
+      setStudents(sectionStudents.map(s => ({ ...s, status: "PRESENT" })));
+    } catch (error: unknown) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to load section", variant: "destructive" });
+    } finally {
+      setIsLoadingSection(false);
+    }
   };
 
   const toggleStatus = (id: number, newStatus?: string) => {
@@ -115,12 +146,17 @@ export function AttendanceClient({
               Attendance has already been marked for this class today.
             </div>
           )}
-          {students.length === 0 && (
+          {isLoadingSection ? (
+            <div className="p-6 sm:p-12 text-center text-stone-500 border border-border rounded-lg bg-surface flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading roster...
+            </div>
+          ) : students.length === 0 ? (
             <div className="p-6 sm:p-12 text-center text-stone-500 border border-border rounded-lg bg-surface">
               No students enrolled in this section.
             </div>
-          )}
-          {students.map((student) => {
+          ) : null}
+          {!isLoadingSection && students.map((student) => {
             return (
               <div 
                 key={student.id}

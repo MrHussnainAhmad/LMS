@@ -5,7 +5,6 @@ import { requireRole } from "@/lib/rbac";
 import type { JWTPayload } from "@/lib/auth";
 import { reviewStudentProfileChangeRequestSchema } from "@/lib/validators/student";
 import { and, eq } from "drizzle-orm";
-import { generateStudentLoginRollNumber } from "@/lib/login-identifiers";
 
 type RequestedFields = {
   firstName?: string;
@@ -117,25 +116,6 @@ export const PATCH = requireRole(["INSTITUTION"], async (
     }
     updates.sectionId = requestedFields.sectionId;
     if (!updates.classId) updates.classId = sectionRow.classId;
-  }
-
-  if (updates.classId || updates.sectionId) {
-    const finalClassId = updates.classId ?? student.classId;
-    const finalSectionId = updates.sectionId ?? student.sectionId;
-    const [institution] = await db.select().from(institutions).where(eq(institutions.id, session.userId)).limit(1);
-    const [classRow] = await db.select().from(classes).where(and(eq(classes.id, finalClassId), eq(classes.institutionId, session.userId))).limit(1);
-    const [sectionRow] = await db.select().from(sections).where(and(eq(sections.id, finalSectionId), eq(sections.institutionId, session.userId))).limit(1);
-    if (!institution || !classRow || !sectionRow || sectionRow.classId !== finalClassId) {
-      return NextResponse.json({ error: "Requested section does not belong to requested class" }, { status: 400 });
-    }
-    updates.loginRollNumber = generateStudentLoginRollNumber({
-      institution,
-      classRow,
-      sectionRow,
-      yearOfJoining: student.yearOfJoining,
-      gender: student.gender,
-      classRollNumber: student.classRollNumber,
-    });
   }
 
   try {

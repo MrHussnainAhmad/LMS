@@ -7,6 +7,7 @@ import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStudentSchema } from '@/lib/validators/student';
 import { logAudit } from '@/lib/audit';
 import { generateStudentLoginRollNumber } from '@/lib/login-identifiers';
+import { allocateAdmissionSequences } from '@/lib/admission-sequences';
 
 const WHOLE_CLASS_SECTION_NAME = "Whole Class";
 
@@ -90,14 +91,8 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
       return NextResponse.json({ error: "Section not found for selected class" }, { status: 400 });
     }
 
-    const loginRollNumber = generateStudentLoginRollNumber({
-      institution: inst,
-      classRow: classObj,
-      sectionRow: sectionObj,
-      yearOfJoining,
-      gender,
-      classRollNumber,
-    });
+    const [admissionSequence] = await allocateAdmissionSequences(tenantId, yearOfJoining);
+    const loginRollNumber = generateStudentLoginRollNumber({ institution: inst, yearOfJoining, admissionSequence });
 
     const initialPassword = '1234567890';
     const passwordHash = await hash(initialPassword);
@@ -113,6 +108,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
       classId,
       sectionId: sectionObj.id,
       yearOfJoining,
+      admissionSequence,
       classRollNumber,
       phone,
       age,
@@ -134,8 +130,8 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
         console.error("Create student audit failed:", auditError);
       }
       try {
-        const { redis } = await import('@/lib/redis');
-        await redis.del(`cache:dashboard:${tenantId}`);
+        const { invalidateInstitutionRosterCaches } = await import('@/lib/redis');
+        await invalidateInstitutionRosterCaches(tenantId);
       } catch (e) {
         // ignore
       }

@@ -1,35 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromRequest, UserRole, JWTPayload } from './auth';
+import { getSessionFromRequest, getLightSessionFromRequest, UserRole, JWTPayload } from './auth';
 
 type RouteHandler = (
   req: NextRequest,
   context: { params: any; session: JWTPayload },
 ) => Promise<NextResponse> | NextResponse;
 
+type RequireRoleOptions = {
+  allowPasswordChangeRequired?: boolean;
+  /** Skip Redis/DB user validity + student enrich — for heartbeat/unread only. */
+  light?: boolean;
+};
+
+function enforceSessionGuards(
+  req: NextRequest,
+  session: JWTPayload,
+  allowedRoles: UserRole[],
+  options?: RequireRoleOptions,
+): NextResponse | null {
+  if (!allowedRoles.includes(session.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  if (session.mustChangePassword && !options?.allowPasswordChangeRequired) {
+    return NextResponse.json(
+      { error: 'PASSWORD_CHANGE_REQUIRED' },
+      { status: 403 }
+    );
+  }
+
+  if (session.role === 'STUDENT' && session.studentAcademicStatus === 'GRADUATED') {
+    const allowedGraduateApiPaths = [
+      '/api/student/profile',
+      '/api/student/transcripts',
+      '/api/student/attendance',
+      '/api/student/dashboard',
+      '/api/student/promotion-result',
+    ];
+    const isAllowedGraduateApi = allowedGraduateApiPaths.some((path) => (
+      req.nextUrl.pathname === path || req.nextUrl.pathname.startsWith(`${path}/`)
+    ));
+    if (!isAllowedGraduateApi) {
+      return NextResponse.json({ error: 'Graduate access is limited to profile, transcripts, and attendance.' }, { status: 403 });
+    }
+  }
+
+  return null;
+}
+
 export function requireRole(
   allowedRoles: UserRole[],
   handler: RouteHandler,
-  options?: { allowPasswordChangeRequired?: boolean }
+  options?: RequireRoleOptions
 ) {
   return async (req: NextRequest, context: any) => {
     try {
-      const session = await getSessionFromRequest(req);
+      const session = options?.light
+        ? await getLightSessionFromRequest(req)
+        : await getSessionFromRequest(req);
       if (!session) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
 
-      if (!allowedRoles.includes(session.role)) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
+      const guard = enforceSessionGuards(req, session, allowedRoles, options);
+      if (guard) return guard;
 
-      if (session.mustChangePassword && !options?.allowPasswordChangeRequired) {
-        return NextResponse.json(
-          { error: 'PASSWORD_CHANGE_REQUIRED' },
-          { status: 403 }
-        );
-      }
-
-      // Add session to context for the handler
       const enhancedContext = { ...context, session };
       return await handler(req, enhancedContext as any);
     } catch (err) {

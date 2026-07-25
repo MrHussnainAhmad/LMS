@@ -17,29 +17,23 @@ type Notification = {
   createdAt: string;
 };
 
+/**
+ * On-demand notifications: list + unread count load only after the bell opens.
+ * No background polling (live updates are not required for this feature).
+ */
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data: unreadData } = useQuery({
-    queryKey: ["notifications", "unread-count"],
-    queryFn: async () => {
-      const res = await api.get<{ unreadCount: number }>("/api/me/notifications/unread-count");
-      return res;
-    },
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: false,
-  });
-
   const { data } = useQuery({
     queryKey: ["notifications"],
     queryFn: async () => {
-      const res = await api.get<{ notifications: Notification[], unreadCount: number }>("/api/me/notifications");
+      const res = await api.get<{ notifications: Notification[]; unreadCount: number }>("/api/me/notifications");
       return res;
     },
     enabled: open,
-    refetchInterval: open ? 60_000 : false,
     refetchOnWindowFocus: false,
+    staleTime: 30_000,
   });
 
   const markAllReadMutation = useMutation({
@@ -48,7 +42,7 @@ export function NotificationCenter() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    }
+    },
   });
 
   const markAsReadMutation = useMutation({
@@ -57,10 +51,10 @@ export function NotificationCenter() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    }
+    },
   });
 
-  const unreadCount = unreadData?.unreadCount ?? data?.unreadCount ?? 0;
+  const unreadCount = data?.unreadCount ?? 0;
   const notifications = data?.notifications || [];
 
   return (
@@ -68,7 +62,7 @@ export function NotificationCenter() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5 text-stone-600" />
-          {unreadCount > 0 && (
+          {open && unreadCount > 0 && (
             <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-brand-500 border-2 border-white" />
           )}
         </Button>
@@ -77,9 +71,9 @@ export function NotificationCenter() {
         <div className="flex items-center justify-between p-4 border-b">
           <h4 className="font-semibold text-sm">Notifications</h4>
           {unreadCount > 0 && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               className="text-xs h-auto py-1 px-2 text-brand-600 hover:text-brand-700 hover:bg-brand-50"
               onClick={() => markAllReadMutation.mutate()}
             >
@@ -89,14 +83,12 @@ export function NotificationCenter() {
         </div>
         <div className="max-h-[400px] overflow-y-auto">
           {notifications.length === 0 ? (
-            <div className="p-4 sm:p-8 text-center text-sm text-stone-500">
-              No notifications yet
-            </div>
+            <div className="p-4 sm:p-8 text-center text-sm text-stone-500">No notifications yet</div>
           ) : (
-            notifications.map(n => (
-              <div 
-                key={n.id} 
-                className={`p-4 border-b last:border-b-0 cursor-pointer transition-colors ${n.isRead ? 'bg-white' : 'bg-stone-50/50'}`}
+            notifications.map((n) => (
+              <div
+                key={n.id}
+                className={`p-4 border-b last:border-b-0 cursor-pointer transition-colors ${n.isRead ? "bg-white" : "bg-stone-50/50"}`}
                 onClick={() => !n.isRead && markAsReadMutation.mutate(n.id)}
               >
                 <div className="flex items-start justify-between gap-2 mb-1">
@@ -105,7 +97,8 @@ export function NotificationCenter() {
                 </div>
                 <p className="text-sm text-stone-600 line-clamp-2">{n.message}</p>
                 <span className="text-xs text-stone-400 mt-2 block">
-                  {new Date(n.createdAt).toLocaleDateString()} {new Date(n.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  {new Date(n.createdAt).toLocaleDateString()}{" "}
+                  {new Date(n.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </span>
               </div>
             ))

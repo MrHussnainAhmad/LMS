@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { db } from "@/db";
 import { attendances, sections, students } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
@@ -6,50 +7,101 @@ import { eq, and, desc, inArray, gte, sql } from "drizzle-orm";
 import { staffAssignments, classes } from "@/db/schema";
 import { getCachedOrFetch } from "@/lib/redis";
 
+async function getAssignedSections(staffId: number, institutionId: number) {
+  // Only fetch sections where this staff member is explicitly set as the class incharge
+  return db.selectDistinct({
+    id: sections.id,
+    name: sections.name,
+    classId: sections.classId,
+    className: classes.name,
+  })
+    .from(sections)
+    .innerJoin(classes, eq(sections.classId, classes.id))
+    .where(and(eq(sections.classTeacherId, staffId), eq(sections.institutionId, institutionId)));
+}
+
 export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const cacheKey = `cache:staff:attendance:${session.institutionId}:${session.userId}`;
-    const cachedData = await getCachedOrFetch(cacheKey, 30, async () => {
-      // Only fetch sections where this staff member is explicitly set as the class incharge
-      const assignments = await db.selectDistinct({
-        id: sections.id,
-        name: sections.name,
-        classId: sections.classId,
-        className: classes.name,
-      })
-        .from(sections)
-        .innerJoin(classes, eq(sections.classId, classes.id))
-        .where(and(eq(sections.classTeacherId, session.userId), eq(sections.institutionId, session.institutionId!)));
+    const institutionId = session.institutionId;
+    const staffId = session.userId;
+    const view = req.nextUrl.searchParams.get("view") === "history" ? "history" : "mark";
+    const sectionIdParam = req.nextUrl.searchParams.get("sectionId");
+    const sectionId = sectionIdParam ? Number(sectionIdParam) : null;
+    if (sectionIdParam && (!Number.isInteger(sectionId) || sectionId! <= 0)) {
+      return NextResponse.json({ error: "Invalid sectionId" }, { status: 400 });
+    }
 
-      const sectionIds = assignments.map(a => a.id);
+    if (view === "mark") {
+      const cacheKey = `cache:staff:attendance:mark:${institutionId}:${staffId}:${sectionId ?? "auto"}`;
+      const data = await getCachedOrFetch(cacheKey, 30, async () => {
+        const assignedSections = await getAssignedSections(staffId, institutionId);
+        const targetSectionId = sectionId ?? assignedSections[0]?.id ?? null;
 
-      // 2. Fetch all students for these sections
-      const allStudents = sectionIds.length > 0 ? await db.select({
-        id: students.id,
-        name: students.name,
-        loginRollNumber: students.loginRollNumber,
-        sectionId: students.sectionId,
-      })
-        .from(students)
-        .where(and(eq(students.institutionId, session.institutionId!), inArray(students.sectionId, sectionIds))) : [];
-
-      const studentsBySection: Record<number, any[]> = {};
-      allStudents.forEach(student => {
-        if (!studentsBySection[student.sectionId]) {
-          studentsBySection[student.sectionId] = [];
+        if (!targetSectionId || !assignedSections.some((s) => s.id === targetSectionId)) {
+          return { assignedSections, selectedSectionId: null, students: [], alreadyMarkedToday: false };
         }
-        studentsBySection[student.sectionId].push(student);
+
+        const todayStr = new Date().toISOString().split("T")[0];
+        const [sectionStudents, todayRecords] = await Promise.all([
+          db.select({
+            id: students.id,
+            name: students.name,
+            loginRollNumber: students.loginRollNumber,
+            sectionId: students.sectionId,
+          })
+            .from(students)
+            .where(and(eq(students.institutionId, institutionId), eq(students.sectionId, targetSectionId))),
+          db.select({ id: attendances.id })
+            .from(attendances)
+            .where(and(
+              eq(attendances.institutionId, institutionId),
+              eq(attendances.sectionId, targetSectionId),
+              eq(attendances.date, todayStr),
+            ))
+            .limit(1),
+        ]);
+
+        return {
+          assignedSections,
+          selectedSectionId: targetSectionId,
+          students: sectionStudents,
+          alreadyMarkedToday: todayRecords.length > 0,
+        };
       });
 
-      // 3. Fetch historical attendance for overview (limit to these sections)
+      return NextResponse.json(data);
+    }
+
+    // view === "history"
+    const dateParam = req.nextUrl.searchParams.get("date");
+    const isValidDate = typeof dateParam === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateParam);
+    if (dateParam && !isValidDate) {
+      return NextResponse.json({ error: "Invalid date. Use YYYY-MM-DD." }, { status: 400 });
+    }
+
+    const cacheKey = isValidDate
+      ? `cache:staff:attendance:history:${institutionId}:${staffId}:${dateParam}:${sectionId ?? "all"}`
+      : `cache:staff:attendance:history:${institutionId}:${staffId}:${sectionId ?? "all"}`;
+
+    const cachedData = await getCachedOrFetch(cacheKey, 30, async () => {
+      const assignedSections = await getAssignedSections(staffId, institutionId);
+      const sectionIds = sectionId
+        ? assignedSections.filter((s) => s.id === sectionId).map((s) => s.id)
+        : assignedSections.map((s) => s.id);
+
       let classAttendance: any[] = [];
       if (sectionIds.length > 0) {
-        // Limit to last 30 days to prevent unbounded response growth
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const cutoffDate = thirtyDaysAgo.toISOString().split('T')[0];
+        // When a specific date is requested, filter to that date only; otherwise
+        // limit to last 30 days to prevent unbounded response growth.
+        const dateFilter = isValidDate
+          ? eq(attendances.date, dateParam!)
+          : gte(attendances.date, (() => {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            return thirtyDaysAgo.toISOString().split('T')[0];
+          })());
 
         classAttendance = await db
           .select({
@@ -66,18 +118,14 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
           .where(
             and(
               inArray(attendances.sectionId, sectionIds),
-              eq(attendances.institutionId, session.institutionId!),
-              gte(attendances.date, cutoffDate)
+              eq(attendances.institutionId, institutionId),
+              dateFilter
             )
           )
           .orderBy(desc(attendances.date));
       }
 
-      return { 
-        attendance: classAttendance,
-        assignedSections: assignments,
-        studentsBySection
-      };
+      return { attendance: classAttendance };
     });
 
     return NextResponse.json(cachedData);
@@ -126,27 +174,27 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       });
 
     const { createAttendanceNotifications } = await import("@/lib/notifications");
-    import('next/server').then(({ after }) => {
-      after(async () => {
-        try {
-          await createAttendanceNotifications({
-            institutionId: session.institutionId!,
-            date,
-            records,
-          });
+    after(async () => {
+      try {
+        await createAttendanceNotifications({
+          institutionId: session.institutionId!,
+          date,
+          records,
+        });
 
-          const { redis } = await import('@/lib/redis');
-          const keys = records.map((r: any) => `cache:student:attendance:${r.studentId}`);
-          if (keys.length > 0) {
-            await redis.del(...keys);
-            await Promise.all(records.map((r: any) =>
-              redis.incr(`cache:student:attendance:version:${r.studentId}`)
-            ));
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      });
+        const { redis } = await import('@/lib/redis');
+        const keys = records.map((r: any) => `cache:student:attendance:${r.studentId}`);
+        keys.push(
+          `cache:staff:attendance:mark:${session.institutionId}:${session.userId}:${sectionId}`,
+          `cache:staff:attendance:mark:${session.institutionId}:${session.userId}:auto`,
+        );
+        await redis.del(...keys);
+        await Promise.all(records.map((r: any) =>
+          redis.incr(`cache:student:attendance:version:${r.studentId}`)
+        ));
+      } catch (e) {
+        console.error(e);
+      }
     });
 
     return NextResponse.json({ success: true });

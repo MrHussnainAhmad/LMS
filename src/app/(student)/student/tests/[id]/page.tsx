@@ -2,6 +2,7 @@ import { StudentTestTaker } from "@/components/tests/StudentTestTaker";
 import { db } from "@/db";
 import { onlineTestQuestions, onlineTestSubmissions, onlineTests, students, subjects, tests } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { studentPlacementColumns } from "@/lib/student-columns";
 import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
@@ -17,7 +18,11 @@ export default async function TakeStudentTestPage({ params }: PageProps) {
   const onlineTestId = Number(id);
   if (!Number.isInteger(onlineTestId)) redirect("/student/tests");
 
-  const [student] = await db.select().from(students).where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId))).limit(1);
+  const [student] = await db
+    .select(studentPlacementColumns)
+    .from(students)
+    .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
+    .limit(1);
   if (!student) redirect("/login");
 
   const [row] = await db.select({

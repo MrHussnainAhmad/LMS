@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { students, staffAssignments, subjects, staff } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { studentPlacementColumns } from "@/lib/student-columns";
 import { redirect } from "next/navigation";
 import { WeeklyTimetable, type TimetableEntry } from "@/components/timetable/ScheduleViews";
 
@@ -12,7 +13,11 @@ export default async function StudentTimetablePage() {
   }
 
   if (!session.institutionId) redirect("/login");
-  const [currentStudent] = await db.select().from(students).where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)));
+  const [currentStudent] = await db
+    .select(studentPlacementColumns)
+    .from(students)
+    .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
+    .limit(1);
   if (!currentStudent) redirect("/login");
 
   const assignments = await db.select({

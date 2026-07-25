@@ -5,13 +5,21 @@ import { db } from "@/db";
 import { campuses, classes, institutions, sections, students } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 import { generateStudentLoginRollNumber } from "@/lib/login-identifiers";
+import { allocateAdmissionSequences } from "@/lib/admission-sequences";
 import { getTenantContext, requireRole } from "@/lib/rbac";
 import { createStudentSchema } from "@/lib/validators/student";
+import { withRateLimit } from "@/lib/rate-limit";
+import { invalidateInstitutionRosterCaches } from "@/lib/redis";
 
 const WHOLE_CLASS_SECTION_NAME = "Whole Class";
 const MAX_IMPORT_ROWS = 500;
 
 type CsvRow = Record<string, string>;
+type PreparedStudentRow = Omit<typeof students.$inferInsert, "admissionSequence" | "loginRollNumber"> & {
+  admissionSequence?: number;
+  loginRollNumber?: string;
+  yearOfJoining: number;
+};
 
 function normalize(value: string | null | undefined) {
   return (value || "").trim().toLowerCase();
@@ -97,6 +105,11 @@ async function getOrCreateWholeClassSection(institutionId: number, classId: numb
 
 export const POST = requireRole(["INSTITUTION"], async (req: NextRequest, { session }) => {
   try {
+    const rateLimit = await withRateLimit(req, "import");
+    if (!rateLimit.success) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
+
     const tenantId = getTenantContext(session);
     const formData = await req.formData();
     const file = formData.get("file");
@@ -140,8 +153,7 @@ export const POST = requireRole(["INSTITUTION"], async (req: NextRequest, { sess
     }
 
     const errors: string[] = [];
-    const preparedRows = [];
-    const rollNumbers = new Set<string>();
+    const preparedRows: PreparedStudentRow[] = [];
     const initialPassword = "1234567890";
     const passwordHash = await hash(initialPassword);
 
@@ -184,27 +196,11 @@ export const POST = requireRole(["INSTITUTION"], async (req: NextRequest, { sess
       }
 
       const finalSection = sectionObj ?? await getOrCreateWholeClassSection(tenantId, classObj.id);
-      const loginRollNumber = generateStudentLoginRollNumber({
-        institution: inst,
-        classRow: classObj,
-        sectionRow: finalSection,
-        yearOfJoining: parsed.data.yearOfJoining,
-        gender: parsed.data.gender,
-        classRollNumber: parsed.data.classRollNumber,
-      });
-
-      if (rollNumbers.has(loginRollNumber)) {
-        errors.push(`Row ${rowNumber}: duplicate login ID in CSV.`);
-        continue;
-      }
-      rollNumbers.add(loginRollNumber);
-
       preparedRows.push({
         institutionId: tenantId,
         campusId: parsed.data.campusId,
         name: `${parsed.data.firstName} ${parsed.data.lastName}`.trim(),
         gender: parsed.data.gender,
-        loginRollNumber,
         passwordHash,
         classId: parsed.data.classId,
         sectionId: finalSection.id,
@@ -221,7 +217,30 @@ export const POST = requireRole(["INSTITUTION"], async (req: NextRequest, { sess
       return NextResponse.json({ error: "Import failed. Fix the listed rows and try again.", errors }, { status: 400 });
     }
 
-    const inserted = await db.insert(students).values(preparedRows).returning({ id: students.id });
+    const rowsByYear = new Map<number, PreparedStudentRow[]>();
+    for (const row of preparedRows) rowsByYear.set(row.yearOfJoining, [...(rowsByYear.get(row.yearOfJoining) || []), row]);
+    for (const [year, yearRows] of rowsByYear) {
+      const sequences = await allocateAdmissionSequences(tenantId, year, yearRows.length);
+      for (const [index, row] of yearRows.entries()) {
+        row.admissionSequence = sequences[index];
+        row.loginRollNumber = generateStudentLoginRollNumber({ institution: inst, yearOfJoining: year, admissionSequence: sequences[index] });
+      }
+    }
+
+    const insertRows: Array<typeof students.$inferInsert> = preparedRows.map((row) => {
+      if (!row.admissionSequence || !row.loginRollNumber) {
+        throw new Error("Student admission sequence allocation failed.");
+      }
+      return {
+        ...row,
+        admissionSequence: row.admissionSequence,
+        loginRollNumber: row.loginRollNumber,
+      };
+    });
+
+    const inserted = await db.insert(students).values(insertRows).returning({ id: students.id });
+
+    await invalidateInstitutionRosterCaches(tenantId);
 
     after(async () => {
       try {

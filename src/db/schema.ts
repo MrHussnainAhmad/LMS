@@ -13,7 +13,8 @@ import {
   jsonb,
   real,
   index,
-  uniqueIndex
+  uniqueIndex,
+  primaryKey
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 
@@ -22,7 +23,9 @@ export const roleEnum = pgEnum('user_role', ['SUPER_ADMIN', 'EMPLOYEE', 'INSTITU
 export const instTypeEnum = pgEnum('institution_type', ['SCHOOL', 'COLLEGE', 'UNIVERSITY']);
 export const instStatusEnum = pgEnum('institution_status', ['PENDING', 'APPROVED', 'REJECTED']);
 export const attendanceStatusEnum = pgEnum('attendance_status', ['PRESENT', 'ABSENT', 'LATE', 'LEAVE']);
-export const testTypeEnum = pgEnum('test_type', ['DAILY', 'WEEKLY', 'QUIZ', 'MONTHLY', 'MID', 'FINAL']);
+export const testTypeEnum = pgEnum('test_type', ['DAILY', 'WEEKLY', 'QUIZ', 'MONTHLY', 'MID', 'FINAL', 'PROMOTION']);
+export const promotionStatusEnum = pgEnum('promotion_status', ['PROMOTED', 'RETAINED', 'GRADUATED']);
+export const studentAcademicStatusEnum = pgEnum('student_academic_status', ['ACTIVE', 'GRADUATED']);
 export const testCreatorRoleEnum = pgEnum('test_creator_role', ['INSTITUTION', 'STAFF']);
 export const onlineTestModeEnum = pgEnum('online_test_mode', ['MCQ', 'MIX']);
 export const onlineQuestionTypeEnum = pgEnum('online_question_type', ['MCQ', 'SHORT']);
@@ -77,6 +80,7 @@ export const institutions = pgTable('institutions', {
   rejectionReason: text('rejection_reason'),
   adminPasswordHash: text('admin_password_hash').notNull(),
   acceptFeeVouchers: boolean('accept_fee_vouchers').default(false).notNull(),
+  allowGraduatedStudentAccess: boolean('allow_graduated_student_access').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 }, (t) => ({
@@ -101,7 +105,9 @@ export const academicSessions = pgTable('academic_sessions', {
   endDate: date('end_date').notNull(),
   isCurrent: boolean('is_current').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  institutionCurrentIndex: index('academic_sessions_institution_current_idx').on(t.institutionId, t.isCurrent),
+}));
 
 // --- INSTITUTION HOLIDAYS ---
 export const institutionHolidays = pgTable('institution_holidays', {
@@ -122,13 +128,26 @@ export const campuses = pgTable('campuses', {
   address: text('address'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-});
+}, (t) => ({
+  institutionIndex: index('campuses_institution_id_idx').on(t.institutionId),
+}));
 
 // --- STAFF ---
+export const institutionCustomRoles = pgTable('institution_custom_roles', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  permissions: jsonb('permissions').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  institutionNameUnique: unique('institution_custom_roles_institution_name_unique').on(t.institutionId, t.name),
+}));
+
 export const staff = pgTable('staff', {
   id: serial('id').primaryKey(),
   institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
   campusId: integer('campus_id').references(() => campuses.id, { onDelete: 'set null' }),
+  customRoleId: integer('custom_role_id').references(() => institutionCustomRoles.id, { onDelete: 'set null' }),
   name: varchar('name', { length: 255 }).notNull(),
   email: varchar('email', { length: 255 }).notNull().unique(), // generated slug email
   phone: varchar('phone', { length: 50 }),
@@ -153,7 +172,9 @@ export const subjects = pgTable('subjects', {
   code: varchar('code', { length: 50 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-});
+}, (t) => ({
+  institutionIndex: index('subjects_institution_id_idx').on(t.institutionId),
+}));
 
 // --- STAFF TEACHABLE SUBJECTS ---
 export const staffTeachableSubjects = pgTable('staff_teachable_subjects', {
@@ -161,7 +182,9 @@ export const staffTeachableSubjects = pgTable('staff_teachable_subjects', {
   institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
   staffId: integer('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
   subjectId: integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
-});
+}, (t) => ({
+  institutionStaffIndex: index('staff_teachable_subjects_inst_staff_idx').on(t.institutionId, t.staffId),
+}));
 
 // --- CLASSES ---
 export const classes = pgTable('classes', {
@@ -169,9 +192,13 @@ export const classes = pgTable('classes', {
   institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 100 }).notNull(),
   level: integer('level').default(0).notNull(), // for sorting
+  isFinalClass: boolean('is_final_class').default(false).notNull(),
+  isGraduatedArchive: boolean('is_graduated_archive').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-});
+}, (t) => ({
+  institutionIndex: index('classes_institution_id_idx').on(t.institutionId),
+}));
 
 // --- SECTIONS ---
 export const sections = pgTable('sections', {
@@ -182,7 +209,10 @@ export const sections = pgTable('sections', {
   classTeacherId: integer('class_teacher_id').references(() => staff.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-});
+}, (t) => ({
+  institutionIndex: index('sections_institution_id_idx').on(t.institutionId),
+  institutionClassIndex: index('sections_institution_class_id_idx').on(t.institutionId, t.classId),
+}));
 
 // --- STUDENTS ---
 export const students = pgTable('students', {
@@ -199,6 +229,8 @@ export const students = pgTable('students', {
   classId: integer('class_id').notNull().references(() => classes.id, { onDelete: 'cascade' }),
   sectionId: integer('section_id').notNull().references(() => sections.id, { onDelete: 'cascade' }),
   yearOfJoining: integer('year_of_joining').notNull(),
+  admissionSequence: integer('admission_sequence'),
+  academicStatus: studentAcademicStatusEnum('academic_status').default('ACTIVE').notNull(),
   classRollNumber: varchar('class_roll_number', { length: 100 }).notNull(),
   age: integer('age'),
   isActive: boolean('is_active').default(true).notNull(),
@@ -215,6 +247,38 @@ export const students = pgTable('students', {
   institutionIndex: index('students_institution_id_idx').on(t.institutionId),
   institutionSectionIndex: index('students_institution_section_id_idx').on(t.institutionId, t.sectionId),
   lowerLoginRollIndex: index('students_lower_login_roll_idx').on(sql`lower(${t.loginRollNumber})`),
+  admissionSequenceUnique: unique('students_institution_year_admission_sequence_unique').on(t.institutionId, t.yearOfJoining, t.admissionSequence),
+}));
+
+export const studentAdmissionCounters = pgTable('student_admission_counters', {
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  admissionYear: integer('admission_year').notNull(),
+  nextSequence: integer('next_sequence').notNull().default(1),
+}, (t) => ({
+  primaryKey: primaryKey({ columns: [t.institutionId, t.admissionYear] }),
+}));
+
+// --- INSTITUTION GRADING & PROMOTION ---
+export const gradingScales = pgTable('grading_scales', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }).unique(),
+  passingPercentage: real('passing_percentage').notNull(),
+  gradesJson: jsonb('grades_json').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const studentPromotions = pgTable('student_promotions', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  studentId: integer('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+  fromClassId: integer('from_class_id').notNull().references(() => classes.id, { onDelete: 'cascade' }),
+  toClassId: integer('to_class_id').references(() => classes.id, { onDelete: 'set null' }),
+  status: promotionStatusEnum('status').notNull(),
+  fromRollNumber: varchar('from_roll_number', { length: 100 }),
+  toRollNumber: varchar('to_roll_number', { length: 100 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  institutionStudentIndex: index('student_promotions_institution_student_idx').on(t.institutionId, t.studentId),
 }));
 
 // --- STUDENT PROFILE CHANGE REQUESTS ---
@@ -229,7 +293,10 @@ export const studentProfileChangeRequests = pgTable('student_profile_change_requ
   reviewedAt: timestamp('reviewed_at'),
   adminNote: text('admin_note'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  institutionStatusIndex: index('student_profile_requests_inst_status_idx').on(t.institutionId, t.status),
+  studentIndex: index('student_profile_requests_student_idx').on(t.studentId),
+}));
 
 // --- STAFF PROFILE CHANGE REQUESTS ---
 export const staffProfileChangeRequests = pgTable('staff_profile_change_requests', {
@@ -243,7 +310,10 @@ export const staffProfileChangeRequests = pgTable('staff_profile_change_requests
   reviewedAt: timestamp('reviewed_at'),
   adminNote: text('admin_note'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  institutionStatusIndex: index('staff_profile_requests_inst_status_idx').on(t.institutionId, t.status),
+  staffIndex: index('staff_profile_requests_staff_idx').on(t.staffId),
+}));
 
 // --- STAFF ASSIGNMENTS (TIMETABLE) ---
 export const staffAssignments = pgTable('staff_assignments', {
@@ -259,6 +329,8 @@ export const staffAssignments = pgTable('staff_assignments', {
 }, (t) => ({
   staffTimeSlotUnique: unique('staff_time_slot_unique').on(t.institutionId, t.staffId, t.dayOfWeek, t.startTime),
   sectionTimeSlotUnique: unique('section_time_slot_unique').on(t.institutionId, t.sectionId, t.dayOfWeek, t.startTime),
+  institutionStaffIndex: index('staff_assignments_institution_staff_idx').on(t.institutionId, t.staffId),
+  institutionSectionIndex: index('staff_assignments_institution_section_idx').on(t.institutionId, t.sectionId),
 }));
 
 // --- ASSIGNMENTS ---
@@ -275,7 +347,10 @@ export const assignments = pgTable('assignments', {
   referenceFileName: varchar('reference_file_name', { length: 255 }),
   dueAt: timestamp('due_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  institutionStaffCreatedIndex: index('assignments_institution_staff_created_idx').on(t.institutionId, t.staffId, t.createdAt),
+  institutionSectionIndex: index('assignments_institution_section_idx').on(t.institutionId, t.sectionId),
+}));
 
 // --- ATTENDANCES ---
 export const attendances = pgTable('attendances', {
@@ -289,6 +364,7 @@ export const attendances = pgTable('attendances', {
 }, (t) => ({
   studentDateUnique: unique('student_date_unique').on(t.studentId, t.date),
   institutionDateIndex: index('attendances_institution_date_idx').on(t.institutionId, t.date),
+  institutionSectionDateIndex: index('attendances_institution_section_date_idx').on(t.institutionId, t.sectionId, t.date),
 }));
 
 // --- TESTS ---
@@ -306,7 +382,12 @@ export const tests = pgTable('tests', {
   date: date('date').notNull(),
   endDate: date('end_date'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  institutionIndex: index('tests_institution_id_idx').on(t.institutionId),
+  institutionClassIndex: index('tests_institution_class_id_idx').on(t.institutionId, t.classId),
+  institutionSectionIndex: index('tests_institution_section_id_idx').on(t.institutionId, t.sectionId),
+  institutionDateIndex: index('tests_institution_date_idx').on(t.institutionId, t.date),
+}));
 
 // --- MARKS ---
 export const marks = pgTable('marks', {
@@ -320,6 +401,7 @@ export const marks = pgTable('marks', {
 }, (t) => ({
   studentTestUnique: unique('student_test_unique').on(t.testId, t.studentId),
   institutionStudentCreatedIndex: index('marks_institution_student_created_idx').on(t.institutionId, t.studentId, t.createdAt),
+  institutionTestIndex: index('marks_institution_test_id_idx').on(t.institutionId, t.testId),
 }));
 
 // --- ONLINE TESTS ---
@@ -341,7 +423,9 @@ export const onlineTestQuestions = pgTable('online_test_questions', {
   correctOptionIndex: integer('correct_option_index'),
   marks: real('marks').notNull(),
   orderIndex: integer('order_index').notNull(),
-});
+}, (t) => ({
+  onlineTestIndex: index('online_test_questions_online_test_id_idx').on(t.onlineTestId),
+}));
 
 export const onlineTestSubmissions = pgTable('online_test_submissions', {
   id: serial('id').primaryKey(),
@@ -468,7 +552,9 @@ export const refreshTokens = pgTable('refresh_tokens', {
   replacedByHash: text('replaced_by_hash'),
   reuseDetectedAt: timestamp('reuse_detected_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  userIndex: index('refresh_tokens_user_idx').on(t.userRole, t.userId),
+}));
 
 // --- ACCOUNT LOCKOUTS ---
 export const accountLockouts = pgTable('account_lockouts', {
@@ -504,6 +590,7 @@ export const feeVouchers = pgTable('fee_vouchers', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   studentCreatedIdx: index('fee_vouchers_student_created_idx').on(t.studentId, t.createdAt),
+  institutionCreatedIdx: index('fee_vouchers_institution_created_idx').on(t.institutionId, t.createdAt),
 }));
 
 // --- PLATFORM REVIEWS ---
@@ -543,8 +630,12 @@ export const batchExams = pgTable('batch_exams', {
   classId: integer('class_id').notNull().references(() => classes.id, { onDelete: 'cascade' }),
   sectionId: integer('section_id').references(() => sections.id, { onDelete: 'cascade' }),
   title: varchar('title', { length: 255 }).notNull(),
+  type: testTypeEnum('type').default('FINAL').notNull(),
+  officialPublishedAt: timestamp('official_published_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  institutionClassIndex: index('batch_exams_institution_class_idx').on(t.institutionId, t.classId),
+}));
 
 export const batchExamSubjects = pgTable('batch_exam_subjects', {
   id: serial('id').primaryKey(),
@@ -556,7 +647,10 @@ export const batchExamSubjects = pgTable('batch_exam_subjects', {
   publishedAt: timestamp('published_at'),
   reviewDeadline: timestamp('review_deadline').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  batchExamIndex: index('batch_exam_subjects_batch_exam_id_idx').on(t.batchExamId),
+  staffIndex: index('batch_exam_subjects_staff_id_idx').on(t.staffId),
+}));
 
 export const batchExamResults = pgTable('batch_exam_results', {
   id: serial('id').primaryKey(),
@@ -567,6 +661,7 @@ export const batchExamResults = pgTable('batch_exam_results', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   studentBatchResultUnique: unique('student_batch_result_unique').on(t.batchExamSubjectId, t.studentId),
+  studentIndex: index('batch_exam_results_student_id_idx').on(t.studentId),
 }));
 
 // --- LEAVE REQUESTS ---
@@ -585,6 +680,9 @@ export const leaveRequests = pgTable('leave_requests', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   instRoleUserIndex: index('leave_requests_inst_role_user_idx').on(t.institutionId, t.userRole, t.userId),
+  // Institution/staff/student leave request lists all filter on
+  // (institution_id, user_role, status = 'PENDING') and sort by created_at desc.
+  instRoleStatusIndex: index('leave_requests_inst_role_status_idx').on(t.institutionId, t.userRole, t.status, t.createdAt),
 }));
 
 // --- STAFF ATTENDANCES ---
@@ -641,7 +739,10 @@ export const tickets = pgTable('tickets', {
   isForwarded: boolean('is_forwarded').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  institutionStatusCreatedIndex: index('tickets_institution_status_created_idx').on(t.institutionId, t.status, t.createdAt),
+  forwardedCreatedIndex: index('tickets_forwarded_created_idx').on(t.isForwarded, t.createdAt),
+}));
 
 // --- TICKET HISTORY ---
 export const ticketHistory = pgTable('ticket_history', {
@@ -652,7 +753,9 @@ export const ticketHistory = pgTable('ticket_history', {
   action: ticketHistoryActionEnum('action').notNull(),
   notes: text('notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  ticketIndex: index('ticket_history_ticket_id_idx').on(t.ticketId),
+}));
 
 // --- BLOGS ---
 export const blogs = pgTable('blogs', {
@@ -685,4 +788,5 @@ export const diaries = pgTable('diaries', {
   classSubjectDateUnique: uniqueIndex('diaries_class_subject_date_not_null_uidx')
     .on(t.classId, t.subjectId, t.date)
     .where(sql`${t.subjectId} is not null`),
+  institutionClassDateIndex: index('diaries_institution_class_date_idx').on(t.institutionId, t.classId, t.date),
 }));

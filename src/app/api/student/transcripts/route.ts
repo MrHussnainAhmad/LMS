@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
     const rawResults = await db.select({
       examId: batchExams.id,
       examTitle: batchExams.title,
+      examType: batchExams.type,
+      officialPublishedAt: batchExams.officialPublishedAt,
       examCreatedAt: batchExams.createdAt,
       subjectId: batchExamSubjects.id,
       isPublished: batchExamSubjects.isPublished,
@@ -26,7 +28,7 @@ export async function GET(req: NextRequest) {
     .innerJoin(batchExams, eq(batchExamSubjects.batchExamId, batchExams.id))
     .where(eq(batchExamResults.studentId, session.userId));
 
-    const examMap = new Map<number, { id: number, title: string, createdAt: Date, subjects: any[], totalMax: number, totalObtained: number, percentage: number }>();
+    const examMap = new Map<number, { id: number, title: string, type: string, officialPublishedAt: Date | null, createdAt: Date, subjects: any[], totalMax: number, totalObtained: number, percentage: number }>();
     const now = new Date();
     
     for (const r of rawResults) {
@@ -34,6 +36,8 @@ export async function GET(req: NextRequest) {
         examMap.set(r.examId, {
           id: r.examId,
           title: r.examTitle,
+          type: r.examType,
+          officialPublishedAt: r.officialPublishedAt,
           createdAt: r.examCreatedAt,
           subjects: [],
           totalMax: 0,
@@ -59,7 +63,7 @@ export async function GET(req: NextRequest) {
     }
 
     const publishedExams = Array.from(examMap.values()).filter(exam => 
-      exam.subjects.every(s => s.isEffectivelyPublished)
+      exam.subjects.every(s => s.isEffectivelyPublished) && (exam.type !== "PROMOTION" || Boolean(exam.officialPublishedAt))
     ).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
     return NextResponse.json(publishedExams);

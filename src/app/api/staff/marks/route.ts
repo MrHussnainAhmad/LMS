@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { tests, classes, sections, subjects, staffAssignments, students, marks } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { eq, and, inArray, isNull, or } from "drizzle-orm";
-import { redis, getCachedOrFetch, getRawCachedOrFetch } from "@/lib/redis";
+import { invalidateInstitutionRosterCaches } from "@/lib/redis";
 
 export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -15,216 +15,67 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
     const sectionIdParam = req.nextUrl.searchParams.get("sectionId");
     const testIdParam = req.nextUrl.searchParams.get("testId");
 
-    // No parameters deliberately retain the existing broad response for legacy clients.
-    if (view || sectionIdParam || testIdParam) {
-      if (view && view !== "metadata") return NextResponse.json({ error: "Invalid view" }, { status: 400 });
-      if (testIdParam && !sectionIdParam) return NextResponse.json({ error: "sectionId is required with testId" }, { status: 400 });
-
-      const assignedSlots = await db.select({
-        sectionId: sections.id, sectionName: sections.name, classId: classes.id, className: classes.name,
-        subjectId: subjects.id, subjectName: subjects.name,
-      }).from(staffAssignments)
-        .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
-        .innerJoin(classes, eq(sections.classId, classes.id))
-        .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-        .where(and(eq(staffAssignments.staffId, staffId), eq(staffAssignments.institutionId, instId)));
-      const sectionOptions = Array.from(new Map(assignedSlots.map((slot) => [slot.sectionId, {
-        id: slot.sectionId, name: slot.sectionName, classId: slot.classId, className: slot.className,
-      }])).values());
-      const subjectOptions = Array.from(new Map(assignedSlots
-        .filter((slot) => slot.subjectId && slot.subjectName)
-        .map((slot) => [slot.subjectId!, { id: slot.subjectId!, name: slot.subjectName!, sectionId: slot.sectionId }])).values());
-      if (view === "metadata") return NextResponse.json({ sectionOptions, subjectOptions });
-
-      const sectionId = Number(sectionIdParam);
-      if (!Number.isInteger(sectionId) || sectionId <= 0) return NextResponse.json({ error: "Invalid sectionId" }, { status: 400 });
-      const sectionSlots = assignedSlots.filter((slot) => slot.sectionId === sectionId);
-      if (sectionSlots.length === 0) return NextResponse.json({ error: "You are not assigned to this section" }, { status: 403 });
-      const subjectIds = sectionSlots.flatMap((slot) => slot.subjectId ? [slot.subjectId] : []);
-      const classId = sectionSlots[0].classId;
-      if (subjectIds.length === 0) {
-        if (testIdParam) return NextResponse.json({ error: "Assessment not found in this section" }, { status: 404 });
-        return NextResponse.json({ tests: [], sectionOptions, subjectOptions });
-      }
-      const scopedTests = await db.select({
-        id: tests.id, title: tests.title, type: tests.type, maxMarks: tests.maxMarks, date: tests.date,
-        createdByRole: tests.createdByRole, staffId: tests.staffId, classId: tests.classId, sectionId: tests.sectionId,
-        subjectId: tests.subjectId, className: classes.name, sectionName: sections.name, subjectName: subjects.name,
-      }).from(tests)
-        .innerJoin(classes, eq(tests.classId, classes.id))
-        .leftJoin(sections, eq(tests.sectionId, sections.id))
-        .leftJoin(subjects, eq(tests.subjectId, subjects.id))
-        .where(and(eq(tests.institutionId, instId), or(
-          and(eq(tests.createdByRole, "STAFF"), eq(tests.staffId, staffId), eq(tests.sectionId, sectionId)),
-          and(eq(tests.createdByRole, "INSTITUTION"), eq(tests.classId, classId), inArray(tests.subjectId, subjectIds), or(eq(tests.sectionId, sectionId), isNull(tests.sectionId)))
-        )));
-      if (!testIdParam) return NextResponse.json({ tests: scopedTests, sectionOptions, subjectOptions });
-
-      const testId = Number(testIdParam);
-      const test = scopedTests.find((row) => row.id === testId);
-      if (!test) return NextResponse.json({ error: "Assessment not found in this section" }, { status: 404 });
-      const roster = await db.select({ id: students.id, name: students.name, rollNumber: students.classRollNumber })
-        .from(students).where(and(eq(students.institutionId, instId), eq(students.sectionId, sectionId)));
-      const studentIds = roster.map((student) => student.id);
-      const markRows = studentIds.length ? await db.select({ testId: marks.testId, studentId: marks.studentId, marksObtained: marks.marksObtained })
-        .from(marks).where(and(eq(marks.institutionId, instId), eq(marks.testId, testId), inArray(marks.studentId, studentIds))) : [];
+    if (!view && !sectionIdParam && !testIdParam) {
       return NextResponse.json({
-        tests: [test], rosters: { [sectionId]: roster },
-        marks: Object.fromEntries(markRows.map((row) => [`${row.testId}:${row.studentId}`, row.marksObtained])),
-        sectionOptions, subjectOptions,
-      });
+        error: "Scoped query required. Use ?view=metadata or ?sectionId=… (optional &testId=…).",
+      }, { status: 400 });
     }
+    if (view && view !== "metadata") return NextResponse.json({ error: "Invalid view" }, { status: 400 });
+    if (testIdParam && !sectionIdParam) return NextResponse.json({ error: "sectionId is required with testId" }, { status: 400 });
 
-    const cacheKey = `cache:staff:marks:${instId}:${staffId}`;
-    const cachedData = await getRawCachedOrFetch(cacheKey, 60, async () => {
-      const assignedSlotsRaw = await db.select({
-        sectionId: sections.id,
-        sectionName: sections.name,
-        classId: classes.id,
-        className: classes.name,
-        subjectId: subjects.id,
-        subjectName: subjects.name,
-      })
-        .from(staffAssignments)
-        .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
-        .innerJoin(classes, eq(sections.classId, classes.id))
-        .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-        .where(and(eq(staffAssignments.staffId, staffId), eq(staffAssignments.institutionId, instId)));
+    const assignedSlots = await db.select({
+      sectionId: sections.id, sectionName: sections.name, classId: classes.id, className: classes.name,
+      subjectId: subjects.id, subjectName: subjects.name,
+    }).from(staffAssignments)
+      .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
+      .innerJoin(classes, eq(sections.classId, classes.id))
+      .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
+      .where(and(eq(staffAssignments.staffId, staffId), eq(staffAssignments.institutionId, instId)));
+    const sectionOptions = Array.from(new Map(assignedSlots.map((slot) => [slot.sectionId, {
+      id: slot.sectionId, name: slot.sectionName, classId: slot.classId, className: slot.className,
+    }])).values());
+    const subjectOptions = Array.from(new Map(assignedSlots
+      .filter((slot) => slot.subjectId && slot.subjectName)
+      .map((slot) => [slot.subjectId!, { id: slot.subjectId!, name: slot.subjectName!, sectionId: slot.sectionId }])).values());
+    if (view === "metadata") return NextResponse.json({ sectionOptions, subjectOptions });
 
-      const sectionOptionsMap = new Map();
-      const subjectOptionsMap = new Map();
-      const classIds = new Set<number>();
-      const subjectIds = new Set<number>();
+    const sectionId = Number(sectionIdParam);
+    if (!Number.isInteger(sectionId) || sectionId <= 0) return NextResponse.json({ error: "Invalid sectionId" }, { status: 400 });
+    const sectionSlots = assignedSlots.filter((slot) => slot.sectionId === sectionId);
+    if (sectionSlots.length === 0) return NextResponse.json({ error: "You are not assigned to this section" }, { status: 403 });
+    const subjectIds = sectionSlots.flatMap((slot) => slot.subjectId ? [slot.subjectId] : []);
+    const classId = sectionSlots[0].classId;
+    if (subjectIds.length === 0) {
+      if (testIdParam) return NextResponse.json({ error: "Assessment not found in this section" }, { status: 404 });
+      return NextResponse.json({ tests: [], sectionOptions, subjectOptions });
+    }
+    const scopedTests = await db.select({
+      id: tests.id, title: tests.title, type: tests.type, maxMarks: tests.maxMarks, date: tests.date,
+      createdByRole: tests.createdByRole, staffId: tests.staffId, classId: tests.classId, sectionId: tests.sectionId,
+      subjectId: tests.subjectId, className: classes.name, sectionName: sections.name, subjectName: subjects.name,
+    }).from(tests)
+      .innerJoin(classes, eq(tests.classId, classes.id))
+      .leftJoin(sections, eq(tests.sectionId, sections.id))
+      .leftJoin(subjects, eq(tests.subjectId, subjects.id))
+      .where(and(eq(tests.institutionId, instId), or(
+        and(eq(tests.createdByRole, "STAFF"), eq(tests.staffId, staffId), eq(tests.sectionId, sectionId)),
+        and(eq(tests.createdByRole, "INSTITUTION"), eq(tests.classId, classId), inArray(tests.subjectId, subjectIds), or(eq(tests.sectionId, sectionId), isNull(tests.sectionId)))
+      )));
+    if (!testIdParam) return NextResponse.json({ tests: scopedTests, sectionOptions, subjectOptions });
 
-      assignedSlotsRaw.forEach(slot => {
-        classIds.add(slot.classId);
-        if (slot.subjectId) subjectIds.add(slot.subjectId);
-
-        if (!sectionOptionsMap.has(slot.sectionId)) {
-          sectionOptionsMap.set(slot.sectionId, {
-            id: slot.sectionId,
-            className: slot.className,
-            name: slot.sectionName,
-            classId: slot.classId,
-          });
-        }
-
-        if (slot.subjectId && slot.subjectName) {
-          if (!subjectOptionsMap.has(slot.subjectId)) {
-            subjectOptionsMap.set(slot.subjectId, {
-              id: slot.subjectId,
-              name: slot.subjectName,
-              sectionId: slot.sectionId,
-            });
-          }
-        }
-      });
-
-      const allInstitutionTests = await db.select({
-        id: tests.id,
-        title: tests.title,
-        type: tests.type,
-        maxMarks: tests.maxMarks,
-        date: tests.date,
-        createdByRole: tests.createdByRole,
-        staffId: tests.staffId,
-        classId: tests.classId,
-        sectionId: tests.sectionId,
-        subjectId: tests.subjectId,
-        className: classes.name,
-        sectionName: sections.name,
-        subjectName: subjects.name,
-      })
-        .from(tests)
-        .innerJoin(classes, eq(tests.classId, classes.id))
-        .leftJoin(sections, eq(tests.sectionId, sections.id))
-        .leftJoin(subjects, eq(tests.subjectId, subjects.id))
-        .where(eq(tests.institutionId, instId));
-
-      const eligibleTests = allInstitutionTests.filter((test) => {
-        if (test.createdByRole === "STAFF") return test.staffId === staffId;
-        return classIds.has(test.classId) && test.subjectId && subjectIds.has(test.subjectId);
-      });
-
-      // Fetch marks and students for the eligible tests
-      const eligibleTestIds = eligibleTests.map(t => t.id);
-      const markRows = eligibleTestIds.length > 0 ? await db.select({
-        testId: marks.testId,
-        studentId: marks.studentId,
-        marksObtained: marks.marksObtained,
-      }).from(marks).where(
-        and(
-          eq(marks.institutionId, instId),
-          inArray(marks.testId, eligibleTestIds)
-        )
-      ) : [];
-
-      const marksByTestAndStudent = new Map<string, number>();
-      const totalMarksUploaded = new Map<number, number>();
-      
-      for (const row of markRows) {
-        const key = `${row.testId}:${row.studentId}`;
-        marksByTestAndStudent.set(key, row.marksObtained);
-        totalMarksUploaded.set(row.testId, (totalMarksUploaded.get(row.testId) || 0) + 1);
-      }
-
-      const classStudents = await getCachedOrFetch(`cache:rosters:${instId}`, 60, () =>
-        db.select({
-          id: students.id,
-          name: students.name,
-          classId: students.classId,
-          sectionId: students.sectionId,
-          classRollNumber: students.classRollNumber,
-        }).from(students).where(eq(students.institutionId, instId))
-      );
-
-      const studentsByClass = new Map<number, typeof classStudents>();
-      for (const student of classStudents) {
-        const existing = studentsByClass.get(student.classId) || [];
-        existing.push(student);
-        studentsByClass.set(student.classId, existing);
-      }
-
-      for (const list of studentsByClass.values()) {
-        // Fast numeric sort outside the loop
-        list.sort((a, b) => {
-          const numA = parseInt(a.classRollNumber, 10);
-          const numB = parseInt(b.classRollNumber, 10);
-          if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-          return a.classRollNumber.localeCompare(b.classRollNumber);
-        });
-      }
-
-      const testsList = eligibleTests.map(test => {
-        return {
-          ...test,
-          uploadedCount: totalMarksUploaded.get(test.id) || 0,
-        };
-      });
-
-      // Prepare normalized rosters
-      const rostersObj: Record<string, any[]> = {};
-      for (const [classId, roster] of studentsByClass.entries()) {
-        rostersObj[classId] = roster.map(s => {
-          // Marks are not attached to the roster array here because they are per-test.
-          // Wait, if we separate them, how does the client get marks?
-          // We can send marks as a separate dictionary!
-          return { id: s.id, name: s.name, rollNumber: s.classRollNumber };
-        });
-      }
-
-      const marksObj = Object.fromEntries(marksByTestAndStudent);
-
-      return JSON.stringify({
-        tests: testsList,
-        rosters: rostersObj,
-        marks: marksObj,
-        sectionOptions: Array.from(sectionOptionsMap.values()),
-        subjectOptions: Array.from(subjectOptionsMap.values()),
-      });
+    const testId = Number(testIdParam);
+    const test = scopedTests.find((row) => row.id === testId);
+    if (!test) return NextResponse.json({ error: "Assessment not found in this section" }, { status: 404 });
+    const roster = await db.select({ id: students.id, name: students.name, rollNumber: students.classRollNumber })
+      .from(students).where(and(eq(students.institutionId, instId), eq(students.sectionId, sectionId)));
+    const studentIds = roster.map((student) => student.id);
+    const markRows = studentIds.length ? await db.select({ testId: marks.testId, studentId: marks.studentId, marksObtained: marks.marksObtained })
+      .from(marks).where(and(eq(marks.institutionId, instId), eq(marks.testId, testId), inArray(marks.studentId, studentIds))) : [];
+    return NextResponse.json({
+      tests: [test], rosters: { [sectionId]: roster },
+      marks: Object.fromEntries(markRows.map((row) => [`${row.testId}:${row.studentId}`, row.marksObtained])),
+      sectionOptions, subjectOptions,
     });
-
-    return new NextResponse(cachedData as string, { headers: { 'content-type': 'application/json' } });
   } catch (error) {
     console.error("Error fetching marks data:", error);
     return NextResponse.json({ error: "Failed to fetch marks data" }, { status: 500 });
@@ -291,6 +142,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
     }));
 
     await db.insert(tests).values(newTests);
+    await invalidateInstitutionRosterCaches(session.institutionId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -27,12 +27,13 @@ type StudentProfile = {
   phone: string | null;
   loginRollNumber: string;
   classRollNumber: string;
+  academicStatus: "ACTIVE" | "GRADUATED";
   age?: number | null;
   profilePictureUrl?: string | null;
   emergencyContact?: string | null;
   parentalWhatsapp?: string | null;
-  classId: number;
-  sectionId: number;
+  classId: number | null;
+  sectionId: number | null;
   className: string;
   sectionName: string;
 };
@@ -71,6 +72,7 @@ export function StudentProfileClient({
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const isGraduated = student.academicStatus === "GRADUATED";
   const [isSavingFatherName, setIsSavingFatherName] = useState(false);
   const [isSendingRequest, setIsSendingRequest] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -148,20 +150,26 @@ export function StudentProfileClient({
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-3xl font-display font-bold text-brand-950">Profile & Settings</h1>
-        <p className="text-stone-500 mt-1">View your student record, request corrections, and update your password.</p>
+        <p className="text-stone-500 mt-1">
+          {isGraduated
+            ? "View your archived student record. Profile changes are closed after graduation."
+            : "View your student record, request corrections, and update your password."}
+        </p>
       </div>
 
-      <Card>
-        <CardContent className="p-6">
-          <ProfilePictureUploader 
-            currentPictureUrl={student.profilePictureUrl} 
-            name={student.firstName + " " + (student.lastName || "")} 
-            apiEndpoint="/api/student/profile" 
-          />
-        </CardContent>
-      </Card>
+      {!isGraduated && (
+        <Card>
+          <CardContent className="p-6">
+            <ProfilePictureUploader
+              currentPictureUrl={student.profilePictureUrl}
+              name={student.firstName + " " + (student.lastName || "")}
+              apiEndpoint="/api/student/profile"
+            />
+          </CardContent>
+        </Card>
+      )}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+      <div className={isGraduated ? "space-y-6" : "grid gap-6 lg:grid-cols-[1fr_380px]"}>
         <div className="space-y-6">
           <Card>
             <CardHeader className="border-b border-border bg-stone-50/70">
@@ -177,8 +185,9 @@ export function StudentProfileClient({
                 <ReadOnlyField label="Age" value={student.age ? String(student.age) : "Not added"} />
                 <ReadOnlyField label="Emergency Contact" value={student.emergencyContact || "Not added"} />
                 <ReadOnlyField label="Parental Whatsapp" value={student.parentalWhatsapp || "Not added"} />
-                <ReadOnlyField label="Roll Number" value={student.classRollNumber} />
+                <ReadOnlyField label="Roll Number" value={student.academicStatus === "GRADUATED" ? "Graduated" : student.classRollNumber} />
                 <ReadOnlyField label="Login ID" value={student.loginRollNumber} />
+                <ReadOnlyField label="Academic Status" value={student.academicStatus === "GRADUATED" ? "Graduated" : "Active"} />
                 <ReadOnlyField label="Class" value={student.className} />
                 <ReadOnlyField label="Section" value={student.sectionName} />
                 <ReadOnlyField label="Father Name" value={student.fatherName || "Not added"} />
@@ -186,64 +195,66 @@ export function StudentProfileClient({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="border-b border-border bg-stone-50/70">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Send className="h-5 w-5 text-brand-700" />
-                Request Profile Correction
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <form onSubmit={handleRequest} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Field label="First Name">
-                    <Input name="firstName" placeholder={student.firstName} />
+          {!isGraduated && (
+            <Card>
+              <CardHeader className="border-b border-border bg-stone-50/70">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Send className="h-5 w-5 text-brand-700" />
+                  Request Profile Correction
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                <form onSubmit={handleRequest} className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field label="First Name">
+                      <Input name="firstName" placeholder={student.firstName} />
+                    </Field>
+                    <Field label="Last Name">
+                      <Input name="lastName" placeholder={student.lastName || "Last name"} />
+                    </Field>
+                    <Field label="Father Name">
+                      <Input name="fatherName" placeholder={student.fatherName || "Father name"} />
+                    </Field>
+                    <Field label="Class">
+                      <select
+                        name="classId"
+                        className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring"
+                        value={requestClassId}
+                        onChange={(event) => setRequestClassId(event.target.value)}
+                      >
+                        <option value="">No class change</option>
+                        {classes.map((classRow) => (
+                          <option key={classRow.id} value={classRow.id}>{classRow.name}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Section">
+                      <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
+                        <option value="">No section change</option>
+                        {filteredSections.map((section) => (
+                          <option key={section.id} value={section.id}>{section.name}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                  <Field label="Reason">
+                    <textarea
+                      name="reason"
+                      required
+                      minLength={10}
+                      rows={4}
+                      className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring"
+                      placeholder="Explain what needs to be corrected and why."
+                    />
                   </Field>
-                  <Field label="Last Name">
-                    <Input name="lastName" placeholder={student.lastName || "Last name"} />
-                  </Field>
-                  <Field label="Father Name">
-                    <Input name="fatherName" placeholder={student.fatherName || "Father name"} />
-                  </Field>
-                  <Field label="Class">
-                    <select
-                      name="classId"
-                      className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring"
-                      value={requestClassId}
-                      onChange={(event) => setRequestClassId(event.target.value)}
-                    >
-                      <option value="">No class change</option>
-                      {classes.map((classRow) => (
-                        <option key={classRow.id} value={classRow.id}>{classRow.name}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Section">
-                    <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
-                      <option value="">No section change</option>
-                      {filteredSections.map((section) => (
-                        <option key={section.id} value={section.id}>{section.name}</option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
-                <Field label="Reason">
-                  <textarea
-                    name="reason"
-                    required
-                    minLength={10}
-                    rows={4}
-                    className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring"
-                    placeholder="Explain what needs to be corrected and why."
-                  />
-                </Field>
-                <Button type="submit" disabled={isSendingRequest} className="gap-2">
-                  <Send className="h-4 w-4" />
-                  {isSendingRequest ? "Sending..." : "Send Request"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                  <Button type="submit" disabled={isSendingRequest} className="gap-2">
+                    <Send className="h-4 w-4" />
+                    {isSendingRequest ? "Sending..." : "Send Request"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader className="border-b border-border bg-stone-50/70">
@@ -278,7 +289,7 @@ export function StudentProfileClient({
           </Card>
         </div>
 
-        <div className="space-y-6">
+        {!isGraduated && <div className="space-y-6">
           <Card>
             <CardHeader className="border-b border-border bg-stone-50/70">
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -328,7 +339,7 @@ export function StudentProfileClient({
               </form>
             </CardContent>
           </Card>
-        </div>
+        </div>}
       </div>
     </div>
   );

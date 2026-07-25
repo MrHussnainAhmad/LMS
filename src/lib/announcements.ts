@@ -335,14 +335,19 @@ function toVisibleAnnouncement(announcement: AnnouncementRow, isRead: boolean): 
   };
 }
 
-export async function getVisibleAnnouncements(session: JWTPayload, limit = 4) {
+export async function getVisibleAnnouncements(
+  session: JWTPayload,
+  limit = 4,
+  studentInfo?: { campusId: number | null; classId: number; sectionId: number; createdAt: Date },
+  options?: { includeReadStatus?: boolean }
+) {
   const institutionId = getSessionInstitutionId(session);
   if (!institutionId) return [];
 
   let visibleRows: AnnouncementRow[] = [];
   const cacheKey = `cache:announcements:visible:${institutionId}:${session.role}:${session.userId}`;
 
-  visibleRows = await getCachedOrFetch(cacheKey, 60, async () => {
+  visibleRows = await getCachedOrFetch(cacheKey, 180, async () => {
     let rows: AnnouncementRow[] = [];
     if (session.role === "INSTITUTION") {
       rows = await db.select()
@@ -351,12 +356,13 @@ export async function getVisibleAnnouncements(session: JWTPayload, limit = 4) {
         .orderBy(desc(announcements.createdAt))
         .limit(limit);
     } else if (session.role === "STUDENT") {
-      const [student] = await db.select({
+      const student = studentInfo ?? (await db.select({
         campusId: students.campusId,
         classId: students.classId,
         sectionId: students.sectionId,
         createdAt: students.createdAt,
-      }).from(students).where(and(eq(students.id, session.userId), eq(students.institutionId, institutionId))).limit(1);
+      }).from(students).where(and(eq(students.id, session.userId), eq(students.institutionId, institutionId))).limit(1))[0];
+
       if (!student) return [];
 
       rows = await db.select()
@@ -424,6 +430,10 @@ export async function getVisibleAnnouncements(session: JWTPayload, limit = 4) {
   }));
 
   if (visibleRows.length === 0) return [];
+
+  if (options?.includeReadStatus === false) {
+    return visibleRows.map((announcement) => toVisibleAnnouncement(announcement, false));
+  }
 
   const readRows = await db.select()
     .from(announcementReads)

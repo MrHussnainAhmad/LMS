@@ -21,6 +21,7 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
         parentalWhatsapp: students.parentalWhatsapp,
         loginRollNumber: students.loginRollNumber,
         classRollNumber: students.classRollNumber,
+        academicStatus: students.academicStatus,
         age: students.age,
         className: classes.name,
         sectionName: sections.name,
@@ -33,6 +34,10 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
       .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)));
 
     if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+
+    if (req.nextUrl.searchParams.get("include") !== "catalog") {
+      return NextResponse.json({ profile });
+    }
 
     const allClasses = await db.select({ id: classes.id, name: classes.name })
       .from(classes)
@@ -51,6 +56,9 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
 
 export const PATCH = requireRole(["STUDENT"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (session.studentAcademicStatus === "GRADUATED") {
+    return NextResponse.json({ error: "Profile updates are closed after graduation." }, { status: 403 });
+  }
   const body = await req.json();
   const parsed = updateStudentProfileSchema.safeParse(body);
 

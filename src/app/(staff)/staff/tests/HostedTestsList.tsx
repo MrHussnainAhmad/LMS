@@ -10,22 +10,32 @@ type Question = { id: number; questionType: "MCQ" | "SHORT"; prompt: string; mar
 type Submission = { id: number; studentName: string; rollNumber: string | null; status: string; violationReason: string | null; totalScore: number; submittedAt: string | null };
 type Details = { hostedTest: { maxMarks: number; mode: "MCQ" | "MIX" }; questions: Question[]; submissions: Submission[] };
 
-export function HostedTestsList() {
-  const [tests, setTests] = useState<TestSummary[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+export function HostedTestsList({
+  initialTests,
+  initialNextCursor = null,
+}: {
+  initialTests?: TestSummary[];
+  initialNextCursor?: string | null;
+}) {
+  const seededFromServer = initialTests !== undefined;
+  const [tests, setTests] = useState<TestSummary[]>(initialTests ?? []);
+  const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor);
   const [details, setDetails] = useState<Record<number, Details>>({});
   const [answers, setAnswers] = useState<Record<number, Record<string, string | number>>>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!seededFromServer);
 
   const loadTests = async (cursor?: string) => {
     const response = await fetch(`/api/staff/host-tests${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
     if (!response.ok) return;
     const body = await response.json();
-    setTests((current) => cursor ? [...current, ...body.tests] : body.tests);
+    setTests((current) => (cursor ? [...current, ...body.tests] : body.tests));
     setNextCursor(body.nextCursor);
   };
 
-  useEffect(() => { loadTests().finally(() => setLoading(false)); }, []);
+  useEffect(() => {
+    if (seededFromServer) return;
+    loadTests().finally(() => setLoading(false));
+  }, [seededFromServer]);
 
   const loadDetails = async (onlineTestId: number) => {
     if (details[onlineTestId]) return;

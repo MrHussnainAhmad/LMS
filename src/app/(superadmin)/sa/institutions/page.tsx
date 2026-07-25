@@ -1,19 +1,40 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { institutions } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { desc, count } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Building2, Search } from "lucide-react";
+import { Building2, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { updateInstitutionStatusAction } from "@/app/actions/sa-actions";
 import { redirect } from "next/navigation";
 import { SubmitButton } from "@/components/ui/submit-button";
 import Link from "next/link";
 
-export default async function SAInstitutionsPage() {
-  const allInstitutions = await db.select()
-    .from(institutions)
-    .orderBy(desc(institutions.createdAt));
+const PAGE_SIZE = 50;
+
+export default async function SAInstitutionsPage({ searchParams }: { searchParams: { page?: string } }) {
+  const page = Math.max(parseInt(searchParams.page || "1", 10) || 1, 1);
+  const offset = (page - 1) * PAGE_SIZE;
+
+  const [allInstitutions, totalCountRows] = await Promise.all([
+    db.select({
+      id: institutions.id,
+      name: institutions.name,
+      username: institutions.username,
+      type: institutions.type,
+      city: institutions.city,
+      country: institutions.country,
+      status: institutions.status,
+      createdAt: institutions.createdAt,
+    })
+      .from(institutions)
+      .orderBy(desc(institutions.createdAt))
+      .limit(PAGE_SIZE)
+      .offset(offset),
+    db.select({ value: count() }).from(institutions),
+  ]);
+  const totalCount = totalCountRows[0].value;
+  const totalPages = Math.max(Math.ceil(totalCount / PAGE_SIZE), 1);
 
   async function updateStatus(formData: FormData) {
     "use server";
@@ -79,7 +100,7 @@ export default async function SAInstitutionsPage() {
                           {inst.name.substring(0, 2).toUpperCase()}
                         </div>
                         <div>
-                          <Link href={`/sa/institutions/${inst.id}`} className="font-semibold text-brand-950 hover:underline">
+                          <Link href={`/sa/institutions/${inst.id}`} prefetch={false} className="font-semibold text-brand-950 hover:underline">
                             {inst.name}
                           </Link>
                           <p className="text-xs text-stone-500">{inst.username}</p>
@@ -129,6 +150,36 @@ export default async function SAInstitutionsPage() {
               </tbody>
             </table>
           </div>
+          {totalCount > PAGE_SIZE && (
+            <div className="flex items-center justify-between border-t border-border px-6 py-4">
+              <p className="text-sm text-stone-500">
+                Showing {offset + 1}-{Math.min(offset + PAGE_SIZE, totalCount)} of {totalCount} institutions
+              </p>
+              <div className="flex gap-2">
+                <Link
+                  href={`/sa/institutions?page=${Math.max(page - 1, 1)}`}
+                  prefetch={false}
+                  aria-disabled={page <= 1}
+                  className={`inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    page <= 1 ? "pointer-events-none opacity-40" : "hover:bg-stone-50 text-stone-700"
+                  }`}
+                >
+                  <ChevronLeft className="h-4 w-4" /> Prev
+                </Link>
+                <span className="px-2 py-1.5 text-sm text-stone-500">Page {page} of {totalPages}</span>
+                <Link
+                  href={`/sa/institutions?page=${Math.min(page + 1, totalPages)}`}
+                  prefetch={false}
+                  aria-disabled={page >= totalPages}
+                  className={`inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    page >= totalPages ? "pointer-events-none opacity-40" : "hover:bg-stone-50 text-stone-700"
+                  }`}
+                >
+                  Next <ChevronRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

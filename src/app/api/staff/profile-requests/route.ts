@@ -14,7 +14,10 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const [staffRow] = await db.select().from(staff)
+  const [staffRow] = await db.select({
+    id: staff.id,
+    institutionId: staff.institutionId,
+  }).from(staff)
     .where(and(eq(staff.id, session.userId), eq(staff.institutionId, session.institutionId)))
     .limit(1);
   if (!staffRow) return NextResponse.json({ error: "Staff not found" }, { status: 404 });
@@ -27,7 +30,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
   if (parsed.data.campusId) requestedFields.campusId = parsed.data.campusId;
 
   if (parsed.data.campusId) {
-    const [campus] = await db.select().from(campuses)
+    const [campus] = await db.select({ id: campuses.id }).from(campuses)
       .where(and(eq(campuses.id, parsed.data.campusId), eq(campuses.institutionId, staffRow.institutionId)))
       .limit(1);
     if (!campus) return NextResponse.json({ error: "Campus not found" }, { status: 400 });

@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { students, staff, institutions, employees, superAdmins, institutionAdmins } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { redis } from "./redis";
 import type { JWTPayload, UserRole } from "./auth-types";
 
@@ -48,7 +48,7 @@ export async function getUserCreatedAt(session: JWTPayload): Promise<Date> {
   }
 }
 
-const USER_VALIDITY_CACHE_TTL_SECONDS = 30;
+const USER_VALIDITY_CACHE_TTL_SECONDS = 600;
 
 function userValidityCacheKey(role: UserRole, userId: number) {
   return `auth:user-validity:${role}:${userId}`;
@@ -77,8 +77,16 @@ async function verifyUserExistsInDatabase(role: UserRole, userId: number): Promi
       return !!u?.isActive;
     }
     case 'STUDENT': {
-      const [u] = await db.select({ isActive: students.isActive }).from(students).where(eq(students.id, userId)).limit(1);
-      return !!u?.isActive;
+      const [u] = await db.select({
+        isActive: students.isActive,
+        academicStatus: students.academicStatus,
+        graduatedAccessAllowed: institutions.allowGraduatedStudentAccess,
+      })
+        .from(students)
+        .innerJoin(institutions, eq(students.institutionId, institutions.id))
+        .where(and(eq(students.id, userId), eq(students.isActive, true)))
+        .limit(1);
+      return !!u && (u.academicStatus !== 'GRADUATED' || u.graduatedAccessAllowed);
     }
     default:
       return false;

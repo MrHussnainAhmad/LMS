@@ -1,47 +1,62 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 
+function isAuthenticatedPortalPath(pathname: string | null) {
+  if (!pathname) return false;
+  return (
+    pathname.startsWith("/student") ||
+    pathname.startsWith("/staff") ||
+    pathname.startsWith("/institution") ||
+    pathname.startsWith("/employee") ||
+    pathname.startsWith("/sa") ||
+    pathname.startsWith("/batch-results") ||
+    pathname.startsWith("/force-password-change")
+  );
+}
+
+/**
+ * Version check only on public surfaces, and only on window focus —
+ * no interval polling (avoids /api/version CPU on idle authenticated users).
+ */
 export default function UpdateNotifier() {
+  const pathname = usePathname();
   const [showUpdate, setShowUpdate] = useState(false);
 
   useEffect(() => {
+    if (isAuthenticatedPortalPath(pathname)) return;
+
     const currentVersion = process.env.NEXT_PUBLIC_BUILD_ID;
-    
-    // In dev mode without a BUILD_ID, we might just skip polling 
-    // to avoid unnecessary requests, but for testing we can allow it.
     if (!currentVersion) return;
 
-    let intervalId: NodeJS.Timeout;
+    let ignore = false;
 
     const checkVersion = async () => {
+      if (document.visibilityState === "hidden") return;
       try {
-        const res = await fetch('/api/version', { cache: 'no-store' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.version && data.version !== 'dev' && data.version !== currentVersion) {
-            setShowUpdate(true);
-            if (intervalId) clearInterval(intervalId);
-          }
+        const res = await fetch("/api/version", { cache: "no-store" });
+        if (!res.ok || ignore) return;
+        const data = await res.json();
+        if (data.version && data.version !== "dev" && data.version !== currentVersion) {
+          setShowUpdate(true);
         }
-      } catch (e) {
+      } catch {
         // Ignore network errors
       }
     };
 
-    // Check every 5 minutes
-    intervalId = setInterval(checkVersion, 5 * 60 * 1000);
-
-    // Also check when window gains focus
-    const handleFocus = () => checkVersion();
-    window.addEventListener('focus', handleFocus);
+    const onFocus = () => void checkVersion();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
 
     return () => {
-      clearInterval(intervalId);
-      window.removeEventListener('focus', handleFocus);
+      ignore = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
     };
-  }, []);
+  }, [pathname]);
 
   if (!showUpdate) return null;
 

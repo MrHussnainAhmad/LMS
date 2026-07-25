@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { db } from "@/db";
 import { tests, students, marks, staffAssignments, sections } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { eq, and, inArray, sql } from "drizzle-orm";
+import { withRateLimit } from "@/lib/rate-limit";
 
 export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, params }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const rateLimit = await withRateLimit(req, "marks_write");
+  if (!rateLimit.success) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
 
   const id = (await params)?.testId;
   const testId = Number(id);
@@ -91,31 +98,29 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, p
     });
 
     const { createBulkNotifications } = await import("@/lib/notifications");
-    import('next/server').then(({ after }) => {
-      after(async () => {
-        try {
-          await createBulkNotifications(records.map((r: any) => ({
-            institutionId: session.institutionId!,
-            userRole: "STUDENT",
-            userId: Number(r.studentId),
-            type: "MARKS",
-            title: "Marks Updated",
-            message: `Your marks for ${test.title} have been updated. You scored ${r.marksObtained}/${expectedTotal}.`,
-            referenceId: test.id,
-          })));
+    after(async () => {
+      try {
+        await createBulkNotifications(records.map((r: any) => ({
+          institutionId: session.institutionId!,
+          userRole: "STUDENT",
+          userId: Number(r.studentId),
+          type: "MARKS",
+          title: "Marks Updated",
+          message: `Your marks for ${test.title} have been updated. You scored ${r.marksObtained}/${expectedTotal}.`,
+          referenceId: test.id,
+        })));
 
-          const { redis } = await import('@/lib/redis');
-          const keys = records.map((r: any) => `cache:student:marks:${r.studentId}`);
-          if (keys.length > 0) {
-            await redis.del(...keys);
-            await Promise.all(records.map((r: any) =>
-              redis.incr(`cache:student:marks:version:${r.studentId}`)
-            ));
-          }
-        } catch (e) {
-          console.error(e);
+        const { redis } = await import('@/lib/redis');
+        const keys = records.map((r: any) => `cache:student:marks:${r.studentId}`);
+        if (keys.length > 0) {
+          await redis.del(...keys);
+          await Promise.all(records.map((r: any) =>
+            redis.incr(`cache:student:marks:version:${r.studentId}`)
+          ));
         }
-      });
+      } catch (e) {
+        console.error(e);
+      }
     });
 
     return NextResponse.json({ success: true });

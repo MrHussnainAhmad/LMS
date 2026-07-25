@@ -1,0 +1,13 @@
+# Rollback Compose override — use to route traffic directly to single app container:
+#   docker compose -f docker-compose.yml -f docker-compose.direct-app.yml up -d --build
+
+services:
+  app:
+    ports:
+      - "3000:3000"
+
+  caddy:
+    profiles: ["with-caddy"]
+
+  postgres-backup:
+    profiles: ["with-backup"]

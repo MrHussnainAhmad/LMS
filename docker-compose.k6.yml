@@ -1,0 +1,13 @@
+# Local k6 override — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.k6.yml up -d --build
+#
+# - Publishes Caddy load balancer on http://localhost:3000 for k6 to distribute traffic round-robin to both app and app2
+# - Skips postgres-backup to free RAM under an 8GB WSL cap
+
+services:
+  caddy:
+    ports:
+      - "3000:3000"
+
+  postgres-backup:
+    profiles: ["with-backup"]

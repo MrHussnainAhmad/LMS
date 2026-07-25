@@ -53,6 +53,8 @@ yarn-error.log*
 !/drizzle/0008_assignment_reference_files.sql
 !/drizzle/0009_dashboard_performance_indexes.sql
 !/drizzle/0015_students_institution_section_idx.sql
+!/drizzle/0016_institution_level_features.sql
+!/drizzle/0017_batch_exam_promotion_type.sql
 !/drizzle/0006_login_lookup_indexes.sql
 !/drizzle/0007_push_preferences_default_enabled.sql
 

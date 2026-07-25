@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/db";
 import { onlineTestSubmissions, onlineTests, students, subjects, tests } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { studentPlacementColumns } from "@/lib/student-columns";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
@@ -11,7 +12,11 @@ export default async function StudentTestsPage() {
   const session = await getSession();
   if (!session || session.role !== "STUDENT" || !session.institutionId) redirect("/login");
 
-  const [student] = await db.select().from(students).where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId))).limit(1);
+  const [student] = await db
+    .select(studentPlacementColumns)
+    .from(students)
+    .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
+    .limit(1);
   if (!student) redirect("/login");
 
   const rows = await db.select({
@@ -74,7 +79,7 @@ export default async function StudentTestsPage() {
                         {onlineTest.durationMinutes} minutes
                       </p>
                     </div>
-                    <Link href={`/student/tests/${onlineTest.id}`} className="rounded-md bg-brand-900 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-brand-800">
+                    <Link href={`/student/tests/${onlineTest.id}`} prefetch={false} className="rounded-md bg-brand-900 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-brand-800">
                       Start
                     </Link>
                   </div>

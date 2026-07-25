@@ -9,45 +9,71 @@ import { eq, and } from "drizzle-orm";
 import { getVisibleAnnouncements } from "@/lib/announcements";
 import { DashboardAnnouncements } from "@/components/announcements/DashboardAnnouncements";
 import { TodayTimetableCard, type TimetableEntry } from "@/components/timetable/ScheduleViews";
+import { getCachedOrFetch } from "@/lib/redis";
 
 import { StaffLeaveRequestButton } from "./StaffLeaveRequestButton";
 
+/**
+ * Staff dashboard — today's timetable + announcements only (visible above the fold).
+ *
+ * Cache key: cache:staff:dashboard:web:{instId}:{staffId}:{day}
+ * Scope: staff + institution + weekday
+ * TTL: 45s
+ * Invalidation: timetable mutations should delete this key family (TTL covers misses)
+ * Acceptable staleness: ~45s
+ * Fallback: Valkey miss → Postgres
+ */
 export default async function StaffDashboard() {
   const session = await getSession();
-  if (!session || session.role !== 'STAFF') {
-    redirect('/login');
+  if (!session || session.role !== "STAFF") {
+    redirect("/login");
   }
 
   const staffId = session.userId;
-  if (!session.institutionId) redirect('/login');
-  const currentDay = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
+  if (!session.institutionId) redirect("/login");
+  const institutionId = session.institutionId;
+  const currentDay = new Date().getDay();
 
-  const [staffRows, scheduleRows, recentAnnouncements] = await Promise.all([
-    db.select({ name: staff.name }).from(staff).where(and(eq(staff.id, staffId), eq(staff.institutionId, session.institutionId))).limit(1),
-    db.select({
-      id: staffAssignments.id,
-      startTime: staffAssignments.startTime,
-      endTime: staffAssignments.endTime,
-      subject: subjects.name,
-      className: classes.name,
-      sectionName: sections.name,
-    })
-      .from(staffAssignments)
-      .innerJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-      .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
-      .innerJoin(classes, eq(sections.classId, classes.id))
-      .where(and(
-        eq(staffAssignments.staffId, staffId),
-        eq(staffAssignments.institutionId, session.institutionId),
-        eq(staffAssignments.dayOfWeek, currentDay)
-      )),
+  const [payload, recentAnnouncements] = await Promise.all([
+    getCachedOrFetch(`cache:staff:dashboard:web:${institutionId}:${staffId}:${currentDay}`, 45, async () => {
+      const [staffRows, scheduleRows] = await Promise.all([
+        db
+          .select({ name: staff.name })
+          .from(staff)
+          .where(and(eq(staff.id, staffId), eq(staff.institutionId, institutionId)))
+          .limit(1),
+        db
+          .select({
+            id: staffAssignments.id,
+            startTime: staffAssignments.startTime,
+            endTime: staffAssignments.endTime,
+            subject: subjects.name,
+            className: classes.name,
+            sectionName: sections.name,
+          })
+          .from(staffAssignments)
+          .innerJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
+          .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
+          .innerJoin(classes, eq(sections.classId, classes.id))
+          .where(
+            and(
+              eq(staffAssignments.staffId, staffId),
+              eq(staffAssignments.institutionId, institutionId),
+              eq(staffAssignments.dayOfWeek, currentDay)
+            )
+          ),
+      ]);
+
+      const sorted = [...scheduleRows].sort((a, b) => a.startTime.localeCompare(b.startTime));
+      return {
+        name: staffRows[0]?.name || "Staff",
+        scheduleRows: sorted,
+      };
+    }),
     getVisibleAnnouncements(session, 4),
   ]);
-  const currentStaff = staffRows[0];
 
-  // Sort by start time manually for simplicity
-  scheduleRows.sort((a, b) => a.startTime.localeCompare(b.startTime));
-  const todayEntries: TimetableEntry[] = scheduleRows.map((row) => ({
+  const todayEntries: TimetableEntry[] = payload.scheduleRows.map((row) => ({
     id: row.id,
     dayOfWeek: currentDay,
     startTime: row.startTime,
@@ -55,10 +81,11 @@ export default async function StaffDashboard() {
     title: row.subject || "Subject",
     meta: `${row.className}-${row.sectionName}`,
   }));
+
   return (
     <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
       <div>
-        <h1 className="text-2xl lg:text-3xl font-display font-bold text-brand-950">Welcome, {currentStaff?.name || "Staff"}</h1>
+        <h1 className="text-2xl lg:text-3xl font-display font-bold text-brand-950">Welcome, {payload.name}</h1>
         <p className="text-stone-500 mt-1 text-sm lg:text-base">Here is your schedule for today.</p>
       </div>
 
@@ -71,13 +98,21 @@ export default async function StaffDashboard() {
           <h2 className="text-lg font-semibold text-brand-900 px-1">Quick Links</h2>
           <Card>
             <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              <Link href="/staff/attendance" className="flex flex-col items-center justify-center p-4 rounded-lg bg-stone-50 hover:bg-brand-50 hover:text-brand-800 transition-colors text-stone-600 text-center gap-2 border border-transparent hover:border-brand-200">
+              <Link
+                href="/staff/attendance"
+                prefetch={false}
+                className="flex flex-col items-center justify-center p-4 rounded-lg bg-stone-50 hover:bg-brand-50 hover:text-brand-800 transition-colors text-stone-600 text-center gap-2 border border-transparent hover:border-brand-200"
+              >
                 <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center shadow-sm">
                   <CheckSquare className="h-5 w-5" />
                 </div>
                 <span className="text-sm font-medium">Mark Attendance</span>
               </Link>
-              <Link href="/staff/marks" className="flex flex-col items-center justify-center p-4 rounded-lg bg-stone-50 hover:bg-brand-50 hover:text-brand-800 transition-colors text-stone-600 text-center gap-2 border border-transparent hover:border-brand-200">
+              <Link
+                href="/staff/marks"
+                prefetch={false}
+                className="flex flex-col items-center justify-center p-4 rounded-lg bg-stone-50 hover:bg-brand-50 hover:text-brand-800 transition-colors text-stone-600 text-center gap-2 border border-transparent hover:border-brand-200"
+              >
                 <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center shadow-sm">
                   <FileEdit className="h-5 w-5" />
                 </div>

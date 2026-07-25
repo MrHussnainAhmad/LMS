@@ -14,13 +14,18 @@ export default async function SATicketsPage() {
     redirect("/login/super-admin");
   }
 
-  const forwardedTickets = await db.select()
+  const forwardedTickets = await db.select({
+    id: tickets.id,
+    title: tickets.title,
+    description: tickets.description,
+    platformStatus: tickets.platformStatus,
+    updatedAt: tickets.updatedAt,
+    institutionName: institutions.name,
+  })
     .from(tickets)
+    .innerJoin(institutions, eq(tickets.institutionId, institutions.id))
     .where(eq(tickets.isForwarded, true))
     .orderBy(desc(tickets.createdAt));
-
-  const allInstitutions = await db.select({ id: institutions.id, name: institutions.name }).from(institutions);
-  const instMap = new Map(allInstitutions.map(i => [i.id, i.name]));
 
   async function handleStatusChange(formData: FormData) {
     "use server";
@@ -55,7 +60,7 @@ export default async function SATicketsPage() {
           ) : (
             <ul className="divide-y divide-border">
               {forwardedTickets.map((ticket) => {
-                const instName = instMap.get(ticket.institutionId) || "Unknown Institution";
+                const instName = ticket.institutionName || "Unknown Institution";
 
                 return (
                   <li key={ticket.id} className="p-6 hover:bg-stone-50/50 transition-colors">

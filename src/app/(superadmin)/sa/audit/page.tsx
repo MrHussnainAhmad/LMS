@@ -114,6 +114,7 @@ export default async function SAAuditLogsPage({ searchParams }: { searchParams: 
             <div className="flex gap-2">
               <Link 
                 href={`/sa/audit?page=${page > 1 ? page - 1 : 1}`}
+                prefetch={false}
                 className={`flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md border ${page <= 1 ? 'border-border text-stone-300 pointer-events-none' : 'border-stone-300 text-stone-700 hover:bg-stone-100 transition-colors'}`}
                 aria-disabled={page <= 1}
               >
@@ -122,6 +123,7 @@ export default async function SAAuditLogsPage({ searchParams }: { searchParams: 
               </Link>
               <Link 
                 href={`/sa/audit?page=${page + 1}`}
+                prefetch={false}
                 className={`flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md border ${!hasNextPage ? 'border-border text-stone-300 pointer-events-none' : 'border-stone-300 text-stone-700 hover:bg-stone-100 transition-colors'}`}
                 aria-disabled={!hasNextPage}
               >

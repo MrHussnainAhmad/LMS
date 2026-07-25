@@ -1,0 +1,78 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/db';
+import { attendances, classes, students, tests, marks } from '@/db/schema';
+import { and, eq, gte, desc, sql } from 'drizzle-orm';
+import { requireRole, getTenantContext } from '@/lib/rbac';
+import { getCachedOrFetch } from '@/lib/redis';
+
+export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
+  const instId = getTenantContext(session);
+
+  const last7Days = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().split('T')[0];
+  });
+
+  const [recentAttendance, classDistRows, examPerfRows] = await Promise.all([
+    getCachedOrFetch(`cache:dashboard:attendance:${instId}:${last7Days[0]}`, 60, () =>
+      db.select({ date: attendances.date, status: attendances.status, value: sql<number>`count(*)` })
+        .from(attendances)
+        .where(and(eq(attendances.institutionId, instId), gte(attendances.date, last7Days[0])))
+        .groupBy(attendances.date, attendances.status)
+    ),
+    getCachedOrFetch(`cache:dashboard:class-dist:${instId}`, 60, () =>
+      db.select({
+        name: classes.name,
+        value: sql<number>`count(${students.id})`
+      })
+      .from(classes)
+      .leftJoin(students, eq(students.classId, classes.id))
+      .where(eq(classes.institutionId, instId))
+      .groupBy(classes.id, classes.name)
+      .orderBy(classes.level)
+    ),
+    getCachedOrFetch(`cache:dashboard:exam-perf:${instId}`, 60, () =>
+      db.select({
+        title: tests.title,
+        average: sql<number>`avg(${marks.marksObtained} / ${marks.totalMarks} * 100)`
+      })
+      .from(tests)
+      .innerJoin(marks, eq(marks.testId, tests.id))
+      .where(eq(tests.institutionId, instId))
+      .groupBy(tests.id, tests.title, tests.createdAt)
+      .orderBy(desc(tests.createdAt))
+      .limit(5)
+    ),
+  ]);
+
+  const trendMap = new Map<string, { date: string; PRESENT: number; ABSENT: number; LEAVE: number; LATE: number }>();
+  for (const date of last7Days) {
+    const d = new Date(date);
+    const shortDate = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    trendMap.set(date, { date: shortDate, PRESENT: 0, ABSENT: 0, LEAVE: 0, LATE: 0 });
+  }
+
+  for (const record of recentAttendance) {
+    const entry = trendMap.get(record.date);
+    if (entry && record.status) {
+      const key = record.status as keyof Omit<typeof entry, 'date'>;
+      entry[key] = ((entry[key] as number) || 0) + Number(record.value);
+    }
+  }
+
+  const trendsData = Array.from(trendMap.values());
+
+  const examPerfData = examPerfRows.map((r) => ({
+    title: r.title.length > 10 ? r.title.substring(0, 10) + '...' : r.title,
+    average: Number(r.average) || 0,
+  })).reverse();
+
+  const classDistData = classDistRows.map((r) => ({ name: r.name, value: Number(r.value) }));
+
+  return NextResponse.json({
+    attendanceTrends: trendsData,
+    classDistribution: classDistData,
+    examPerformance: examPerfData,
+  });
+});

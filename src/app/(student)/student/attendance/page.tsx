@@ -3,6 +3,7 @@ import { attendances, students } from "@/db/schema";
 import { db } from "@/db";
 import { getSession } from "@/lib/auth";
 import { windowRange } from "@/lib/month-window";
+import { studentPlacementColumns } from "@/lib/student-columns";
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { AlertCircle, CalendarDays, CheckSquare } from "lucide-react";
 import { redirect } from "next/navigation";
@@ -18,8 +19,12 @@ export default async function StudentAttendancePage() {
   const session = await getSession();
   if (!session || session.role !== "STUDENT" || !session.institutionId) redirect("/login");
 
-  const [student] = await db.select().from(students).where(eq(students.id, session.userId)).limit(1);
-  if (!student || student.institutionId !== session.institutionId) redirect("/login");
+  const [student] = await db
+    .select(studentPlacementColumns)
+    .from(students)
+    .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
+    .limit(1);
+  if (!student) redirect("/login");
 
   const { from, to } = windowRange(new Date(), 1);
 

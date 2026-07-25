@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -17,8 +16,16 @@ const STATUS_COLORS = {
   EXCUSED: "bg-blue-100 text-blue-700 border-blue-200",
 };
 
-export function AttendanceCalendar({ records }: { records: AttendanceRecord[] }) {
-  const [currentDate, setCurrentDate] = useState(new Date());
+export function AttendanceCalendar({
+  records,
+  monthValue,
+  onMonthChange,
+}: {
+  records: AttendanceRecord[];
+  monthValue: string;
+  onMonthChange: (month: string) => void;
+}) {
+  const currentDate = new Date(`${monthValue}-01T00:00:00`);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -26,8 +33,10 @@ export function AttendanceCalendar({ records }: { records: AttendanceRecord[] })
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDayOfMonth = new Date(year, month, 1).getDay();
 
-  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const changeMonth = (offset: number) => {
+    const next = new Date(year, month + offset, 1);
+    onMonthChange(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
+  };
 
   const monthName = currentDate.toLocaleString("default", { month: "long" });
 
@@ -70,10 +79,10 @@ export function AttendanceCalendar({ records }: { records: AttendanceRecord[] })
           {monthName} {year}
         </h3>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={prevMonth}>
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => changeMonth(-1)}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={nextMonth} disabled={new Date().getMonth() === month && new Date().getFullYear() === year}>
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => changeMonth(1)} disabled={new Date().getMonth() === month && new Date().getFullYear() === year}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>

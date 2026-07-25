@@ -9,11 +9,22 @@ import { Loader2, Plus, Sparkles, Settings2, Eye, PenTool, Trash2, X } from "luc
 const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false });
 const MDPreview = dynamic(() => import("@uiw/react-md-editor").then(mod => mod.default.Markdown), { ssr: false });
 
-export default function BlogClient() {
-  const [blogs, setBlogs] = useState<any[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
+export default function BlogClient({
+  initialBlogs,
+  initialPage = 1,
+  initialTotalCount = 0,
+  initialTotalPages = 1,
+}: {
+  initialBlogs?: any[];
+  initialPage?: number;
+  initialTotalCount?: number;
+  initialTotalPages?: number;
+}) {
+  const seededFromServer = initialBlogs !== undefined;
+  const [blogs, setBlogs] = useState<any[]>(initialBlogs ?? []);
+  const [page, setPage] = useState(initialPage);
+  const [totalPages, setTotalPages] = useState(initialTotalPages);
+  const [totalCount, setTotalCount] = useState(initialTotalCount);
 
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
@@ -24,12 +35,13 @@ export default function BlogClient() {
   const [status, setStatus] = useState("PUBLISHED");
   const [publishedAt, setPublishedAt] = useState("");
   
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(!seededFromServer);
   const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
+    if (seededFromServer && page === initialPage) return;
     fetchBlogs(page);
   }, [page]);
 
@@ -39,7 +51,6 @@ export default function BlogClient() {
       const res = await fetch(`/api/admin/blogs?page=${currentPage}`);
       if (res.ok) {
         const data = await res.json();
-        // Check if data is array (old format) or paginated format
         if (Array.isArray(data)) {
           setBlogs(data);
           setTotalCount(data.length);

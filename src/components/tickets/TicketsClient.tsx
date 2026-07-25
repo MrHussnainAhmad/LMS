@@ -14,7 +14,7 @@ type SupportTicket = {
   id: number;
   title: string;
   description: string;
-  status: "OPEN" | "WORKING" | "RESOLVED";
+  status: "OPEN" | "WORKING" | "RESOLVED" | "FORWARDED";
   createdAt: string;
 };
 
@@ -22,12 +22,19 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong";
 }
 
-export function TicketsClient() {
+export function TicketsClient({
+  initialTickets,
+  initialNextCursor = null,
+}: {
+  initialTickets?: SupportTicket[];
+  initialNextCursor?: string | null;
+}) {
+  const seededFromServer = initialTickets !== undefined;
   const router = useRouter();
   const { toast } = useToast();
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [tickets, setTickets] = useState<SupportTicket[]>(initialTickets ?? []);
+  const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor);
+  const [loading, setLoading] = useState(!seededFromServer);
   const [loadingMore, setLoadingMore] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -37,7 +44,7 @@ export function TicketsClient() {
     try {
       const suffix = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
       const response = await api.get<{ tickets: SupportTicket[]; nextCursor: string | null }>(`/api/tickets${suffix}`);
-      setTickets((current) => cursor ? [...current, ...response.tickets] : response.tickets);
+      setTickets((current) => (cursor ? [...current, ...response.tickets] : response.tickets));
       setNextCursor(response.nextCursor);
     } catch (error: unknown) {
       toast({ title: "Could not load tickets", description: errorMessage(error), variant: "destructive" });
@@ -57,8 +64,9 @@ export function TicketsClient() {
   };
 
   useEffect(() => {
+    if (seededFromServer) return;
     void loadTickets();
-  }, [loadTickets]);
+  }, [seededFromServer, loadTickets]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

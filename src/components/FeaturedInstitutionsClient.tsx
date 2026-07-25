@@ -14,9 +14,14 @@ type FeaturedInst = {
   createdAt: string;
 };
 
-export default function FeaturedInstitutionsClient() {
-  const [institutions, setInstitutions] = useState<FeaturedInst[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export default function FeaturedInstitutionsClient({
+  initialInstitutions,
+}: {
+  initialInstitutions?: FeaturedInst[];
+}) {
+  const seededFromServer = initialInstitutions !== undefined;
+  const [institutions, setInstitutions] = useState<FeaturedInst[]>(initialInstitutions ?? []);
+  const [isLoading, setIsLoading] = useState(!seededFromServer);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [logoKey, setLogoKey] = useState("");
@@ -25,8 +30,9 @@ export default function FeaturedInstitutionsClient() {
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchInstitutions();
-  }, []);
+    if (seededFromServer) return;
+    void fetchInstitutions();
+  }, [seededFromServer]);
 
   const fetchInstitutions = async () => {
     setIsLoading(true);

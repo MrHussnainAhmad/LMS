@@ -35,9 +35,7 @@ export default function SaLoginPage() {
       toast({ title: "Authorized", description: "Welcome Super Admin", variant: "success" });
       
       const isLocal = window.location.hostname.includes("localhost");
-      const protocol = isLocal ? "http://" : "https://";
-      const baseHost = isLocal ? "localhost:3000" : "nisaab360.app";
-      window.location.href = `${protocol}sa.${baseHost}/dashboard`;
+      window.location.href = isLocal ? "/sa/dashboard" : "https://sa.nisaab360.app/dashboard";
     } catch (err: any) {
       toast({
         title: "Access Denied",
@@ -56,9 +54,7 @@ export default function SaLoginPage() {
         onClick={(e) => {
           e.preventDefault();
           const isLocal = window.location.hostname.includes("localhost");
-          const protocol = isLocal ? "http://" : "https://";
-          const baseHost = isLocal ? "localhost:3000" : "nisaab360.app";
-          window.location.href = `${protocol}${baseHost}/`;
+          window.location.href = isLocal ? "/" : "https://nisaab360.app/";
         }}
         className="absolute top-6 left-6 flex items-center gap-2 text-sm font-medium text-brand-300 hover:text-white transition-colors"
       >

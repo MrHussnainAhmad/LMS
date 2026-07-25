@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    init: true
     ports:
       - "5433:5432"
     restart: unless-stopped
@@ -30,6 +31,7 @@ services:
 
   pgbouncer:
     image: edoburu/pgbouncer:latest
+    init: true
     restart: unless-stopped
     environment:
       DB_HOST: postgres
@@ -39,7 +41,13 @@ services:
       AUTH_TYPE: scram-sha-256
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 5000
-      DEFAULT_POOL_SIZE: 10
+      DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
+      RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-5}
+      RESERVE_POOL_TIMEOUT: 3
+      QUERY_TIMEOUT: 10
+      # node-postgres may send this as a startup parameter; PgBouncer cannot
+      # apply it per transaction, so accept and ignore it at the pool boundary.
+      IGNORE_STARTUP_PARAMETERS: statement_timeout
       LISTEN_PORT: 6432
       # For 4000-5000 concurrent users
       SERVER_IDLE_TIMEOUT: 30
@@ -58,8 +66,10 @@ services:
   valkey:
     # Valkey = Redis fork, 100% drop-in compatible, OSS licensed
     image: valkey/valkey:8-alpine
+    init: true
     restart: unless-stopped
-    command: valkey-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save ""
+    # 260MB is enough for short-TTL dashboard/auth/rate-limit keys; rest of RAM goes to Next/Postgres.
+    command: valkey-server --maxmemory 260mb --maxmemory-policy allkeys-lru --save ""
     volumes:
       - valkey_data:/data
     networks:
@@ -87,6 +97,10 @@ services:
       DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
       # Valkey - 100% Redis compatible
       REDIS_URL: redis://valkey:6379
+      # Explicit DB pool max limit per replica
+      DB_POOL_MAX: ${DB_POOL_MAX:-15}
+      # Shared auth secret
+      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-replace-in-production}
       # Required for the authenticated/manual push-receipt endpoint.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
       # Add your other Next.js env vars here
@@ -125,11 +139,19 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
       DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
       REDIS_URL: redis://valkey:6379
+      # Explicit DB pool max limit per replica
+      DB_POOL_MAX: ${DB_POOL_MAX:-15}
+      # Shared auth secret
+      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-replace-in-production}
       # Required for the authenticated/manual push-receipt endpoint.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
       NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      # Keep the second web replica aligned with app. Override these with
+      # localhost when running the compose stack locally.
+      NEXT_PUBLIC_APP_DOMAIN: ${NEXT_PUBLIC_APP_DOMAIN:-nisaab360.app}
+      APP_DOMAIN: ${APP_DOMAIN:-nisaab360.app}
     depends_on:
       pgbouncer:
         condition: service_started
@@ -176,12 +198,15 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "3000:3000"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
       app:
+        condition: service_healthy
+      app2:
         condition: service_healthy
     networks:
       - appnet
@@ -194,6 +219,7 @@ services:
 
   postgres-backup:
     build: ./backup
+    init: true
     restart: unless-stopped
     volumes:
       - postgres_backup:/backups

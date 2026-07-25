@@ -2,8 +2,8 @@ import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from './schema';
 
-const configuredPoolMax = Number.parseInt(process.env.DB_POOL_MAX ?? "5", 10);
-const poolMax = Number.isFinite(configuredPoolMax) && configuredPoolMax > 0 ? configuredPoolMax : 5;
+const configuredPoolMax = Number.parseInt(process.env.DB_POOL_MAX ?? "15", 10);
+const poolMax = Number.isFinite(configuredPoolMax) && configuredPoolMax > 0 ? configuredPoolMax : 15;
 
 // Patch console.error to prevent dumping huge PG error objects with undefined fields
 const originalError = console.error;
@@ -26,7 +26,17 @@ const pool = new Pool({
   max: poolMax,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
+  // PgBouncer rejects statement_timeout as a PostgreSQL startup parameter.
+  // Keep the client-side query timeout below instead so pooled connections work.
+  query_timeout: 5000,
   keepAlive: true,
   application_name: 'nisaab360_api'
 });
+
+// Idle client errors must be handled or they can crash the process / leave bad sockets.
+pool.on('error', (err) => {
+  console.error('Unexpected PostgreSQL pool error:', err.message);
+});
+
+export { pool };
 export const db = drizzle(pool, { schema });

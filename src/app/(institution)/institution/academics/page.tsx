@@ -1,12 +1,13 @@
 import { db } from "@/db";
-import { subjects, classes, sections, staff } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { subjects, classes, sections } from "@/db/schema";
+import { and, eq, desc } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { BookOpen, Plus } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { createSubjectAction, createClassAction, createSectionAction } from "@/app/actions/institution-actions";
+import { createSubjectAction, createClassAction } from "@/app/actions/institution-actions";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { AddSectionForm } from "./AddSectionForm";
 
 export default async function InstitutionAcademicsPage() {
   const session = await getSession();
@@ -16,14 +17,16 @@ export default async function InstitutionAcademicsPage() {
 
   const institutionId = session.institutionId || session.userId;
 
-  const [allSubjects, allClasses, allSections, allStaff] = await Promise.all([
+  // Staff options for the class-teacher dropdown are fetched lazily on the client
+  // only when the Add Section form is expanded.
+  const [allSubjects, allClasses, allSections] = await Promise.all([
     db.select()
       .from(subjects)
       .where(eq(subjects.institutionId, institutionId))
       .orderBy(desc(subjects.createdAt)),
     db.select()
       .from(classes)
-      .where(eq(classes.institutionId, institutionId))
+      .where(and(eq(classes.institutionId, institutionId), eq(classes.isGraduatedArchive, false)))
       .orderBy(desc(classes.createdAt)),
     db.select({
       section: sections,
@@ -31,9 +34,8 @@ export default async function InstitutionAcademicsPage() {
     })
       .from(sections)
       .innerJoin(classes, eq(sections.classId, classes.id))
-      .where(eq(sections.institutionId, institutionId))
+      .where(and(eq(sections.institutionId, institutionId), eq(classes.isGraduatedArchive, false)))
       .orderBy(desc(sections.createdAt)),
-    db.select().from(staff).where(eq(staff.institutionId, institutionId)),
   ]);
   const sectionsByClass = new Map<number, typeof allSections>();
   for (const section of allSections) {
@@ -50,11 +52,6 @@ export default async function InstitutionAcademicsPage() {
   async function createClass(formData: FormData) {
     "use server";
     await createClassAction(formData);
-  }
-
-  async function createSection(formData: FormData) {
-    "use server";
-    await createSectionAction(formData);
   }
 
   return (
@@ -173,7 +170,7 @@ export default async function InstitutionAcademicsPage() {
                     const clsSections = sectionsByClass.get(cls.id) || [];
                     return (
                       <tr key={cls.id} className="hover:bg-stone-50/50 transition-colors">
-                        <td className="px-6 py-4 font-semibold text-brand-950">{cls.name}</td>
+                        <td className="px-6 py-4 font-semibold text-brand-950">{cls.name}{cls.isFinalClass && <span className="ml-2 rounded bg-amber-100 px-2 py-1 text-xs text-amber-800">Final class</span>}</td>
                         <td className="px-6 py-4">
                           <div className="flex flex-wrap gap-2">
                             {clsSections.length === 0 ? <span className="text-stone-400 text-xs">None</span> : clsSections.map(s => (
@@ -213,6 +210,7 @@ export default async function InstitutionAcademicsPage() {
                     placeholder="e.g. Grade 10"
                   />
                 </div>
+                <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" name="isFinalClass" /> This is the final graduating class</label>
                 <SubmitButton className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors">
                   Create Class
                 </SubmitButton>
@@ -221,54 +219,7 @@ export default async function InstitutionAcademicsPage() {
           </Card>
 
           {/* Add Section Form (Hidden by default since it's optional) */}
-          <details className="group">
-            <summary className="cursor-pointer list-none text-sm font-medium text-brand-600 hover:text-brand-700 flex items-center gap-2 mb-2">
-              <span className="group-open:hidden">+ Advanced: Add Multiple Sections</span>
-              <span className="hidden group-open:inline">- Hide Section Form</span>
-            </summary>
-            <Card>
-              <CardHeader className="border-b border-border bg-stone-50/50">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Plus className="h-5 w-5 text-brand-600" />
-                  Add New Section
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <form action={createSection} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Select Class</label>
-                    <select name="classId" required className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-surface">
-                      {allClasses.map(cls => (
-                        <option key={cls.id} value={cls.id}>{cls.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Section Name</label>
-                    <input
-                      type="text"
-                      name="name"
-                      required
-                      className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                      placeholder="e.g. Section A"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Class Teacher (Optional)</label>
-                    <select name="classTeacherId" className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-surface">
-                      <option value="">None</option>
-                      {allStaff.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <SubmitButton className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors">
-                    Create Section
-                  </SubmitButton>
-                </form>
-              </CardContent>
-            </Card>
-          </details>
+          <AddSectionForm classes={allClasses} />
         </div>
       </div>
     </div>

@@ -10,4 +10,4 @@ RUN chmod +x /backup.sh
 
 RUN echo "${SCHEDULE:-@daily} /backup.sh" > /etc/crontabs/root
 
-CMD crond -f -d 8
+CMD ["crond", "-f", "-d", "8"]

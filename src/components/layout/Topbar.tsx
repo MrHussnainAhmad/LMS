@@ -21,21 +21,22 @@ interface TopbarProps {
   onMenuClick: () => void;
   role: string;
   brand: ShellBrand;
+  onLogoutStart?: () => void;
 }
 
-export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
+export function Topbar({ onMenuClick, role, brand, onLogoutStart }: TopbarProps) {
   const router = useRouter();
 
   const handleLogout = async () => {
     // Compute redirect URL first, before anything can fail
     const isLocal = window.location.hostname.includes("localhost");
-    const protocol = isLocal ? "http://" : "https://";
-    const baseHost = isLocal ? "localhost:3000" : "nisaab360.app";
     let loginPath = "/login";
     if (role === "SUPER_ADMIN") loginPath = "/login/super-admin";
     else if (role === "EMPLOYEE") loginPath = "/employee-login";
     else if (role === "INSTITUTION" || role === "INSTITUTION_ADMIN") loginPath = "/institution-login";
-    const redirectUrl = `${protocol}${baseHost}${loginPath}`;
+    const redirectUrl = isLocal ? loginPath : `https://nisaab360.app${loginPath}`;
+
+    onLogoutStart?.();
 
     try {
       await api.post("/api/auth/logout", {});
@@ -66,7 +67,7 @@ export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
         <Button variant="ghost" size="icon" className="lg:hidden text-stone-600" onClick={onMenuClick}>
           <Menu className="h-5 w-5" />
         </Button>
-        <Link href={brand.href} className="flex min-w-0 items-center gap-2" title={brand.name}>
+        <Link href={brand.href} prefetch={false} className="flex min-w-0 items-center gap-2" title={brand.name}>
           <BrandMark brand={brand} className="h-8 w-8" iconClassName="h-4 w-4" />
           <span className="hidden max-w-[42vw] truncate font-display text-sm font-semibold text-brand-950 sm:block lg:max-w-[28rem]">
             {brand.name}
@@ -91,7 +92,7 @@ export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
               if (role === "SUPER_ADMIN") path = "/sa/admins";
               else if (role === "INSTITUTION") path = "/institution/settings";
               else if (role === "STAFF") path = "/staff/profile";
-              else if (role === "STUDENT") path = "/student/profile";
+              else if (role === "STUDENT" || role === "GRADUATED") path = "/student/profile";
               else path = `/${role.toLowerCase().replace('_', '')}/dashboard`;
               router.push(path);
             }}>
@@ -99,7 +100,7 @@ export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
               <span>
                 {role === "SUPER_ADMIN" ? "Manage Admins" : 
                  role === "INSTITUTION" ? "Settings" : 
-                 role === "STAFF" || role === "STUDENT" ? "Profile" :
+                 role === "STAFF" || role === "STUDENT" || role === "GRADUATED" ? "Profile" :
                  "Dashboard"}
               </span>
             </DropdownMenuItem>

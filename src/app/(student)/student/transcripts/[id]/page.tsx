@@ -64,7 +64,7 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-12">
       <div className="flex items-center justify-between print:hidden">
-        <Link href="/student/transcripts">
+        <Link href="/student/transcripts" prefetch={false}>
           <Button variant="ghost" size="sm" className="gap-2">
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>

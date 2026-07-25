@@ -31,34 +31,6 @@ export async function sendEmail(options: {
   }
 }
 
-// Minimal email templates as functions returning HTML strings
-export const LoginNotificationEmail = ({
-  ip,
-  userAgent,
-  time,
-  isFirstLogin,
-}: {
-  ip: string;
-  userAgent: string;
-  time: string;
-  isFirstLogin: boolean;
-}) => {
-  const title = isFirstLogin ? "New Login Detected" : "You have logged in to the system";
-  const message = isFirstLogin
-    ? "Your account has been accessed for the first time."
-    : "This is an alert to tell you that your account has been logged in. If this was not you, it is time to change your password.";
-
-  return `
-    <div style="font-family: sans-serif;">
-      <h1>${title}</h1>
-      <p>${message}</p>
-      <p>Your account was accessed from IP: ${ip}</p>
-      <p>User Agent: ${userAgent}</p>
-      <p>Time: ${time}</p>
-    </div>
-  `;
-};
-
 export const AccountCreatedEmail = ({
   name,
   role,

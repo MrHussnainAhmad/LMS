@@ -11,6 +11,8 @@ import { DangerZone } from "./DangerZone";
 import { PlatformReviewForm } from "@/components/PlatformReviewForm";
 import { Star } from "lucide-react";
 import { FeeVoucherSettingsClient } from "./FeeVoucherSettingsClient";
+import { GraduatedStudentAccessClient } from "./GraduatedStudentAccessClient";
+import Link from "next/link";
 
 export default async function InstitutionSettingsPage() {
   const session = await getSession();
@@ -114,12 +116,43 @@ export default async function InstitutionSettingsPage() {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader className="border-b border-border bg-stone-50/50">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Shield className="h-5 w-5 text-brand-600" />
+                Graduated Students
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <GraduatedStudentAccessClient allowGraduatedStudentAccess={profile.allowGraduatedStudentAccess} />
+            </CardContent>
+          </Card>
+
           {/* Danger Zone */}
           <DangerZone />
         </div>
 
         {/* Right Column */}
         <div className="space-y-6">
+          <Card>
+            <CardHeader className="border-b border-border bg-stone-50/50">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Shield className="h-5 w-5 text-brand-600" />
+                Academic & Staff Controls
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-3">
+              <Link href="/institution/settings/grading" prefetch={false} className="block rounded-md border border-border p-3 transition-colors hover:bg-stone-50">
+                <p className="font-medium text-brand-950">Grading Scale</p>
+                <p className="mt-1 text-sm text-stone-500">Set passing percentage and grade ranges for promotion results.</p>
+              </Link>
+              <Link href="/institution/settings/roles" prefetch={false} className="block rounded-md border border-border p-3 transition-colors hover:bg-stone-50">
+                <p className="font-medium text-brand-950">Staff Roles</p>
+                <p className="mt-1 text-sm text-stone-500">Create job roles such as Teacher, Clerk, and Vice Principal.</p>
+              </Link>
+            </CardContent>
+          </Card>
+
           {/* Security Settings */}
           <Card>
             <CardHeader className="border-b border-border bg-stone-50/50">

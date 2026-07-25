@@ -18,7 +18,7 @@ interface InstitutionExamFormProps {
   hiddenFields?: Record<string, string>;
   initialValues?: {
     classId: number;
-    type: "MONTHLY" | "MID" | "FINAL";
+    type: "MONTHLY" | "MID" | "FINAL" | "PROMOTION";
     title: string;
     maxMarks: number;
     date: string;
@@ -119,6 +119,7 @@ export function InstitutionExamForm({
           <option value="MONTHLY">Monthly</option>
           <option value="MID">Mid</option>
           <option value="FINAL">Final</option>
+          <option value="PROMOTION">Promotion</option>
         </select>
       </div>
 

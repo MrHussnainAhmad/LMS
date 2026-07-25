@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { campuses, staff, classes, sections, subjects, announcements, notifications, institutions } from "@/db/schema";
+import { campuses, staff, classes, sections, subjects, announcements, notifications, institutions, institutionCustomRoles } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { staffAssignments } from "@/db/schema";
@@ -42,7 +42,7 @@ export async function createCampusAction(formData: FormData) {
   const session = await getSession();
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
   
-  const institutionId = session.userId;
+  const institutionId = session.institutionId || session.userId;
   const name = formData.get("name") as string;
   const address = formData.get("address") as string;
 
@@ -60,19 +60,28 @@ export async function createStaffAction(formData: FormData) {
   const session = await getSession();
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
   
-  const institutionId = session.userId;
+  const institutionId = session.institutionId || session.userId;
   const name = formData.get("name") as string;
   const phone = ((formData.get("phone") as string) || "").trim();
   const password = formData.get("password") as string;
   const campusIdRaw = formData.get("campusId") as string;
   const campusId = campusIdRaw ? parseInt(campusIdRaw, 10) : null;
+  const customRoleId = Number(formData.get("customRoleId"));
 
   if (phone.replace(/\D/g, "").length < 4) {
     throw new Error("Phone number must include at least 4 digits");
   }
+  if (!Number.isInteger(customRoleId) || customRoleId <= 0) {
+    throw new Error("Select a staff role before creating the account");
+  }
 
   const [institution] = await db.select().from(institutions).where(eq(institutions.id, institutionId)).limit(1);
   if (!institution) throw new Error("Institution not found");
+  const [customRole] = await db.select({ id: institutionCustomRoles.id })
+    .from(institutionCustomRoles)
+    .where(and(eq(institutionCustomRoles.id, customRoleId), eq(institutionCustomRoles.institutionId, institutionId)))
+    .limit(1);
+  if (!customRole) throw new Error("Selected staff role was not found");
 
   const baseEmail = generateStaffEmail({ name, phone, institution });
   const [localPart, domain] = baseEmail.split("@");
@@ -95,6 +104,7 @@ export async function createStaffAction(formData: FormData) {
     email,
     passwordHash,
     campusId,
+    customRoleId,
     mustChangePassword: true,
   });
 
@@ -229,11 +239,8 @@ export async function deleteAnnouncementAction(formData: FormData) {
     .where(and(eq(announcements.id, announcementId), eq(announcements.institutionId, institutionId)));
 
   revalidatePath("/institution/announcements");
-  revalidatePath("/institution/dashboard");
   revalidatePath("/staff/announcements");
-  revalidatePath("/staff/dashboard");
   revalidatePath("/student/announcements");
-  revalidatePath("/student/dashboard");
   revalidatePath(`/announcements/${announcementId}`);
   return { success: true };
 }
@@ -246,11 +253,17 @@ export async function createClassAction(formData: FormData) {
   const name = formData.get("name") as string;
   const levelRaw = formData.get("level") as string;
   const level = levelRaw ? parseInt(levelRaw, 10) : 0;
+  const isFinalClass = formData.get("isFinalClass") === "on";
+
+  if (isFinalClass) {
+    await db.update(classes).set({ isFinalClass: false }).where(eq(classes.institutionId, institutionId));
+  }
 
   const [newClass] = await db.insert(classes).values({
     institutionId,
     name,
     level,
+    isFinalClass,
   }).returning({ id: classes.id });
 
   // Auto-create default section so sections can be treated as optional
@@ -274,7 +287,9 @@ export async function createSectionAction(formData: FormData) {
   const classTeacherIdRaw = formData.get("classTeacherId") as string;
   const classTeacherId = classTeacherIdRaw ? parseInt(classTeacherIdRaw, 10) : null;
 
-  if (!name.trim() || !Number.isInteger(classId)) throw new Error("Valid class and section name are required");
+  if (!/^[A-Za-z0-9]$/.test(name.trim()) || !Number.isInteger(classId)) {
+    throw new Error("Section must be exactly one letter or number, for example A, B, C, or 1");
+  }
   if (classTeacherIdRaw && !Number.isInteger(classTeacherId)) throw new Error("Invalid staff ID");
 
   const [classRow] = await db.select({ id: classes.id })
@@ -457,12 +472,26 @@ export async function updateFeeVoucherSettingsAction(acceptFeeVouchers: boolean)
   const session = await getSession();
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
   
-  const institutionId = session.userId;
+  const institutionId = session.institutionId || session.userId;
   
   await db.update(institutions)
     .set({ acceptFeeVouchers })
     .where(eq(institutions.id, institutionId));
     
+  revalidatePath("/institution/settings");
+  return { success: true };
+}
+
+export async function updateGraduatedStudentAccessAction(allowGraduatedStudentAccess: boolean) {
+  const session = await getSession();
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
+
+  const institutionId = session.institutionId || session.userId;
+
+  await db.update(institutions)
+    .set({ allowGraduatedStudentAccess })
+    .where(eq(institutions.id, institutionId));
+
   revalidatePath("/institution/settings");
   return { success: true };
 }
@@ -497,6 +526,15 @@ export async function createInstitutionOwnerAction(formData: FormData) {
     email,
     contactNumber,
   });
+
+  try {
+    const { redis } = await import("@/lib/redis");
+    if (redis.status === "ready") {
+      await redis.del(`cache:institution:owner-exists:${institutionId}`);
+    }
+  } catch {
+    // Owner gate falls back to DB within TTL if delete fails
+  }
 
   revalidatePath("/institution");
   return { success: true };

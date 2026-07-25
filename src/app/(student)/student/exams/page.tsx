@@ -2,7 +2,8 @@ import { ExamTimetableList, type ExamTimetableRow } from "@/components/exams/Exa
 import { db } from "@/db";
 import { classes, students, subjects, tests } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { studentPlacementColumns } from "@/lib/student-columns";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 function todayDateString() {
@@ -13,10 +14,15 @@ export default async function StudentExamTimetablePage() {
   const session = await getSession();
   if (!session || session.role !== "STUDENT" || !session.institutionId) redirect("/login");
 
-  const [student] = await db.select().from(students).where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId))).limit(1);
+  const [student] = await db
+    .select(studentPlacementColumns)
+    .from(students)
+    .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
+    .limit(1);
   if (!student) redirect("/login");
 
-  const examRows: ExamTimetableRow[] = await db.select({
+  const today = todayDateString();
+  const activeExamRows: ExamTimetableRow[] = await db.select({
     id: tests.id,
     title: tests.title,
     type: tests.type,
@@ -37,11 +43,10 @@ export default async function StudentExamTimetablePage() {
         eq(tests.sectionId, student.sectionId)
       ),
       eq(tests.createdByRole, "INSTITUTION"),
-      inArray(tests.type, ["MONTHLY", "MID", "FINAL"])
+      inArray(tests.type, ["MONTHLY", "MID", "FINAL"]),
+      sql`coalesce(${tests.endDate}, ${tests.date}) >= ${today}`
     ))
     .orderBy(tests.date);
-
-  const activeExamRows = examRows.filter((exam) => (exam.endDate || exam.date) >= todayDateString());
 
   return (
     <div className="space-y-8 animate-fade-in">

@@ -20,6 +20,7 @@ export function PublishResultsForm({
   subjects: SubjectType[];
 }) {
   const [title, setTitle] = useState("");
+  const [type, setType] = useState("FINAL");
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
   const [maxMarks, setMaxMarks] = useState("100");
@@ -177,6 +178,7 @@ export function PublishResultsForm({
     try {
       const payload = {
         title,
+        type,
         classId: Number(classId),
         sectionId: sectionId ? Number(sectionId) : undefined,
         subjects: detectedSubjects.map(s => ({
@@ -247,6 +249,13 @@ export function PublishResultsForm({
               value={maxMarks}
               onChange={e => setMaxMarks(e.target.value)}
             />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-stone-700">Result Type *</label>
+            <select className="w-full rounded-md border border-border px-3 py-2 text-sm bg-transparent" value={type} onChange={e => setType(e.target.value)}>
+              <option value="MONTHLY">Monthly</option><option value="MID">Mid Term</option><option value="FINAL">Final Term</option><option value="PROMOTION">Promotion</option>
+            </select>
+            {type === "PROMOTION" && <p className="text-xs text-brand-700">Students will be auto-promoted after every subject teacher publishes their results.</p>}
           </div>
           
           <div className="space-y-2">

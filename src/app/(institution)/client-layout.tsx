@@ -1,8 +1,10 @@
 "use client";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { LayoutDashboard, Users, UserSquare2, BookOpen, Calendar, Settings, MapPin, Megaphone, FilePenLine, ClipboardList, CheckSquare, ShieldCheck, Ticket } from "lucide-react";
+import type { ShellBrand } from "@/components/layout/BrandMark";
+import { LayoutDashboard, Users, UserSquare2, BookOpen, Calendar, Settings, MapPin, Megaphone, ClipboardList, CheckSquare, ShieldCheck, Ticket, IdCard, ArrowUpRight } from "lucide-react";
 
+/** Role-permission sidebar only — leave badges load on the Leaves page. */
 const SIDEBAR_ITEMS = [
   { label: "Dashboard", href: "/institution/dashboard", icon: LayoutDashboard },
   { label: "Daily Diary", href: "/institution/diary", icon: BookOpen },
@@ -10,8 +12,10 @@ const SIDEBAR_ITEMS = [
   { label: "Academics", href: "/institution/academics", icon: BookOpen },
   { label: "Staff", href: "/institution/staff", icon: UserSquare2 },
   { label: "Students", href: "/institution/students", icon: Users },
+  { label: "Auto-Promotion", href: "/institution/students/promotion", icon: ArrowUpRight },
+  { label: "ID Cards", href: "/institution/students/id-cards", icon: IdCard },
   { label: "Teacher's Attendance", href: "/institution/staff-attendance", icon: CheckSquare },
-  { label: "Leaves", href: "/institution/staff-leaves", icon: Calendar, notificationKey: "institutionLeaves" as const },
+  { label: "Leaves", href: "/institution/staff-leaves", icon: Calendar },
   { label: "Timetable", href: "/institution/timetable", icon: Calendar },
   { label: "Exams", href: "/institution/exams", icon: ClipboardList },
   { label: "Announcements", href: "/institution/announcements", icon: Megaphone },
@@ -23,18 +27,30 @@ const SIDEBAR_ITEMS = [
 export default function InstitutionLayout({
   children,
   role,
+  userId,
+  institutionId,
+  initialBrand,
 }: {
   children: React.ReactNode;
   role: "INSTITUTION" | "INSTITUTION_ADMIN";
+  userId?: number;
+  institutionId?: number | null;
+  initialBrand?: ShellBrand;
 }) {
-  const filteredItems = SIDEBAR_ITEMS.filter(item => {
+  const filteredItems = SIDEBAR_ITEMS.filter((item) => {
     if (role === "INSTITUTION_ADMIN") {
       return item.label !== "Settings" && item.label !== "Admins";
     }
     return true;
   });
   return (
-    <AppShell sidebarItems={filteredItems} userRole={role}>
+    <AppShell
+      sidebarItems={filteredItems}
+      userRole={role}
+      userId={userId}
+      institutionId={institutionId}
+      initialBrand={initialBrand}
+    >
       {children}
     </AppShell>
   );

@@ -1,31 +1,24 @@
-"use client";
+import { getSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { StudentShell } from "./StudentShell";
+import { getShellBrandForSession } from "@/lib/shell-brand";
 
-import { AppShell } from "@/components/layout/AppShell";
-import { LayoutDashboard, CalendarDays, FileText, CheckSquare, UploadCloud, CalendarCheck, FileQuestion, Megaphone, Receipt, Ticket, BookOpen } from "lucide-react";
-
-const SIDEBAR_ITEMS = [
-  { label: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard },
-  { label: "Daily Diary", href: "/student/diary", icon: BookOpen },
-  { label: "Announcements", href: "/student/announcements", icon: Megaphone },
-  { label: "Timetable", href: "/student/timetable", icon: CalendarDays },
-  { label: "Exam Timetable", href: "/student/exams", icon: CalendarCheck, availabilityKey: "examTimetable" as const },
-  { label: "Tests", href: "/student/tests", icon: FileQuestion, availabilityKey: "studentTests" as const },
-  { label: "Attendance", href: "/student/attendance", icon: CheckSquare },
-  { label: "Marks", href: "/student/marks", icon: FileText },
-  { label: "Transcripts", href: "/student/transcripts", icon: FileText },
-  { label: "Submissions", href: "/student/submissions", icon: UploadCloud },
-  { label: "Fee Vouchers", href: "/student/vouchers", icon: Receipt, availabilityKey: "feeVouchers" as const },
-  { label: "Support Tickets", href: "/student/tickets", icon: Ticket },
-];
-
-export default function StudentLayout({
+export default async function StudentLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT") redirect("/login");
+  const brand = await getShellBrandForSession(session);
   return (
-    <AppShell sidebarItems={SIDEBAR_ITEMS} userRole="STUDENT">
+    <StudentShell
+      isGraduated={session.studentAcademicStatus === "GRADUATED"}
+      userId={session.userId}
+      institutionId={session.institutionId}
+      initialBrand={brand}
+    >
       {children}
-    </AppShell>
+    </StudentShell>
   );
 }

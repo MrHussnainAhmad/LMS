@@ -16,6 +16,8 @@ export default async function TranscriptsPage() {
   const rawResults = await db.select({
     examId: batchExams.id,
     examTitle: batchExams.title,
+    examType: batchExams.type,
+    officialPublishedAt: batchExams.officialPublishedAt,
     examCreatedAt: batchExams.createdAt,
     subjectId: batchExamSubjects.id,
     isPublished: batchExamSubjects.isPublished,
@@ -27,7 +29,7 @@ export default async function TranscriptsPage() {
   .where(eq(batchExamResults.studentId, session.userId));
 
   // Group by Exam
-  const examMap = new Map<number, { id: number, title: string, createdAt: Date, subjects: any[] }>();
+  const examMap = new Map<number, { id: number, title: string, type: string, officialPublishedAt: Date | null, createdAt: Date, subjects: any[] }>();
   
   const now = new Date();
   
@@ -36,6 +38,8 @@ export default async function TranscriptsPage() {
       examMap.set(r.examId, {
         id: r.examId,
         title: r.examTitle,
+        type: r.examType,
+        officialPublishedAt: r.officialPublishedAt,
         createdAt: r.examCreatedAt,
         subjects: []
       });
@@ -50,7 +54,7 @@ export default async function TranscriptsPage() {
 
   // A batch exam is published if ALL its subjects are effectively published
   const publishedExams = Array.from(examMap.values()).filter(exam => 
-    exam.subjects.every(s => s.isEffectivelyPublished)
+    exam.subjects.every(s => s.isEffectivelyPublished) && (exam.type !== "PROMOTION" || Boolean(exam.officialPublishedAt))
   ).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
   return (
@@ -67,11 +71,11 @@ export default async function TranscriptsPage() {
               <div className="h-10 w-10 rounded-full bg-brand-100 flex items-center justify-center mb-2">
                 <FileText className="h-5 w-5 text-brand-600" />
               </div>
-              <CardTitle>{exam.title}</CardTitle>
+              <div className="flex items-center justify-between gap-2"><CardTitle>{exam.title}</CardTitle><span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-800">{exam.type}</span></div>
               <CardDescription>Published {exam.createdAt.toLocaleDateString()}</CardDescription>
             </CardHeader>
             <CardContent>
-              <Link href={`/student/transcripts/${exam.id}`}>
+              <Link href={`/student/transcripts/${exam.id}`} prefetch={false}>
                 <Button className="w-full justify-between group">
                   View Transcript
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
