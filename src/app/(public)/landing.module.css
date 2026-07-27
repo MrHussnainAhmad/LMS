@@ -153,6 +153,7 @@
 
 .institutionStrip {
   display: grid;
+  margin-top: clamp(1rem, 2vw, 1.75rem);
   padding: 1.4rem max(1.5rem, calc((100% - 1380px) / 2));
   grid-template-columns: 220px 1fr;
   align-items: center;
@@ -185,6 +186,7 @@
   color: #58615d;
   font-size: 0.72rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .institution img {
