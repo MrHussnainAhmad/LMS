@@ -147,7 +147,7 @@ export function StudentIdCardClient({ student, institution }: Props) {
                     <Field label="Class" value={student.className} />
                     <Field label="Section" value={student.sectionName} />
                     <Field label="Roll No." value={student.classRollNumber} />
-                    <Field label="Login ID" value={student.loginRollNumber} />
+                    <Field label="Universal ID" value={student.loginRollNumber.split('@')[0]} />
                   </div>
                 </div>
               </div>
@@ -180,7 +180,7 @@ export function StudentIdCardClient({ student, institution }: Props) {
               <div style={{ height: 3, background: GOLD, flexShrink: 0 }} />
               <div style={{ background: NAVY, padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
                 <span style={{ fontSize: 7.5, fontWeight: 700, color: CREAM, letterSpacing: "0.1em", textTransform: "uppercase" as const }}>{student.name}</span>
-                <span style={{ fontSize: 7, color: GOLD, letterSpacing: "0.06em" }}>{student.loginRollNumber}</span>
+                <span style={{ fontSize: 7, color: GOLD, letterSpacing: "0.06em" }}>{student.loginRollNumber.split('@')[0]}</span>
               </div>
               <div style={{ flex: 1, padding: "14px 16px 12px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
