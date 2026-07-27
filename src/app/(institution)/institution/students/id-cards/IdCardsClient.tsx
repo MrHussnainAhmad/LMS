@@ -305,9 +305,22 @@ export function IdCardsClient({ initialStudentId }: { initialStudentId?: number 
       <style>{`
         ${FLIP_CSS}
         @media print {
-          body * { visibility: hidden }
-          #print-cards, #print-cards * { visibility: visible }
-          #print-cards { position: absolute; left: 0; top: 0; width: 100%; padding: 16px; display: flex !important; flex-direction: column; gap: 32px; }
+          body { visibility: hidden !important; background: white !important; }
+          #print-cards {
+            visibility: visible !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 20px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 32px !important;
+          }
+          #print-cards * {
+            visibility: visible !important;
+          }
         }
       `}</style>
 
