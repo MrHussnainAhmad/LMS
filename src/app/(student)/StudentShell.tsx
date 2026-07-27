@@ -6,6 +6,7 @@ import {
   CalendarCheck,
   CalendarDays,
   CheckSquare,
+  CreditCard,
   FileQuestion,
   FileText,
   LayoutDashboard,
@@ -28,6 +29,7 @@ const ACTIVE_SIDEBAR_ITEMS = [
   { label: "Transcripts", href: "/student/transcripts", icon: FileText },
   { label: "Submissions", href: "/student/submissions", icon: UploadCloud },
   { label: "Fee Vouchers", href: "/student/vouchers", icon: Receipt },
+  { label: "ID Card", href: "/student/id-card", icon: CreditCard },
   { label: "Support Tickets", href: "/student/tickets", icon: Ticket },
 ];
 

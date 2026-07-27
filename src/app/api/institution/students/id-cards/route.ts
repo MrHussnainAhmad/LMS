@@ -17,9 +17,9 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
     return NextResponse.json({ error: `A maximum of ${MAX_STUDENT_IDS} studentIds is allowed per request` }, { status: 400 });
   }
   const [institution, rows] = await Promise.all([
-    db.select({ id: institutions.id, name: institutions.name, logoKey: institutions.logoKey, address: institutions.address, contactPhone: institutions.contactPhone })
+    db.select({ id: institutions.id, name: institutions.name, logoKey: institutions.logoKey, signatureKey: institutions.signatureKey, address: institutions.address, contactPhone: institutions.contactPhone })
       .from(institutions).where(eq(institutions.id, institutionId)).limit(1),
-    db.select({ id: students.id, name: students.name, fatherName: students.fatherName, profilePictureUrl: students.profilePictureUrl, loginRollNumber: students.loginRollNumber, classRollNumber: students.classRollNumber, className: classes.name, sectionName: sections.name })
+    db.select({ id: students.id, name: students.name, fatherName: students.fatherName, phone: students.phone, emergencyContact: students.emergencyContact, profilePictureUrl: students.profilePictureUrl, loginRollNumber: students.loginRollNumber, classRollNumber: students.classRollNumber, className: classes.name, sectionName: sections.name })
       .from(students).innerJoin(classes, eq(students.classId, classes.id)).innerJoin(sections, eq(students.sectionId, sections.id))
       .where(and(eq(students.institutionId, institutionId), eq(students.isActive, true), inArray(students.id, studentIds))),
   ]);

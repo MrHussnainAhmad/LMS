@@ -4,7 +4,7 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { ArrowLeft, User } from "lucide-react";
+import { ArrowLeft, CreditCard, User } from "lucide-react";
 import Link from "next/link";
 import { PrintButton } from "./PrintButton";
 import { StudentDetailHistory } from "./StudentDetailHistory";
@@ -57,7 +57,15 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
         <Link href="/institution/students" prefetch={false} className="flex items-center text-sm text-stone-500 hover:text-brand-600 transition-colors">
           <ArrowLeft className="h-4 w-4 mr-1" /> Back to Directory
         </Link>
-        <PrintButton />
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/institution/students/id-cards?studentId=${studentId}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-800 hover:bg-brand-100 transition-colors"
+          >
+            <CreditCard className="h-4 w-4" /> ID Card
+          </Link>
+          <PrintButton />
+        </div>
       </div>
 
       {promotionHistory.length > 0 && (

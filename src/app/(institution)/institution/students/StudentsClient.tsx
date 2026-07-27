@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import type { ReactNode } from "react";
 import { DataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, FileText, Plus, Upload, MoreHorizontal, Eye, Edit, Trash } from "lucide-react";
+import { AlertTriangle, CreditCard, FileText, Plus, Upload, MoreHorizontal, Eye, Edit, Trash } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -159,6 +159,11 @@ export function StudentsClient({
             {s.id > 0 && (
               <DropdownMenuItem onClick={() => router.push(`/institution/students/${s.id}`)}>
                 <Eye className="h-4 w-4 mr-2" /> View Profile
+              </DropdownMenuItem>
+            )}
+            {s.id > 0 && (
+              <DropdownMenuItem onClick={() => router.push(`/institution/students/id-cards?studentId=${s.id}`)}>
+                <CreditCard className="h-4 w-4 mr-2" /> ID Card
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onClick={() => setEditStudent(s)}>
