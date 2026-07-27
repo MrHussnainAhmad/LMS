@@ -38,6 +38,12 @@ const FLIP_CSS = `
 .idc-inner.idc-flipped{transform:rotateY(180deg);}
 .idc-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:12px;overflow:hidden;}
 .idc-back{transform:rotateY(180deg);}
+@media print{
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+  .idc-scene{height:auto!important;cursor:default;}
+  .idc-inner{position:static;display:flex;flex-direction:column;gap:16px;transform:none!important;}
+  .idc-face{position:relative!important;transform:none!important;break-inside:avoid;width:${W}px;height:${H}px;}
+}
 `;
 
 function PhoneIcon() {
@@ -301,10 +307,7 @@ export function IdCardsClient({ initialStudentId }: { initialStudentId?: number 
         @media print {
           body * { visibility: hidden }
           #print-cards, #print-cards * { visibility: visible }
-          #print-cards { position: absolute; left: 0; top: 0; width: 100%; padding: 16px; display: flex !important; flex-wrap: wrap; gap: 24px; }
-          .idc-scene { cursor: default; }
-          .idc-inner { transform: none !important; }
-          .idc-back { display: none; }
+          #print-cards { position: absolute; left: 0; top: 0; width: 100%; padding: 16px; display: flex !important; flex-direction: column; gap: 32px; }
         }
       `}</style>
 

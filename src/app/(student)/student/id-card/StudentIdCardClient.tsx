@@ -20,7 +20,13 @@ const FLIP_CSS = `
 .idc-inner.idc-flipped{transform:rotateY(180deg);}
 .idc-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:12px;overflow:hidden;}
 .idc-back{transform:rotateY(180deg);}
-@media print{.idc-scene{cursor:default;}.idc-inner{transform:none!important;}.idc-back{display:none;}.no-print{display:none!important;}}
+@media print{
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+  .idc-scene{height:auto!important;cursor:default;}
+  .idc-inner{position:static;display:flex;flex-direction:column;gap:16px;transform:none!important;}
+  .idc-face{position:relative!important;transform:none!important;break-inside:avoid;width:${W}px;height:${H}px;}
+  .no-print{display:none!important;}
+}
 `;
 
 type Props = {
