@@ -20,7 +20,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (_req
 export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
   const body = await req.json();
-  const { name, location, status } = body;
+  const { name, location } = body;
   
   if (!name || !location) {
     return NextResponse.json({ error: "Name and location are required" }, { status: 400 });
@@ -29,8 +29,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
   const [inserted] = await db.insert(campuses).values({
     institutionId,
     name,
-    location,
-    status: status || 'Active',
+    address: location,
   }).returning();
   
   return NextResponse.json({ success: true, campus: inserted });
