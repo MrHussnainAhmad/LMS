@@ -48,7 +48,7 @@ const presets: Record<
     size: 3.8,
     rotation: [0.02, -0.35, -0.02],
     cameraZ: 6.2,
-    modelY: 0.4,
+    modelY: 0.8,
     ground: 0xd9d6ce,
     light: 0xc7de5d,
   },
