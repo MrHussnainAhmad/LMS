@@ -20,7 +20,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req:
   const result = await db.select()
     .from(tickets)
     .where(and(...conditions))
-    .orderBy(desc(tickets.priority), desc(tickets.createdAt));
+    .orderBy(desc(tickets.createdAt));
 
   return NextResponse.json({ tickets: result });
 });
