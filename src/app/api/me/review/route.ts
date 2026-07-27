@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { platformReviews } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { redis } from "@/lib/redis";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const institutionId = session.userId; // For role INSTITUTION, userId is the institution ID.
+    const institutionId = session.institutionId || session.userId;
 
     const body = await req.json();
     const result = reviewSchema.safeParse(body);
@@ -47,6 +48,14 @@ export async function POST(req: Request) {
         updatedAt: new Date(),
       }
     });
+
+    // The dashboard checks this key before rendering the review prompt. Clear it
+    // so router.refresh() immediately replaces the form with the saved review state.
+    try {
+      await redis.del(`cache:dashboard:reviews:${institutionId}`);
+    } catch (error) {
+      console.warn("Failed to invalidate dashboard review cache:", error);
+    }
 
     return NextResponse.json({ message: "Review saved successfully" });
   } catch (error) {

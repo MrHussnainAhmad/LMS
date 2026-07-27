@@ -15,7 +15,6 @@ import {
   Users,
 } from "lucide-react";
 import { desc, eq, sql } from "drizzle-orm";
-import { unstable_cache } from "next/cache";
 import { db } from "@/db";
 import {
   featuredInstitutions,
@@ -58,8 +57,7 @@ export const metadata: Metadata = {
   },
 };
 
-const getLandingData = unstable_cache(
-  async () => {
+async function getLandingData() {
     const [
       featuredLogos,
       latestReviews,
@@ -115,10 +113,7 @@ const getLandingData = unstable_cache(
         rating: Number(reviewSummary[0]?.average ?? 0),
       },
     };
-  },
-  ["landing-page-data-v3"],
-  { revalidate: 300, tags: ["landing-page"] },
-);
+}
 
 function formatCount(value: number) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(".0", "")}m`;
