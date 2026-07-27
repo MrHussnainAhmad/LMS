@@ -28,6 +28,7 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
     id: students.id,
     name: students.name,
     classRollNumber: students.classRollNumber,
+    loginRollNumber: students.loginRollNumber,
     className: classes.name,
     sectionName: sections.name,
   })
