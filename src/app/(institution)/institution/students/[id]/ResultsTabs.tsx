@@ -37,8 +37,8 @@ export function ResultsTabs({ records }: { records: MarkRecord[] }) {
         ))}
       </div>
       
-      <div className="max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-        <table className="w-full text-sm text-left">
+      <div className="custom-scrollbar max-h-[300px] overflow-auto">
+        <table className="w-full min-w-[520px] text-left text-sm">
           <thead className="bg-stone-100 text-stone-600 sticky top-0">
             <tr>
               <th className="px-4 py-2 font-medium">Test</th>

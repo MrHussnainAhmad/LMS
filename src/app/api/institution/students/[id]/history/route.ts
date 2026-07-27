@@ -6,6 +6,7 @@ import {
   batchExamResults,
   batchExams,
   batchExamSubjects,
+  feeVoucherCycles,
   feeVouchers,
   marks,
   students,
@@ -160,26 +161,52 @@ async function loadBatchExams(studentId: number, institutionId: number, from: st
 }
 
 async function loadVouchers(studentId: number, institutionId: number, from: string, to: string) {
-  const rows = await db
-    .select({
-      id: feeVouchers.id,
-      title: feeVouchers.title,
-      imageUrl: feeVouchers.imageUrl,
-      createdAt: feeVouchers.createdAt,
-    })
-    .from(feeVouchers)
-    .where(and(
-      eq(feeVouchers.studentId, studentId),
-      eq(feeVouchers.institutionId, institutionId),
-      gte(feeVouchers.createdAt, new Date(`${from}T00:00:00`)),
-      lte(feeVouchers.createdAt, new Date(`${to}T23:59:59.999`))
-    ))
-    .orderBy(desc(feeVouchers.createdAt));
+  const billingMonth = from.slice(0, 7);
+  const [rows, cycleRows] = await Promise.all([
+    db
+      .select({
+        id: feeVouchers.id,
+        title: feeVouchers.title,
+        imageUrl: feeVouchers.imageUrl,
+        billingMonth: feeVouchers.billingMonth,
+        lateFeeAmount: feeVouchers.lateFeeAmount,
+        createdAt: feeVouchers.createdAt,
+      })
+      .from(feeVouchers)
+      .where(and(
+        eq(feeVouchers.studentId, studentId),
+        eq(feeVouchers.institutionId, institutionId),
+        gte(feeVouchers.createdAt, new Date(`${from}T00:00:00`)),
+        lte(feeVouchers.createdAt, new Date(`${to}T23:59:59.999`))
+      ))
+      .orderBy(desc(feeVouchers.createdAt)),
+    db
+      .select({
+        status: feeVoucherCycles.status,
+        lateFeeAmount: feeVoucherCycles.lateFeeAmount,
+        submittedAt: feeVoucherCycles.submittedAt,
+      })
+      .from(feeVoucherCycles)
+      .where(and(
+        eq(feeVoucherCycles.studentId, studentId),
+        eq(feeVoucherCycles.institutionId, institutionId),
+        eq(feeVoucherCycles.billingMonth, billingMonth),
+      ))
+      .limit(1),
+  ]);
 
-  return rows.map((row) => ({
-    ...row,
-    createdAt: row.createdAt.toISOString(),
-  }));
+  return {
+    vouchers: rows.map((row) => ({
+      ...row,
+      createdAt: row.createdAt.toISOString(),
+    })),
+    voucherCycle: cycleRows[0]
+      ? {
+          ...cycleRows[0],
+          submittedAt: cycleRows[0].submittedAt?.toISOString() ?? null,
+        }
+      : null,
+  };
 }
 
 export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { params, session }) => {
@@ -222,7 +249,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req:
   }
 
   if (section === "vouchers") {
-    return NextResponse.json({ vouchers: await loadVouchers(studentId, institutionId, from, to) });
+    return NextResponse.json(await loadVouchers(studentId, institutionId, from, to));
   }
 
   // analytics: combine the datasets the chart needs

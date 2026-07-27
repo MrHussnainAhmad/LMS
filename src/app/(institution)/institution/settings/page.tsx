@@ -112,7 +112,12 @@ export default async function InstitutionSettingsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
-              <FeeVoucherSettingsClient acceptFeeVouchers={profile.acceptFeeVouchers} />
+              <FeeVoucherSettingsClient
+                acceptFeeVouchers={profile.acceptFeeVouchers}
+                openDay={profile.feeVoucherOpenDay}
+                lateDay={profile.feeVoucherLateDay}
+                lateFee={profile.feeVoucherLateFee}
+              />
             </CardContent>
           </Card>
 

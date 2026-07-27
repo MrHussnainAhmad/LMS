@@ -1,18 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toaster";
 import { createInstitutionOwnerAction } from "@/app/actions/institution-actions";
-import { Building2, UserCircle, Phone, Mail, User } from "lucide-react";
+import { Building2, UserCircle, Phone, Mail } from "lucide-react";
 
 export function OwnerOnboardingForm() {
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -28,10 +26,10 @@ export function OwnerOnboardingForm() {
       });
       // Force hard refresh to clear the onboarding view
       window.location.reload();
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Error",
-        description: err.message,
+        description: err instanceof Error ? err.message : "Could not save owner details.",
         variant: "destructive",
       });
       setLoading(false);
@@ -39,22 +37,23 @@ export function OwnerOnboardingForm() {
   };
 
   return (
-    <div className="min-h-screen bg-brand-50 flex items-center justify-center p-4">
-      <div className="max-w-3xl w-full bg-surface p-4 sm:p-8 rounded-2xl shadow-xl border border-brand-100 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-brand-500 to-accent-500" />
+    <div className="public-canvas flex min-h-[100svh] items-center justify-center p-4 sm:p-8">
+      <div className="relative w-full max-w-3xl overflow-hidden border border-border bg-surface p-5 sm:p-8">
+        <div className="absolute left-0 top-0 h-1 w-full bg-brand-300" />
         
-        <div className="text-center mb-8 mt-2">
-          <div className="w-16 h-16 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Building2 className="w-8 h-8" />
+        <div className="mb-8 mt-2 border-b border-border pb-6 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center border border-brand-200 bg-brand-50 text-brand-700">
+            <Building2 className="h-7 w-7" />
           </div>
-          <h1 className="text-2xl font-display font-bold text-brand-950">Welcome to LMS</h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-brand-700">Institution setup</p>
+          <h1 className="mt-2 font-display text-2xl font-semibold tracking-tight text-brand-950 sm:text-3xl">Welcome to Nisaab360</h1>
           <p className="text-stone-500 mt-2 text-sm">
             Please provide your details as the owner to set up your institution dashboard.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6">
             <div className="space-y-2">
               <Label htmlFor="name">Full Name</Label>
               <div className="relative">
@@ -94,7 +93,7 @@ export function OwnerOnboardingForm() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full mt-2" disabled={loading}>
+          <Button type="submit" className="mt-2 w-full sm:w-auto sm:min-w-56" disabled={loading}>
             {loading ? "Saving..." : "Continue to Dashboard"}
           </Button>
         </form>

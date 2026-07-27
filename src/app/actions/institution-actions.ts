@@ -468,17 +468,54 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   return { success: true };
 }
 
-export async function updateFeeVoucherSettingsAction(acceptFeeVouchers: boolean) {
+export async function updateFeeVoucherSettingsAction(settings: {
+  acceptFeeVouchers: boolean;
+  openDay?: number;
+  lateDay?: number;
+  lateFee?: number;
+}) {
   const session = await getSession();
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
-  
+
   const institutionId = session.institutionId || session.userId;
-  
+
+  if (!settings.acceptFeeVouchers) {
+    await db.update(institutions)
+      .set({ acceptFeeVouchers: false })
+      .where(eq(institutions.id, institutionId));
+
+    revalidatePath("/institution/settings");
+    revalidatePath("/student/vouchers");
+    return { success: true };
+  }
+
+  const openDay = Number(settings.openDay);
+  const lateDay = Number(settings.lateDay);
+  const lateFee = Number(settings.lateFee ?? 0);
+  if (!Number.isInteger(openDay) || openDay < 1 || openDay > 28) {
+    throw new Error("Voucher opening day must be between 1 and 28.");
+  }
+  if (!Number.isInteger(lateDay) || lateDay < 1 || lateDay > 28) {
+    throw new Error("Late voucher day must be between 1 and 28.");
+  }
+  if (lateDay <= openDay) {
+    throw new Error("Late voucher day must be after the opening day.");
+  }
+  if (!Number.isInteger(lateFee) || lateFee < 0 || lateFee > 1_000_000) {
+    throw new Error("Late fee must be a whole PKR amount between 0 and 1,000,000.");
+  }
+
   await db.update(institutions)
-    .set({ acceptFeeVouchers })
+    .set({
+      acceptFeeVouchers: true,
+      feeVoucherOpenDay: openDay,
+      feeVoucherLateDay: lateDay,
+      feeVoucherLateFee: lateFee,
+    })
     .where(eq(institutions.id, institutionId));
-    
+
   revalidatePath("/institution/settings");
+  revalidatePath("/student/vouchers");
   return { success: true };
 }
 

@@ -10,6 +10,7 @@ export const registerInstitutionSchema = z.object({
   contactEmail: z.string().email(),
   contactPhone: z.string().min(5),
   registrationNumber: z.string().min(2),
+  pricingPlan: z.enum(['BASIC', 'STANDARD', 'PREMIUM']).optional(),
   adminPassword: z.string().min(8),
   // file metadata that client obtained from R2 upload
   logoKey: z.string().min(5),

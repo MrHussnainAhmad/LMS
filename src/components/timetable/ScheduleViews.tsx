@@ -202,7 +202,7 @@ export function TodayTimetableCard({
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b border-border bg-stone-50/70 pb-4">
-        <CardTitle className="flex items-center justify-between text-lg">
+        <CardTitle className="flex flex-col gap-2 text-lg sm:flex-row sm:items-center sm:justify-between">
           <span className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-brand-700" />
             {title}

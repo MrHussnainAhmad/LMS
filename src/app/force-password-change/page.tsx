@@ -6,13 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
-import { useRouter } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
+import { PublicAccessShell } from "@/components/layout/PublicAccessShell";
 
 export default function ForcePasswordChangePage() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -33,10 +32,10 @@ export default function ForcePasswordChangePage() {
       // Logout and redirect to login
       await api.post("/api/auth/logout", {});
       window.location.replace("/login");
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Error",
-        description: err.message || "Failed to change password",
+        description: err instanceof Error ? err.message : "Failed to change password",
         variant: "destructive",
       });
     } finally {
@@ -45,17 +44,16 @@ export default function ForcePasswordChangePage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-stone-50 p-4">
-      <div className="w-full max-w-[400px]">
-        <div className="text-center mb-8 flex flex-col items-center">
-          <div className="h-12 w-12 rounded-full bg-danger/10 flex items-center justify-center mb-4">
-            <ShieldAlert className="h-6 w-6 text-danger" />
+    <PublicAccessShell
+      title="Update your password"
+      description="Your temporary password must be replaced before the workspace can be opened."
+      eyebrow="Account security"
+      compact
+    >
+        <Card className="p-5 sm:p-6">
+          <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-sm bg-danger/10">
+            <ShieldAlert className="h-5 w-5 text-danger" />
           </div>
-          <h1 className="text-2xl font-display font-bold text-brand-950 mb-2">Update Password Required</h1>
-          <p className="text-stone-500 text-sm">For security reasons, you must change your default password before accessing the platform.</p>
-        </div>
-
-        <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
               <label className="text-sm font-medium text-stone-700">Current Password</label>
@@ -73,7 +71,6 @@ export default function ForcePasswordChangePage() {
             </Button>
           </form>
         </Card>
-      </div>
-    </div>
+    </PublicAccessShell>
   );
 }

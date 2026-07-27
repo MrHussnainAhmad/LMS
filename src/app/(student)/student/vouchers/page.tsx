@@ -15,7 +15,11 @@ export default async function StudentFeeVouchersPage() {
     redirect("/login");
   }
 
-  const [institution] = await db.select({ acceptFeeVouchers: institutions.acceptFeeVouchers })
+  const [institution] = await db.select({
+    acceptFeeVouchers: institutions.acceptFeeVouchers,
+    openDay: institutions.feeVoucherOpenDay,
+    lateDay: institutions.feeVoucherLateDay,
+  })
     .from(institutions)
     .where(eq(institutions.id, session.institutionId))
     .limit(1);
@@ -26,6 +30,17 @@ export default async function StudentFeeVouchersPage() {
       <div className="flex flex-col items-center justify-center min-h-[50vh] text-center px-4">
         <h2 className="text-2xl font-bold text-brand-950 mb-2">Feature Disabled</h2>
         <p className="text-stone-500 max-w-md">Your institution has not enabled fee voucher uploads.</p>
+      </div>
+    );
+  }
+
+  if (!institution.openDay || !institution.lateDay) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center px-4 text-center">
+        <h2 className="mb-2 text-2xl font-bold text-brand-950">Schedule Not Configured</h2>
+        <p className="max-w-md text-stone-500">
+          Your institution has enabled fee vouchers but has not configured the monthly upload dates yet.
+        </p>
       </div>
     );
   }

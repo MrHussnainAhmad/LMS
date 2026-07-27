@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CheckCircle2, Download, ShieldCheck, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PublicPageHeader } from "@/components/layout/PublicPageHeader";
 
 export const metadata: Metadata = {
   title: "Download Nisaab360 for Android | School Management App",
@@ -24,24 +25,25 @@ export const metadata: Metadata = {
 
 export default function DownloadAppPage() {
   return (
-    <main className="flex-1 overflow-hidden bg-stone-50">
-      <section className="relative border-b border-stone-200 bg-gradient-to-br from-brand-950 via-brand-900 to-indigo-950 px-6 py-20 text-white sm:py-28">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_35%)]" />
-        <div className="relative mx-auto max-w-5xl text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-white/20 bg-white/10 shadow-xl backdrop-blur">
-            <Smartphone className="h-8 w-8" />
+    <div className="public-document min-h-screen">
+      <PublicPageHeader />
+      <main className="flex-1 overflow-hidden">
+      <section className="border-b border-brand-800 bg-brand-950 px-5 py-16 text-white sm:px-6 sm:py-24">
+        <div className="mx-auto max-w-5xl">
+          <div className="flex h-12 w-12 items-center justify-center bg-brand-300 text-brand-950">
+            <Smartphone className="h-6 w-6" />
           </div>
-          <p className="mt-7 text-sm font-bold uppercase tracking-[0.2em] text-brand-100">Official Nisaab360 Android app</p>
-          <h1 className="mx-auto mt-4 max-w-3xl text-4xl font-extrabold tracking-tight sm:text-5xl">Your school, connected wherever you are.</h1>
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-brand-50 sm:text-lg">
+          <p className="mt-7 text-[10px] font-bold uppercase tracking-[0.18em] text-brand-300">Official Nisaab360 Android app</p>
+          <h1 className="mt-4 max-w-3xl font-display text-4xl font-semibold tracking-[-0.05em] sm:text-6xl">Your school, connected wherever you are.</h1>
+          <p className="mt-5 max-w-2xl text-base leading-7 text-white/55 sm:text-lg">
             Stay connected to attendance, marks, timetables, announcements, and the important updates that keep your institution moving.
           </p>
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-5xl gap-8 px-6 py-6 sm:py-12 lg:grid-cols-[1.35fr_0.65fr] lg:py-16">
-        <div className="rounded-3xl border border-stone-200 bg-white p-7 shadow-xl shadow-stone-900/5 sm:p-10">
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
+      <section className="mx-auto grid max-w-5xl gap-0 border-l border-t border-border lg:grid-cols-[1.35fr_0.65fr]">
+        <div className="border-b border-r border-border bg-surface p-5 sm:p-8 lg:p-10">
+          <div className="border-l-2 border-success bg-emerald-50 p-5 text-emerald-950">
             <div className="flex gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
               <div>
@@ -57,16 +59,16 @@ export default function DownloadAppPage() {
           <p className="mt-3 max-w-2xl leading-7 text-stone-600">
             Use the button below to download the latest Nisaab360 APK directly from our official website. This package is intended for Android devices.
           </p>
-          <Button asChild size="lg" className="mt-7 rounded-full">
-            <a href="/api/download-app">
+          <Button asChild size="lg" className="mt-7">
+            <Link href="/api/download-app">
               <Download className="mr-2 h-5 w-5" />
               Download Nisaab360 App
-            </a>
+            </Link>
           </Button>
           <p className="mt-4 flex items-center gap-2 text-sm text-stone-500"><ShieldCheck className="h-4 w-4 text-success" /> Download only from this official Nisaab360 page.</p>
         </div>
 
-        <aside className="rounded-3xl border border-stone-200 bg-white p-7 shadow-sm">
+        <aside className="border-b border-r border-border bg-[#e9e5dc] p-5 sm:p-7">
           <h2 className="text-lg font-bold text-stone-950">What you can do</h2>
           <ul className="mt-5 space-y-4 text-sm leading-6 text-stone-600">
             {[
@@ -95,6 +97,7 @@ export default function DownloadAppPage() {
           description: "Official Nisaab360 Android app for attendance, marks, timetables, and school updates.",
         }) }}
       />
-    </main>
+      </main>
+    </div>
   );
 }

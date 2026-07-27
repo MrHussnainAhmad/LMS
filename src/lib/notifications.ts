@@ -127,6 +127,27 @@ export async function createBulkNotifications(payloads: NotificationPayload[]) {
   return insertedRows;
 }
 
+/**
+ * Background-worker variant. Unlike createBulkNotifications(), this does not
+ * depend on Next.js request-scoped after() and waits for push delivery setup.
+ */
+export async function createBulkNotificationsImmediately(payloads: NotificationPayload[]) {
+  if (payloads.length === 0) return [];
+
+  const insertedRows: { id: number }[] = [];
+  for (const chunk of chunkArray(payloads, NOTIFICATION_INSERT_CHUNK_SIZE)) {
+    const chunkRows = await db.insert(notifications).values(chunk).returning({ id: notifications.id });
+    insertedRows.push(...chunkRows);
+  }
+
+  await sendExpoPushNotifications(payloads.map((payload, index) => ({
+    ...payload,
+    notificationId: insertedRows[index]?.id,
+  })));
+
+  return insertedRows;
+}
+
 function scheduleExpoPushNotifications(deliveries: NotificationDelivery[]) {
   after(async () => {
     await acquirePushSlot();

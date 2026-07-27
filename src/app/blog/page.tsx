@@ -2,7 +2,8 @@ import { db } from "@/db";
 import { blogs } from "@/db/schema";
 import { desc, eq, sql } from "drizzle-orm";
 import Link from "next/link";
-import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { PublicPageHeader } from "@/components/layout/PublicPageHeader";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -33,38 +34,27 @@ export default async function BlogIndexPage({ searchParams }: { searchParams: Pr
   const totalPages = Math.ceil(totalCount / limit);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FDFCFB] selection:bg-brand-500 selection:text-white">
-      <header className="sticky top-0 z-50 flex items-center px-6 md:px-12 py-4 backdrop-blur-2xl bg-white/60 border-b border-stone-200/50">
-        <Link href="https://nisaab360.app" className="flex items-center gap-3 group">
-          <div className="h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-brand-100 transition-transform group-hover:scale-105">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/Logo.png" alt="Nisaab360 logo" className="h-full w-full object-contain" />
-          </div>
-          <span className="font-display font-extrabold text-xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Nisaab360</span>
-        </Link>
-        <Link href="https://nisaab360.app" className="ml-auto text-sm font-semibold text-stone-500 hover:text-stone-900 flex items-center gap-2">
-          <ArrowLeft className="w-4 h-4" /> Back to Home
-        </Link>
-      </header>
+    <div className="public-document flex min-h-screen flex-col selection:bg-brand-300 selection:text-brand-950">
+      <PublicPageHeader />
 
-      <main className="flex-1 w-full max-w-5xl mx-auto px-6 py-16 md:py-24">
-        <div className="mb-12">
-          <h1 className="text-4xl md:text-5xl font-display font-bold tracking-tight text-stone-900 mb-4 flex items-center gap-3">
-            <BookOpen className="w-10 h-10 text-brand-600" />
-            Our Blog
+      <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-12 sm:px-6 md:py-20">
+        <div className="mb-12 border-l-2 border-brand-300 pl-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-brand-700">Nisaab360 journal</p>
+          <h1 className="mt-2 font-display text-4xl font-semibold tracking-[-0.05em] text-brand-950 md:text-6xl">
+            Notes on better school operations.
           </h1>
-          <p className="text-xl text-stone-500">Insights, updates, and stories from the Nisaab360 team.</p>
+          <p className="mt-4 max-w-2xl text-base text-stone-600">Product updates, practical guidance, and stories from education teams.</p>
         </div>
 
         {publishedBlogs.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-2xl border border-stone-200 border-dashed">
+          <div className="border border-dashed border-border bg-surface py-20 text-center">
             <p className="text-stone-500">No blog posts found. Check back later!</p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+            <div className="mb-12 grid grid-cols-1 border-l border-t border-border md:grid-cols-2">
               {publishedBlogs.map((post) => (
-                <Link key={post.id} href={`/${post.slug}`} className="group bg-white rounded-2xl shadow-sm hover:shadow-xl border border-stone-100 transition-all duration-300 overflow-hidden flex flex-col">
+                <Link key={post.id} href={`/${post.slug}`} className="group flex min-h-64 flex-col border-b border-r border-border bg-surface transition-colors hover:bg-brand-50">
                   <div className="p-4 sm:p-8 flex-1">
                     <h2 className="font-bold font-display tracking-tight text-2xl text-stone-900 mb-3 group-hover:text-brand-600 transition-colors line-clamp-2">
                       {post.title}
@@ -116,8 +106,8 @@ export default async function BlogIndexPage({ searchParams }: { searchParams: Pr
         )}
       </main>
 
-      <footer className="w-full bg-white border-t border-stone-200 py-6 sm:py-10 px-6 text-center">
-        <p className="text-stone-400 text-sm">&copy; {new Date().getFullYear()} Nisaab360 Inc. All rights reserved.</p>
+      <footer className="w-full border-t border-border px-6 py-6 text-center">
+        <p className="text-xs text-stone-500">&copy; {new Date().getFullYear()} Nisaab360. All rights reserved.</p>
       </footer>
     </div>
   );

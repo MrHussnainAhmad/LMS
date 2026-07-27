@@ -24,14 +24,9 @@ export function IdCardsClient() {
   // No fetch on mount: the picker only loads students once the user types a
   // search query, per on-demand fetching rules (debounced input is fine).
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      setSearching(false);
-      return;
-    }
+    if (!query.trim()) return;
 
     let ignore = false;
-    setSearching(true);
 
     const timer = setTimeout(() => {
       const params = new URLSearchParams({ q: query.trim() });
@@ -100,7 +95,13 @@ export function IdCardsClient() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <input
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(event) => {
+            const nextQuery = event.target.value;
+            setQuery(nextQuery);
+            setResults([]);
+            setHasSearched(false);
+            setSearching(Boolean(nextQuery.trim()));
+          }}
           placeholder="Search by name, roll no. or class..."
           className="w-full max-w-sm rounded-md border border-border px-3 py-2 text-sm"
         />
@@ -131,8 +132,8 @@ export function IdCardsClient() {
         </div>
       )}
 
-      <div className="rounded-xl border border-border bg-white overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-sm border border-border bg-white">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-stone-50 text-left">
             <tr>
               <th className="p-3" />

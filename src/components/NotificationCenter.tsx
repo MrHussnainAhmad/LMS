@@ -67,7 +67,7 @@ export function NotificationCenter() {
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-80 p-0" align="end">
+      <DropdownMenuContent className="w-[min(20rem,calc(100vw-1rem))] p-0" align="end">
         <div className="flex items-center justify-between p-4 border-b">
           <h4 className="font-semibold text-sm">Notifications</h4>
           {unreadCount > 0 && (

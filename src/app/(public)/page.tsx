@@ -1,498 +1,612 @@
 export const dynamic = "force-dynamic";
-import { Metadata } from "next";
+
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { ArrowRight, CheckCircle2, LayoutDashboard, Calendar, Bell, Star, MessageSquareQuote, Gift, Sparkles, Tag } from "lucide-react";
-import { FadeIn, HeroFadeIn, StaggerContainer, StaggerItem, ScaleIn } from "@/components/ui/scroll-animation";
-import { AnimatedBackground, FloatingIcons } from "@/components/ui/animated-background";
-import { db } from "@/db";
-import { institutions, platformReviews, featuredInstitutions, students, tests } from "@/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
-import { LiveStats } from "@/components/ui/live-stats";
-import { InteractiveFeatures } from "@/components/ui/interactive-features";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  BookOpen,
+  CalendarDays,
+  ClipboardCheck,
+  MessageCircle,
+  ShieldCheck,
+  Star,
+  Users,
+} from "lucide-react";
+import { desc, eq, sql } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
+import { db } from "@/db";
+import {
+  featuredInstitutions,
+  institutions,
+  platformReviews,
+  students,
+  tests,
+} from "@/db/schema";
 import { LandingHeader } from "@/components/layout/LandingHeader";
+import { LandingMotion } from "@/components/landing/LandingMotion";
+import { ModelScene } from "@/components/landing/ModelScene";
+import { pricingOffers, pricingPlans } from "@/lib/pricing";
+import styles from "./landing.module.css";
 
-// Base rate: PKR 25 / student / month
-// Promotional rate: PKR 15 / student / month (Valid until 21st of next month - August 21, 2026)
-const PROMO_END_DATE = "August 21, 2026";
-
-const pricingPlans = [
-  {
-    name: "Small School",
-    capacity: 300,
-    students: "Up to 300 students",
-    regularPrice: "PKR 7,500", // 300 * PKR 25
-    salePrice: "PKR 4,500",    // 300 * PKR 15
-    savings: "Save PKR 3,000/mo",
-    badge: "Popular for Single Campuses",
-  },
-  {
-    name: "Medium School",
-    capacity: 700,
-    students: "Up to 700 students",
-    regularPrice: "PKR 17,500", // 700 * PKR 25
-    salePrice: "PKR 10,500",    // 700 * PKR 15
-    savings: "Save PKR 7,000/mo",
-    badge: "Best Value for Growing Schools",
-    featured: true,
-  },
-  {
-    name: "Large School",
-    capacity: 1000,
-    students: "Up to 1,000 students",
-    regularPrice: "PKR 25,000", // 1000 * PKR 25
-    salePrice: "PKR 15,000",    // 1000 * PKR 15
-    savings: "Save PKR 10,000/mo",
-    badge: "Full Campus Enterprise",
-  },
-];
+const landingModels = {
+  laptop: "/models/laptop.50fa717d47.glb",
+  building: "/models/building_d_agu_sagamihara_campus_lod2-3.f240804181.glb",
+  phone: "/models/smart_phone.efa7dcbf71.glb",
+  cap: "/models/graduation_hat.3c669d375f.glb",
+} as const;
 
 export const metadata: Metadata = {
-  title: "Nisaab360 | Best LMS Pakistan & School Management Software",
-  description: "Nisaab360 is the leading Pakistani LMS and school management software. Streamline administration, boost engagement, and leverage advanced analytics for your school, college, or university.",
-  keywords: ["Nisaab", "Nisaab360", "Pakistani LMS", "best LMS Pakistan", "LMS Pakistan", "school management software Pakistan", "School ERP", "EdTech"],
-  authors: [{ name: "Nisaab360" }],
+  title: "Nisaab360 | School Management and LMS Pakistan",
+  description:
+    "Nisaab360 connects school administration, attendance, academics, communication, and reporting in one Pakistani education platform.",
+  keywords: [
+    "Nisaab360",
+    "Pakistani LMS",
+    "school management software Pakistan",
+    "school ERP",
+    "education management system",
+  ],
   openGraph: {
-    title: "Nisaab360 | Best LMS Pakistan & School Management Software",
-    description: "The next-generation Pakistani LMS. Simplify admin tasks and improve learning outcomes.",
+    title: "Nisaab360 | One system for the work between the bells",
+    description:
+      "A connected operating system for school administration, academics, attendance, and communication.",
     type: "website",
     url: "https://nisaab360.app",
-    siteName: "Nisaab360"
+    siteName: "Nisaab360",
   },
-  twitter: {
-    card: "summary_large_image",
-    title: "Nisaab360 | Best LMS Pakistan",
-    description: "Streamline administration and boost engagement with the best school management software in Pakistan.",
-  }
 };
-
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "Nisaab360",
-  "applicationCategory": "EducationalApplication",
-  "operatingSystem": "Any",
-  "description": "Nisaab360 is the best LMS Pakistan and comprehensive school management software.",
-  "offers": {
-    "@type": "Offer",
-    "priceCurrency": "PKR",
-    "price": "4500"
-  },
-  "aggregateRating": {
-    "@type": "AggregateRating",
-    "ratingValue": "4.9",
-    "ratingCount": "1024"
-  }
-};
-
-export const revalidate = 300;
 
 const getLandingData = unstable_cache(
   async () => {
-    const [featuredLogos, latestReviews, instCount, studentsCount, testsCount] = await Promise.all([
+    const [
+      featuredLogos,
+      latestReviews,
+      institutionCount,
+      studentCount,
+      testCount,
+      reviewSummary,
+    ] = await Promise.all([
       db
         .select()
         .from(featuredInstitutions)
         .orderBy(desc(featuredInstitutions.createdAt))
-        .limit(20),
-      db.select({
-        id: platformReviews.id,
-        rating: platformReviews.rating,
-        content: platformReviews.content,
-        createdAt: platformReviews.createdAt,
-        institutionName: institutions.name,
-        logoKey: institutions.logoKey,
-        city: institutions.city,
-        country: institutions.country,
-      })
+        .limit(12),
+      db
+        .select({
+          id: platformReviews.id,
+          rating: platformReviews.rating,
+          content: platformReviews.content,
+          institutionName: institutions.name,
+          logoKey: institutions.logoKey,
+          city: institutions.city,
+          country: institutions.country,
+        })
         .from(platformReviews)
         .innerJoin(institutions, eq(platformReviews.institutionId, institutions.id))
         .orderBy(desc(platformReviews.createdAt))
         .limit(3),
-      db.select({ count: sql<number>`count(*)` }).from(institutions).where(eq(institutions.status, 'APPROVED')),
-      db.select({ count: sql<number>`count(*)` }).from(students).where(sql`${students.deletedAt} IS NULL`),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(institutions)
+        .where(eq(institutions.status, "APPROVED")),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(students)
+        .where(sql`${students.deletedAt} IS NULL`),
       db.select({ count: sql<number>`count(*)` }).from(tests),
+      db
+        .select({
+          count: sql<number>`count(*)`,
+          average: sql<number>`coalesce(avg(${platformReviews.rating}), 0)`,
+        })
+        .from(platformReviews),
     ]);
 
-    return { 
-      featuredLogos, 
+    return {
+      featuredLogos,
       latestReviews,
       stats: {
-        institutions: Number(instCount[0]?.count || 0),
-        students: Number(studentsCount[0]?.count || 0),
-        tests: Number(testsCount[0]?.count || 0),
-      }
+        institutions: Number(institutionCount[0]?.count ?? 0),
+        students: Number(studentCount[0]?.count ?? 0),
+        tests: Number(testCount[0]?.count ?? 0),
+        reviewCount: Number(reviewSummary[0]?.count ?? 0),
+        rating: Number(reviewSummary[0]?.average ?? 0),
+      },
     };
   },
-  ["landing-page-data"],
-  { revalidate: 300, tags: ["landing-page"] }
+  ["landing-page-data-v3"],
+  { revalidate: 300, tags: ["landing-page"] },
 );
+
+function formatCount(value: number) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(".0", "")}m`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1).replace(".0", "")}k`;
+  return value.toLocaleString("en-PK");
+}
 
 export default async function LandingPage() {
   const { featuredLogos, latestReviews, stats } = await getLandingData();
+  const rating = stats.reviewCount > 0 ? stats.rating.toFixed(1) : "—";
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Nisaab360",
+    applicationCategory: "EducationalApplication",
+    operatingSystem: "Web, Android",
+    description:
+      "A Pakistani learning and school management platform for administration, academics, and communication.",
+    offers: {
+      "@type": "AggregateOffer",
+      priceCurrency: "PKR",
+      lowPrice: "3000",
+      offerCount: "3",
+    },
+    ...(stats.reviewCount > 0
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: stats.rating.toFixed(1),
+            ratingCount: stats.reviewCount,
+          },
+        }
+      : {}),
+  };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#FDFCFB] selection:bg-brand-500 selection:text-white font-sans text-stone-900 scroll-smooth overflow-x-hidden">
-      <style>{`
-        @keyframes landing-reveal {
-          from { opacity: 0; transform: translate3d(0, 12px, 0); }
-          to { opacity: 1; transform: translate3d(0, 0, 0); }
-        }
-        .landing-reveal {
-          animation: landing-reveal 420ms cubic-bezier(.2,.8,.2,1) both;
-        }
-        .landing-hover {
-          transition: transform 160ms ease, box-shadow 160ms ease;
-        }
-        .landing-hover:hover {
-          transform: translate3d(0, -3px, 0);
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .landing-reveal { animation: none; }
-          .landing-hover { transition: none; }
-          .landing-hover:hover { transform: none; }
-        }
-      `}</style>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-
-      <AnimatedBackground />
-
+    <div className={styles.page} data-landing-page>
+      <LandingMotion />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <LandingHeader />
 
-      <main className="flex-1 flex flex-col items-center w-full">
-        {/* Hero Section */}
-        <section className="relative w-full max-w-7xl mx-auto px-6 md:px-12 pt-12 pb-12 md:pt-16 md:pb-16 flex flex-col lg:flex-row items-center gap-10 lg:min-h-[calc(100vh-73px)]">
-          <FloatingIcons />
-          <div className="flex-1 flex flex-col items-start text-left z-10">
-            
-            <HeroFadeIn direction="up" delay={0.1}>
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-extrabold text-stone-900 mb-4 leading-[1.06] tracking-tight">
-                Manage your institution with the best <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-indigo-600">LMS in Pakistan.</span>
-              </h1>
-            </HeroFadeIn>
-            
-            <HeroFadeIn direction="up" delay={0.2}>
-              <p className="text-base md:text-lg text-stone-600 mb-7 leading-relaxed max-w-xl">
-                From attendance tracking to advanced gradebooks and seamless parent communication. The modern OS for forward-thinking schools and universities.
-              </p>
-            </HeroFadeIn>
-            
-            <HeroFadeIn direction="up" delay={0.3} className="w-full">
-              <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-                <Button size="lg" className="landing-hover h-12 rounded-full px-7 text-base font-semibold shadow-xl shadow-brand-500/25 active:scale-100" asChild>
-                  <Link href="/login">
-                    Login <ArrowRight className="ml-2 h-5 w-5" />
-                  </Link>
-                </Button>
-                <Button size="lg" variant="outline" className="landing-hover h-12 rounded-full border-stone-200 bg-white px-7 text-base font-semibold hover:bg-stone-50 active:scale-100" asChild>
-                  <Link href="/institution-login">
-                    Institution Login
-                  </Link>
-                </Button>
-              </div>
-            </HeroFadeIn>
-          </div>
-          
-          <HeroFadeIn direction="left" delay={0.4} className="flex-1 w-full relative group">
-            <div className="absolute inset-0 -z-10 scale-105 rotate-3 rounded-[2.5rem] bg-gradient-to-tr from-brand-100 to-indigo-50"></div>
-            <div className="relative overflow-hidden rounded-[2rem] border border-stone-100 bg-white shadow-2xl shadow-stone-900/10">
-               {/* Complex Mockup Right Side */}
-               <div className="h-10 border-b border-stone-100 flex items-center px-5 gap-2 bg-stone-50/80">
-                 <div className="w-3 h-3 rounded-full bg-stone-300"></div><div className="w-3 h-3 rounded-full bg-stone-300"></div><div className="w-3 h-3 rounded-full bg-stone-300"></div>
-               </div>
-               <div className="p-5">
-                 <div className="flex items-center justify-between mb-5">
-                   <div className="h-6 w-32 bg-stone-100 rounded"></div>
-                   <div className="flex gap-2"><div className="h-8 w-8 bg-brand-50 rounded-full"></div><div className="h-8 w-8 bg-indigo-50 rounded-full"></div></div>
-                 </div>
-                 <div className="grid grid-cols-2 gap-4 mb-5">
-                   <div className="h-20 bg-gradient-to-br from-brand-500 to-brand-600 rounded-xl p-4 flex flex-col justify-end shadow-inner shadow-white/20">
-                     <div className="h-4 w-16 bg-white/30 rounded mb-2"></div>
-                     <div className="h-6 w-24 bg-white/90 rounded"></div>
-                   </div>
-                   <div className="h-20 bg-white border border-stone-100 rounded-xl p-4 flex flex-col justify-end shadow-sm">
-                     <div className="h-4 w-16 bg-stone-200 rounded mb-2"></div>
-                     <div className="h-6 w-24 bg-stone-800 rounded"></div>
-                   </div>
-                 </div>
-                 <div className="space-y-2.5">
-                   {[1,2,3].map(i => (
-                     <div key={i} className="h-14 w-full bg-stone-50 rounded-xl border border-stone-100 flex items-center px-4 gap-4">
-                       <div className="w-9 h-9 rounded-full bg-stone-200"></div>
-                       <div className="flex-1 space-y-2"><div className="h-3 w-1/3 bg-stone-300 rounded"></div><div className="h-2 w-1/4 bg-stone-200 rounded"></div></div>
-                       <div className="h-6 w-16 bg-green-100 rounded-full"></div>
-                     </div>
-                   ))}
-                 </div>
-               </div>
+      <main>
+        <section className={styles.hero}>
+          <div className={styles.heroCopy}>
+            <p className={styles.overline} data-reveal>
+              School management &amp; learning, connected
+            </p>
+            <h1 data-reveal>
+              Your school has enough moving parts.
+              <span>The system shouldn&apos;t add more.</span>
+            </h1>
+            <p className={styles.heroLead} data-reveal>
+              Nisaab360 brings daily administration, classroom work, attendance, results,
+              and communication into one place your team can actually understand.
+            </p>
+            <div className={styles.heroActions} data-reveal>
+              <Link href="/register" className={styles.darkButton}>
+                Request institution access
+                <ArrowRight size={16} />
+              </Link>
+              <Link href="/login" className={styles.textLink}>
+                Sign in to your portal
+                <ArrowUpRight size={14} />
+              </Link>
             </div>
-          </HeroFadeIn>
+          </div>
+
+          <div className={styles.heroObject} data-reveal>
+            <span className={styles.objectCaption}>01 / The product</span>
+            <ModelScene
+              model={landingModels.laptop}
+              preset="laptop"
+              label="Loading product model"
+              eager
+              preloadNext={landingModels.building}
+            />
+          </div>
+
+          <div className={styles.heroFoot} data-reveal>
+            <div>
+              <strong>{formatCount(stats.institutions)}</strong>
+              <span>Approved institutions</span>
+            </div>
+            <div>
+              <strong>{formatCount(stats.students)}</strong>
+              <span>Student records</span>
+            </div>
+            <div>
+              <strong>{formatCount(stats.tests)}</strong>
+              <span>Tests created</span>
+            </div>
+            <p>Live platform totals. Refreshed from Nisaab360 data.</p>
+          </div>
         </section>
 
-        {/* --- Dynamic Social Proof Marquee --- */}
         {featuredLogos.length > 0 && (
-           <section className="w-full border-y border-stone-200 bg-white py-6 sm:py-10 overflow-hidden relative">
-             <div className="max-w-7xl mx-auto px-6 md:px-12 text-center relative">
-               <div className="flex flex-wrap justify-center">
-                 <div className="flex items-center gap-16 py-4 px-4 sm:px-8">
-                  {featuredLogos.map((inst, i) => (
-                    <div key={i} className="flex shrink-0 items-center gap-3 grayscale opacity-60">
-                      {inst.logoKey && (
-                        <div className="h-10 w-10 bg-brand-100 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
-                          <img src={inst.logoKey} alt={inst.name} className="h-full w-full object-cover" />
-                        </div>
-                      )}
-                      <span className="font-display font-semibold text-stone-700 whitespace-nowrap">{inst.name}</span>
-                    </div>
-                  ))}
-                 </div>
-               </div>
-             </div>
+          <section className={styles.institutionStrip}>
+            <p>Institutions growing with Nisaab360</p>
+            <div>
+              {featuredLogos.slice(0, 7).map((institution) => (
+                <span className={styles.institution} key={institution.id}>
+                  {institution.logoKey && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={institution.logoKey} alt="" />
+                  )}
+                  {institution.name}
+                </span>
+              ))}
+            </div>
           </section>
         )}
 
-        <LiveStats stats={stats} />
-        
-        <InteractiveFeatures />
-
-        {/* --- Bento Box Features --- */}
-        <section id="features" className="w-full py-24 md:py-32 px-6 md:px-12 max-w-7xl mx-auto">
-          <FadeIn direction="up" className="text-center mb-20 max-w-3xl mx-auto">
-                <h2 className="text-4xl md:text-5xl font-display font-bold text-stone-900 mb-6 tracking-tight">Everything you need, nothing you don&apos;t.</h2>
-            <p className="text-lg text-stone-600">A meticulously crafted suite of tools designed to reduce administrative overhead and let educators focus on teaching.</p>
-          </FadeIn>
-          
-          <StaggerContainer className="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-6 h-auto md:h-[600px]">
-             <StaggerItem className="landing-hover relative flex flex-col justify-between overflow-hidden rounded-3xl border border-stone-200 bg-stone-50 p-4 sm:p-8 md:col-span-2 md:row-span-2">
-                <div className="absolute inset-0 bg-gradient-to-br from-brand-50/50 to-transparent" />
-                <div className="relative z-10 max-w-md mb-8">
-                  <div className="h-12 w-12 rounded-xl bg-brand-100 flex items-center justify-center mb-6 text-brand-700">
-                     <LayoutDashboard className="h-6 w-6" />
-                  </div>
-                  <h3 className="text-3xl font-display font-bold text-stone-900 mb-4">Unified Command Center</h3>
-                  <p className="text-stone-600 text-lg">Manage multiple campuses, staff members, and thousands of students from a single, lightning-fast dashboard.</p>
+        <section className={styles.campusSection} id="platform">
+          <div className={styles.chapterCopy}>
+            <p className={styles.chapterNumber}>02</p>
+            <p className={styles.overline}>The institution view</p>
+            <h2>Know what is happening before someone has to ask.</h2>
+            <p className={styles.chapterLead}>
+              The morning should not begin with five spreadsheets and a trail of messages.
+              Nisaab360 gives administrators a shared picture of the day.
+            </p>
+            <div className={styles.rules}>
+              {[
+                ["Attendance", "See student and staff presence as it is recorded."],
+                ["Timetables", "Keep sections, subjects, and teaching assignments aligned."],
+                ["Administration", "Manage campuses, people, records, and fees together."],
+              ].map(([title, copy]) => (
+                <div className={styles.rule} key={title}>
+                  <strong>{title}</strong>
+                  <span>{copy}</span>
                 </div>
-                <div className="relative z-10 h-48 w-full rounded-t-2xl border border-b-0 border-stone-200 bg-white shadow-[0_0_40px_-10px_rgba(0,0,0,0.1)]">
-                   <div className="p-4 flex gap-4">
-                     <div className="w-48 h-32 bg-stone-50 rounded-lg border border-stone-100"></div>
-                     <div className="flex-1 space-y-4 pt-2">
-                       <div className="h-4 w-3/4 bg-stone-200 rounded"></div>
-                       <div className="h-4 w-1/2 bg-stone-100 rounded"></div>
-                       <div className="h-4 w-2/3 bg-stone-100 rounded"></div>
-                     </div>
-                   </div>
-                </div>
-             </StaggerItem>
-
-             <StaggerItem className="landing-hover overflow-hidden rounded-3xl border border-indigo-100 bg-indigo-50 p-4 sm:p-8">
-                <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
-                   <Calendar className="h-6 w-6" />
-                </div>
-                <h3 className="mb-3 font-display text-2xl font-bold text-stone-900">Smart Timetables</h3>
-                <p className="text-stone-700">Automate conflict resolution and generate optimal schedules instantly.</p>
-             </StaggerItem>
-
-             <StaggerItem className="landing-hover overflow-hidden rounded-3xl border border-stone-800 bg-stone-900 p-4 sm:p-8 text-white">
-                <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-stone-800 text-stone-300">
-                   <Bell className="h-6 w-6" />
-                </div>
-                <h3 className="mb-3 font-display text-2xl font-bold">Instant Alerts</h3>
-                <p className="text-stone-400">Push notifications for parents, students, and staff. Never miss an update.</p>
-             </StaggerItem>
-          </StaggerContainer>
+              ))}
+            </div>
+          </div>
+          <div className={styles.campusObject} data-reveal>
+            <span className={styles.objectCaption}>02 / The institution</span>
+            <div className={styles.campusModelIntro}>
+              <p>From the front office to every classroom.</p>
+              <div>
+                <span>
+                  <small>Campuses</small>
+                  <strong>One operational view</strong>
+                </span>
+                <span>
+                  <small>People</small>
+                  <strong>Students and staff</strong>
+                </span>
+                <span>
+                  <small>Academics</small>
+                  <strong>Classes and results</strong>
+                </span>
+              </div>
+            </div>
+            <ModelScene
+              model={landingModels.building}
+              preset="building"
+              label="Loading campus model"
+              preloadNext={landingModels.phone}
+            />
+          </div>
         </section>
 
-        {/* --- Testimonials --- */}
+        <section className={styles.productSection}>
+          <div className={styles.productIntro} data-reveal>
+            <p className={styles.overline}>One operational view</p>
+            <h2>A dashboard that answers a question, not one that creates ten more.</h2>
+            <p>
+              The interface follows the structure of your institution, so data remains
+              connected from campus to class to student.
+            </p>
+          </div>
+
+          <div className={styles.productWindow} data-reveal>
+            <div className={styles.windowBar}>
+              <span>Nisaab360 / Institution</span>
+              <span>Live overview</span>
+            </div>
+            <div className={styles.windowBody}>
+              <aside aria-hidden="true">
+                <strong>N360</strong>
+                {["Overview", "Students", "Staff", "Academics", "Attendance", "Results"].map(
+                  (item) => (
+                    <span key={item}>{item}</span>
+                  ),
+                )}
+              </aside>
+              <div className={styles.windowContent}>
+                <div className={styles.windowHeading}>
+                  <div>
+                    <p>Institution overview</p>
+                    <h3>Good morning.</h3>
+                  </div>
+                  <span>Current academic session</span>
+                </div>
+                <div className={styles.metricRow}>
+                  <div>
+                    <span>Students</span>
+                    <strong>{formatCount(stats.students)}</strong>
+                  </div>
+                  <div>
+                    <span>Institutions</span>
+                    <strong>{formatCount(stats.institutions)}</strong>
+                  </div>
+                  <div>
+                    <span>Tests recorded</span>
+                    <strong>{formatCount(stats.tests)}</strong>
+                  </div>
+                  <div>
+                    <span>Platform rating</span>
+                    <strong>{rating}</strong>
+                  </div>
+                </div>
+                <div className={styles.activityGrid}>
+                  <div className={styles.activityChart}>
+                    <p>Academic activity</p>
+                    <div className={styles.chartLines}>
+                      {[44, 62, 48, 76, 67, 86, 72, 92, 80].map((height, index) => (
+                        <i key={index} style={{ height: `${height}%` }} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className={styles.todayList}>
+                    <p>Today</p>
+                    {[
+                      ["Attendance", "Recorded"],
+                      ["Timetable", "In progress"],
+                      ["Announcements", "Delivered"],
+                    ].map(([name, state]) => (
+                      <div key={name}>
+                        <span>{name}</span>
+                        <strong>{state}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.phoneSection} id="features">
+          <div className={styles.phoneCopy}>
+            <p className={styles.chapterNumber}>03</p>
+            <p className={styles.overline}>Communication</p>
+            <h2>The update reaches the right people. The first time.</h2>
+            <p className={styles.chapterLead}>
+              Announcements can be directed by institution, role, class, or section.
+              Students and staff carry the same current information in the Nisaab360 app.
+            </p>
+            <ul className={styles.simpleList}>
+              <li>
+                <MessageCircle size={18} />
+                Targeted announcements
+              </li>
+              <li>
+                <ShieldCheck size={18} />
+                Role-aware access
+              </li>
+              <li>
+                <Users size={18} />
+                Student and staff portals
+              </li>
+            </ul>
+          </div>
+          <div className={styles.phoneObject} data-reveal>
+            <span className={styles.objectCaption}>03 / The mobile experience</span>
+            <ModelScene
+              model={landingModels.phone}
+              preset="phone"
+              label="Loading phone model"
+              preloadNext={landingModels.cap}
+            />
+            <div className={styles.phoneModelNotes}>
+              <div>
+                <span>01 / Announcements</span>
+                <strong>Right audience, instantly.</strong>
+              </div>
+              <div>
+                <span>02 / Attendance</span>
+                <strong>Daily status at a glance.</strong>
+              </div>
+              <div>
+                <span>03 / Results</span>
+                <strong>Published in one place.</strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.academicSection}>
+          <div className={styles.academicCopy}>
+            <p className={styles.chapterNumber}>04</p>
+            <p className={styles.overline}>Academic continuity</p>
+            <h2>A student&apos;s progress should read like one story.</h2>
+            <p className={styles.chapterLead}>
+              Tests, marks, attendance, assignments, and published results remain attached
+              to the same academic record—from the first class to the final transcript.
+            </p>
+            <div className={styles.academicSteps}>
+              {[
+                [CalendarDays, "Plan", "Classes, subjects, timetables"],
+                [ClipboardCheck, "Assess", "Tests, marks, published results"],
+                [BookOpen, "Review", "History, performance, transcripts"],
+              ].map(([Icon, title, copy]) => {
+                const StepIcon = Icon as typeof CalendarDays;
+                return (
+                  <div key={String(title)}>
+                    <StepIcon size={19} />
+                    <strong>{String(title)}</strong>
+                    <span>{String(copy)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className={styles.capObject} data-reveal>
+            <span className={styles.objectCaption}>04 / The academic record</span>
+            <ModelScene
+              model={landingModels.cap}
+              preset="cap"
+              label="Loading graduation model"
+            />
+          </div>
+        </section>
+
         {latestReviews.length > 0 && (
-          <section id="testimonials" className="w-full py-24 bg-stone-50 border-t border-stone-200">
-             <div className="max-w-7xl mx-auto px-6 md:px-12 text-center">
-               <FadeIn direction="up">
-                 <h2 className="text-4xl font-display font-bold text-stone-900 mb-16 flex items-center justify-center gap-4">
-                    <MessageSquareQuote className="h-10 w-10 text-brand-500" /> What institutions say
-                 </h2>
-               </FadeIn>
-               <StaggerContainer className="grid md:grid-cols-3 gap-8 text-left">
-                 {latestReviews.map((review) => (
-                   <StaggerItem key={review.id} className="landing-hover flex flex-col rounded-3xl border border-stone-200 bg-white p-4 sm:p-8 shadow-sm">
-                     <div className="flex text-amber-400 mb-6">
-                       {Array.from({length: 5}).map((_, i) => (
-                          <Star key={i} className={`w-5 h-5 ${i < review.rating ? 'fill-current' : 'text-stone-200'}`} />
-                       ))}
-                     </div>
-                      <p className="text-lg text-stone-700 mb-8 italic flex-1">&ldquo;{review.content}&rdquo;</p>
-                     <div className="flex items-center gap-4 mt-auto">
-                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                       {review.logoKey ? <img src={review.logoKey} alt={review.institutionName} className="h-12 w-12 rounded-full border border-stone-200 object-cover" /> : <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-100 text-xl font-bold text-brand-700">{review.institutionName.charAt(0)}</div>}
-                       <div>
-                         <div className="line-clamp-1 font-bold text-stone-900">{review.institutionName}</div>
-                         <div className="text-sm text-stone-500">{review.city}, {review.country}</div>
-                       </div>
-                     </div>
-                   </StaggerItem>
-                 ))}
-               </StaggerContainer>
-             </div>
+          <section className={styles.reviewSection} id="testimonials">
+            <div className={styles.reviewIntro}>
+              <p className={styles.overline}>From institutions</p>
+              <h2>Used by the people responsible for keeping the day moving.</h2>
+            </div>
+            <div className={styles.reviewList}>
+              {latestReviews.map((review, reviewIndex) => (
+                <article key={review.id} data-reveal>
+                  <span className={styles.reviewIndex}>0{reviewIndex + 1}</span>
+                  <div className={styles.stars} aria-label={`${review.rating} out of 5 stars`}>
+                    {Array.from({ length: 5 }).map((_, index) => (
+                      <Star
+                        key={index}
+                        size={13}
+                        fill={index < review.rating ? "currentColor" : "none"}
+                        opacity={index < review.rating ? 1 : 0.2}
+                      />
+                    ))}
+                  </div>
+                  <blockquote>&ldquo;{review.content}&rdquo;</blockquote>
+                  <footer>
+                    {review.logoKey ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={review.logoKey} alt="" />
+                    ) : (
+                      <span>{review.institutionName.slice(0, 1)}</span>
+                    )}
+                    <div>
+                      <strong>{review.institutionName}</strong>
+                      <small>{[review.city, review.country].filter(Boolean).join(", ")}</small>
+                    </div>
+                  </footer>
+                </article>
+              ))}
+            </div>
           </section>
         )}
 
-        {/* --- Final CTA & Pricing --- */}
-        <section id="pricing" className="w-full py-24 px-6 md:px-12">
-          <ScaleIn className="relative mx-auto max-w-6xl overflow-hidden rounded-[3rem] bg-stone-900 p-4 sm:p-8 text-center shadow-2xl md:p-14 lg:p-16">
-             <div className="absolute right-0 top-0 h-[500px] w-[500px] -translate-y-1/2 translate-x-1/2 rounded-full bg-brand-500/20" />
-             <div className="absolute bottom-0 left-0 h-[500px] w-[500px] translate-y-1/2 -translate-x-1/2 rounded-full bg-indigo-500/20" />
-             
-             <div className="relative z-10">
-               {/* Promotional Sale Ribbon Banner */}
-               <FadeIn direction="down" delay={0.1} className="mb-8 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-red-500/20 px-5 py-2.5 border border-amber-500/40 text-amber-300 shadow-lg backdrop-blur-md">
-                 <Gift className="h-5 w-5 text-amber-400 animate-bounce" />
-                 <span className="text-xs sm:text-sm font-bold uppercase tracking-wider">
-                   Special Promotional Offer — Valid Till {PROMO_END_DATE}!
-                 </span>
-                 <Sparkles className="h-4 w-4 text-amber-300" />
-               </FadeIn>
+        <section className={styles.pricingSection} id="pricing">
+          <div className={styles.pricingIntro}>
+            <p className={styles.overline}>Pricing</p>
+            <h2>A plan that fits the school you are building.</h2>
+            <p>
+              Start with a predictable monthly price, then move to per-student billing as
+              your institution grows. Setup is charged once.
+            </p>
+            <Link href="/pricing" className={styles.pricingPageLink}>
+              Explore full pricing
+              <ArrowUpRight size={14} />
+            </Link>
+          </div>
+          <div className={styles.priceTable}>
+            <div className={styles.priceHeader}>
+              <span>Plan</span>
+              <span>Monthly</span>
+              <span>Setup · once</span>
+              <span />
+            </div>
+            {pricingPlans.map((plan) => (
+              <div
+                className={`${styles.priceRow} ${plan.featured ? styles.featuredPrice : ""}`}
+                key={plan.name}
+              >
+                <strong>
+                  {plan.name}
+                  <small>{plan.featured ? "Most selected" : plan.audience}</small>
+                </strong>
+                <span>
+                  <b>{plan.monthly}</b>
+                  <small>{plan.monthlyDetail}</small>
+                </span>
+                <span>
+                  <b>{plan.setup}</b>
+                  <small>{plan.scale}</small>
+                </span>
+                <Link href={`/register?plan=${plan.id.toLowerCase()}`}>
+                  Choose {plan.name}
+                  <ArrowUpRight size={14} />
+                </Link>
+              </div>
+            ))}
+            <div className={styles.offerStrip}>
+              <p>
+                <strong>Special offers</strong>
+                Flexible ways to save when you join or refer another school.
+              </p>
+              <div>
+                {pricingOffers.map((offer) => (
+                  <Link href="/pricing#offers" key={offer.title}>
+                    <span>{offer.label}</span>
+                    <strong>{offer.title}</strong>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
 
-               <FadeIn direction="up" delay={0.2} className="mb-10">
-                 <p className="text-sm font-bold uppercase tracking-[0.2em] text-brand-200 mb-3">Affordable Per-Student Pricing</p>
-                 <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">Transparent plans for every school.</h2>
-                 <p className="text-lg md:text-xl text-stone-300 max-w-2xl mx-auto">
-                   Fair pricing scaled by student count: <span className="line-through text-stone-400 font-semibold">PKR 25</span> <strong className="text-amber-400 font-extrabold text-xl underline decoration-amber-400">PKR 15 / student / month</strong> during special sale!
-                 </p>
-               </FadeIn>
-
-               {/* One-Time Setup Fee Offer Card */}
-               <FadeIn direction="up" delay={0.3} className="mx-auto mb-8 max-w-xl rounded-2xl border border-amber-500/30 bg-gradient-to-r from-white/10 via-amber-500/10 to-white/10 p-5 text-left backdrop-blur-sm shadow-xl">
-                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                   <div>
-                     <div className="flex items-center gap-2">
-                       <Tag className="h-4 w-4 text-amber-400" />
-                       <p className="text-xs font-bold uppercase tracking-wider text-amber-300">Limited-Time Setup Discount</p>
-                     </div>
-                     <p className="mt-1 text-sm font-medium text-stone-200">Full institution onboarding, domain setup & administrator training.</p>
-                   </div>
-                   <div className="text-right sm:shrink-0">
-                     <span className="text-sm line-through text-stone-400 font-bold mr-2">PKR 15,000</span>
-                     <span className="text-2xl sm:text-3xl font-display font-extrabold text-white bg-clip-text text-transparent bg-gradient-to-r from-amber-200 to-amber-400">
-                       PKR 10,000
-                     </span>
-                     <p className="text-[11px] font-semibold text-amber-300/90">One-time setup fee</p>
-                   </div>
-                 </div>
-               </FadeIn>
-
-               {/* 3 Package Cards */}
-               <StaggerContainer className="grid gap-6 md:grid-cols-3 mb-10 text-left">
-                 {pricingPlans.map((plan) => (
-                   <StaggerItem key={plan.name} className={`landing-hover relative rounded-3xl border p-6 shadow-xl flex flex-col justify-between ${
-                     plan.featured 
-                       ? "border-amber-400/80 bg-white ring-4 ring-amber-400/20 shadow-2xl scale-[1.02]" 
-                       : "border-white/10 bg-white"
-                   }`}>
-                     {plan.featured && (
-                       <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-1 text-[11px] font-extrabold uppercase tracking-wider text-white shadow-md">
-                         🔥 Best Value Offer
-                       </div>
-                     )}
-
-                     <div>
-                       <div className="flex items-center justify-between mb-2">
-                         <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{plan.name}</p>
-                         <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
-                           {plan.savings}
-                         </span>
-                       </div>
-
-                       <div className="mt-2 flex items-baseline gap-2">
-                         <span className="text-3xl sm:text-4xl font-display font-extrabold text-stone-950">{plan.salePrice}</span>
-                         <span className="text-sm font-bold text-stone-400 line-through">{plan.regularPrice}</span>
-                       </div>
-                       <p className="mt-0.5 text-xs font-semibold text-stone-500">per month (PKR 15 / student)</p>
-
-                       <div className="mt-5 flex items-center gap-2 rounded-xl bg-stone-50 px-3.5 py-2.5 text-sm font-semibold text-stone-800 border border-stone-200">
-                         <CheckCircle2 className="h-4 w-4 text-brand-600 shrink-0" />
-                         {plan.students}
-                       </div>
-
-                       <ul className="mt-4 space-y-2 text-xs font-medium text-stone-600">
-                         <li className="flex items-center gap-2">
-                           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                           Full Access to Attendance, Timetables & Marks
-                         </li>
-                         <li className="flex items-center gap-2">
-                           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                           Student & Parent App Portals
-                         </li>
-                         <li className="flex items-center gap-2">
-                           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                           Free Instant Updates & Support
-                         </li>
-                       </ul>
-                     </div>
-
-                     <div className="mt-6 pt-4 border-t border-stone-100 text-center">
-                       <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 rounded-lg py-1 px-2 border border-amber-200/60">
-                         🎁 Sale Rate valid till {PROMO_END_DATE}
-                       </p>
-                     </div>
-                   </StaggerItem>
-                 ))}
-               </StaggerContainer>
-
-               <FadeIn direction="up" delay={0.4} className="flex flex-col items-center justify-center w-full px-4 gap-3">
-                 <Button size="lg" className="landing-hover h-auto min-h-[3.5rem] py-3 rounded-3xl sm:rounded-full bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 px-6 sm:px-10 text-sm sm:text-base font-extrabold text-stone-950 shadow-xl shadow-amber-500/25 active:scale-100 whitespace-normal text-center w-full sm:w-auto" asChild>
-                   <a href="mailto:hello@nisaab360.app">
-                     Claim Special Offer (hello@nisaab360.app)
-                   </a>
-                 </Button>
-                 <p className="text-xs font-medium text-stone-400">
-                   Regular pricing (PKR 25/student & PKR 15,000 setup) resumes after {PROMO_END_DATE}.
-                 </p>
-               </FadeIn>
-             </div>
-          </ScaleIn>
+        <section className={styles.finalCta}>
+          <p>Ready when your institution is.</p>
+          <h2>See Nisaab360 with your own workflow in mind.</h2>
+          <Link href="/register">
+            Request institution access
+            <ArrowRight size={17} />
+          </Link>
         </section>
       </main>
 
-      {/* --- Professional Footer --- */}
-      <footer className="w-full bg-stone-950 text-white border-t border-stone-800 pt-20 pb-10 px-6 md:px-12">
-        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-12 mb-16">
-           <div className="col-span-2">
-             <div className="flex items-center gap-2 mb-6">
-                <div className="h-9 w-9 overflow-hidden rounded-lg bg-white ring-1 ring-white/10">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <Image src="/Logo.png" alt="Nisaab360 logo" width={40} height={40} quality={80} className="h-full w-full object-contain" />
-                </div>
-                <span className="font-display font-bold text-2xl">Nisaab360</span>
-             </div>
-             <p className="text-stone-400 text-sm max-w-xs mb-6">
-               The next-generation platform for modern education. Simplify admin tasks, boost engagement, and leverage advanced analytics.
-             </p>
-           </div>
-           
-           <div>
-             <h4 className="text-lg font-bold text-white mb-6">Company</h4>
-             <ul className="space-y-4">
-                <li><Link href="/about-us" className="text-stone-400 hover:text-white">About Us</Link></li>
-                <li><Link href="/careers" className="text-stone-400 hover:text-white">Careers</Link></li>
-                <li><Link href="https://blog.nisaab360.app" className="text-stone-400 hover:text-white">Blog</Link></li>
-                <li><Link href="/contact" className="text-stone-400 hover:text-white">Contact</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-lg font-bold text-white mb-6">Legal</h4>
-              <ul className="space-y-4">
-                <li><Link href="/privacy-policy" className="text-stone-400 hover:text-white">Privacy Policy</Link></li>
-                <li><Link href="/terms-of-service" className="text-stone-400 hover:text-white">Terms of Service</Link></li>
-                <li><Link href="/security" className="text-stone-400 hover:text-white">Security</Link></li>
-                <li><Link href="/gdpr" className="text-stone-400 hover:text-white">GDPR</Link></li>
-              </ul>
-            </div>
+      <footer className={styles.footer}>
+        <div className={styles.footerMain}>
+          <div className={styles.footerBrand}>
+            <Image src="/Logo.png" alt="Nisaab360" width={36} height={36} />
+            <strong>Nisaab360</strong>
+            <p>One system for the work between the bells.</p>
+          </div>
+          <nav>
+            <p>Platform</p>
+            <Link href="#platform">Institution view</Link>
+            <Link href="#features">Features</Link>
+            <Link href="/pricing">Pricing</Link>
+            <Link href="/download-app">Download</Link>
+          </nav>
+          <nav>
+            <p>Access</p>
+            <Link href="/login">Student &amp; staff</Link>
+            <Link href="/institution-login">Institution</Link>
+            <Link href="/employee-login">Employee</Link>
+            <Link href="/register">Register</Link>
+          </nav>
+          <nav>
+            <p>Company</p>
+            <Link href="/about-us">About</Link>
+            <Link href="/contact">Contact</Link>
+            <Link href="/privacy-policy">Privacy</Link>
+            <Link href="/terms-of-service">Terms</Link>
+          </nav>
         </div>
-        
-        <div className="max-w-7xl mx-auto pt-8 border-t border-stone-800 flex flex-col md:flex-row justify-between items-center gap-4">
-           <p className="text-stone-400 text-sm">&copy; {new Date().getFullYear()} Nisaab360 Inc. All rights reserved.</p>
-           <div className="text-stone-400 text-sm font-medium">Made with passion for educators.</div>
+        <div className={styles.footerMeta}>
+          <span>© {new Date().getFullYear()} Nisaab360</span>
+          <p>
+            CC BY 4.0 models:{" "}
+            <a href="https://sketchfab.com/3d-models/laptop-7d870e900889481395b4a575b9fa8c3e">
+              Laptop / Aullwen
+            </a>
+            ,{" "}
+            <a href="https://sketchfab.com/3d-models/building-d-agu-sagamihara-campus-lod2-3-0281566e7062442fa5306fe9fe811adc">
+              Building D / ibukilego
+            </a>
+            ,{" "}
+            <a href="https://sketchfab.com/3d-models/smart-phone-6e58ca1109dc4c1eaba131ec5151ec5c">
+              Phone / James.Lutt
+            </a>
+            ,{" "}
+            <a href="https://sketchfab.com/3d-models/graduation-hat-b0a7e821403b4c8cb8e1d32ea4075eac">
+              Graduation Hat / Delo
+            </a>
+            .
+          </p>
         </div>
       </footer>
     </div>

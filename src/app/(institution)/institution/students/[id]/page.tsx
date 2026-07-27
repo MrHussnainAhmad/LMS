@@ -53,7 +53,7 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
 
   return (
     <div className="space-y-6 animate-fade-in print:space-y-4">
-      <div className="flex items-center justify-between print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <Link href="/institution/students" prefetch={false} className="flex items-center text-sm text-stone-500 hover:text-brand-600 transition-colors">
           <ArrowLeft className="h-4 w-4 mr-1" /> Back to Directory
         </Link>
@@ -87,6 +87,8 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
           <CardHeader className="bg-stone-50/50 flex flex-row items-center gap-4">
             <div className="h-16 w-16 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center overflow-hidden border-2 border-white shadow-sm shrink-0">
               {student.profilePictureUrl ? (
+                // User-uploaded URLs are intentionally rendered directly; adding image proxying would add server load.
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={student.profilePictureUrl} alt={student.name} className="w-full h-full object-cover" />
               ) : (
                 <User className="h-8 w-8" />

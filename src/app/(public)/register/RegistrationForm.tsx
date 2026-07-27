@@ -9,10 +9,11 @@ import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { CheckCircle2 } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
+import { pricingPlans, type PricingPlanId } from "@/lib/pricing";
 
 const STEPS = ["Details", "Location", "Documents & Setup"];
 
-export function RegistrationForm() {
+export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanId }) {
   const [step, setStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -28,6 +29,7 @@ export function RegistrationForm() {
     contactEmail: "",
     contactPhone: "",
     registrationNumber: "",
+    pricingPlan: selectedPlan ?? "",
     adminPassword: "",
     // Mocked for UI phase (R2 uploads can be implemented fully later)
     logoKey: "mock-logo-key",
@@ -60,12 +62,17 @@ export function RegistrationForm() {
 
     setIsLoading(true);
     try {
-      await api.post("/api/institution/register", formData);
+      const { pricingPlan, ...registrationDetails } = formData;
+      const submission = {
+        ...registrationDetails,
+        ...(pricingPlan ? { pricingPlan } : {}),
+      };
+      await api.post("/api/institution/register", submission);
       setIsSuccess(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Registration Failed",
-        description: err.message || "Please check your inputs",
+        description: err instanceof Error ? err.message : "Please check your inputs",
         variant: "destructive",
       });
     } finally {
@@ -86,15 +93,15 @@ export function RegistrationForm() {
   }
 
   return (
-    <Card className="p-6">
-      <div className="flex items-center justify-between mb-8">
+    <Card className="p-4 sm:p-6">
+      <div className="mb-8 flex items-center justify-between overflow-hidden">
         {STEPS.map((label, idx) => (
           <div key={label} className="flex items-center">
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold ${idx <= step ? 'bg-brand-800 text-white' : 'bg-stone-100 text-stone-400'}`}>
+            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-sm font-semibold ${idx <= step ? 'bg-brand-950 text-brand-300' : 'bg-stone-100 text-stone-400'}`}>
               {idx + 1}
             </div>
             {idx < STEPS.length - 1 && (
-              <div className={`w-12 sm:w-24 h-1 mx-2 rounded ${idx < step ? 'bg-brand-800' : 'bg-stone-100'}`} />
+              <div className={`mx-2 h-px w-8 sm:w-24 ${idx < step ? 'bg-brand-700' : 'bg-stone-200'}`} />
             )}
           </div>
         ))}
@@ -126,6 +133,29 @@ export function RegistrationForm() {
             <div className="space-y-1">
               <label className="text-sm font-medium">Registration Number</label>
               <Input name="registrationNumber" value={formData.registrationNumber} onChange={updateForm} required />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Interested Pricing Plan</label>
+              <Select
+                onValueChange={(val) =>
+                  setFormData((previous) => ({ ...previous, pricingPlan: val as PricingPlanId }))
+                }
+                value={formData.pricingPlan}
+              >
+                <SelectTrigger><SelectValue placeholder="Select a plan (optional)" /></SelectTrigger>
+                <SelectContent>
+                  {pricingPlans.map((plan) => (
+                    <SelectItem value={plan.id} key={plan.id}>
+                      {plan.name} — {plan.audience}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {formData.pricingPlan && (
+                <p className="text-xs text-stone-500">
+                  This plan will be included with your request and service agreement.
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -180,7 +210,16 @@ export function RegistrationForm() {
                 />
                 <span className="text-sm text-stone-700">
                   I have read and agree to the{" "}
-                  <a href="/agreement-nisaab360" target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline font-medium">
+                  <a
+                    href={
+                      formData.pricingPlan
+                        ? `/agreement-nisaab360?plan=${formData.pricingPlan.toLowerCase()}`
+                        : "/agreement-nisaab360"
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand-600 hover:underline font-medium"
+                  >
                     Nisaab360 Service Agreement
                   </a>.
                 </span>
@@ -189,7 +228,7 @@ export function RegistrationForm() {
           </div>
         )}
 
-        <div className="flex justify-between pt-4">
+        <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-between">
           <Button type="button" variant="outline" onClick={prevStep} disabled={step === 0}>
             Back
           </Button>

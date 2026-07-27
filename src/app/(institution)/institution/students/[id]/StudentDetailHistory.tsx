@@ -36,7 +36,19 @@ type BatchExamRow = {
   totalObtained: number;
   percentage: number;
 };
-type VoucherRow = { id: number; title: string; imageUrl: string; createdAt: string };
+type VoucherRow = {
+  id: number;
+  title: string;
+  imageUrl: string;
+  billingMonth: string | null;
+  lateFeeAmount: number;
+  createdAt: string;
+};
+type VoucherCycle = {
+  status: "DUE" | "LATE" | "SUBMITTED";
+  lateFeeAmount: number;
+  submittedAt: string | null;
+};
 type AnalyticsData = {
   attendances: { date: string; status: string }[];
   marks: { date: string; marksObtained: number; totalMarks: number }[];
@@ -98,6 +110,7 @@ export function StudentDetailHistory({ studentId }: { studentId: number }) {
   const [submissions, setSubmissions] = useState<SubmissionRow[] | null>(null);
   const [batchExams, setBatchExams] = useState<BatchExamRow[] | null>(null);
   const [vouchers, setVouchers] = useState<VoucherRow[] | null>(null);
+  const [voucherCycle, setVoucherCycle] = useState<VoucherCycle | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [month, setMonth] = useState(currentMonthValue);
   const [loading, setLoading] = useState<Partial<Record<HistorySection, boolean>>>({});
@@ -116,7 +129,10 @@ export function StudentDetailHistory({ studentId }: { studentId: number }) {
       if (section === "marks") setMarks(data.marks as MarksRow[]);
       if (section === "submissions") setSubmissions(data.submissions as SubmissionRow[]);
       if (section === "batchExams") setBatchExams(data.batchExams as BatchExamRow[]);
-      if (section === "vouchers") setVouchers(data.vouchers as VoucherRow[]);
+      if (section === "vouchers") {
+        setVouchers(data.vouchers as VoucherRow[]);
+        setVoucherCycle((data.voucherCycle as VoucherCycle | null) ?? null);
+      }
       if (section === "analytics") setAnalytics(data.analytics as AnalyticsData);
     } catch {
       if (version === requestVersion.current) {
@@ -227,37 +243,61 @@ export function StudentDetailHistory({ studentId }: { studentId: number }) {
         error={errors.vouchers ?? null}
         onLoad={() => loadSection("vouchers", month, requestVersion.current)}
       >
-        {(vouchers?.length ?? 0) === 0 ? (
-          <p className="text-sm text-stone-500">No fee vouchers.</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {vouchers!.map((voucher) => (
-              <div key={voucher.id} className="border border-border rounded-lg overflow-hidden flex flex-col bg-white">
-                <div className="h-40 bg-stone-100 relative group overflow-hidden">
-                  <img
-                    src={voucher.imageUrl}
-                    alt={voucher.title}
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                  <a
-                    href={voucher.imageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                  >
-                    <span className="bg-white text-stone-900 text-sm font-medium px-3 py-1.5 rounded-md">View Full Image</span>
-                  </a>
+        <div className="space-y-4">
+          {voucherCycle && (
+            <div className={`rounded-md border px-4 py-3 text-sm ${
+              voucherCycle.status === "LATE"
+                ? "border-amber-300 bg-amber-50 text-amber-950"
+                : voucherCycle.status === "SUBMITTED"
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+                  : "border-blue-200 bg-blue-50 text-blue-950"
+            }`}>
+              <strong>{voucherCycle.status === "LATE" ? "Overdue" : voucherCycle.status === "SUBMITTED" ? "Submitted" : "Awaiting submission"}</strong>
+              {voucherCycle.lateFeeAmount > 0 && (
+                <span> · Late fee: PKR {voucherCycle.lateFeeAmount.toLocaleString("en-PK")}</span>
+              )}
+            </div>
+          )}
+
+          {(vouchers?.length ?? 0) === 0 ? (
+            <p className="text-sm text-stone-500">
+              {voucherCycle?.status === "LATE" ? "No voucher submitted for this month." : "No fee vouchers."}
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {vouchers!.map((voucher) => (
+                <div key={voucher.id} className="border border-border rounded-lg overflow-hidden flex flex-col bg-white">
+                  <div className="h-40 bg-stone-100 relative group overflow-hidden">
+                    <img
+                      src={voucher.imageUrl}
+                      alt={voucher.title}
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
+                    <a
+                      href={voucher.imageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                    >
+                      <span className="bg-white text-stone-900 text-sm font-medium px-3 py-1.5 rounded-md">View Full Image</span>
+                    </a>
+                  </div>
+                  <div className="p-3">
+                    <h4 className="font-semibold text-brand-950 truncate">{voucher.title}</h4>
+                    <p className="text-xs text-stone-500 mt-1">
+                      Uploaded on {new Date(voucher.createdAt).toLocaleDateString()}
+                    </p>
+                    {voucher.lateFeeAmount > 0 && (
+                      <p className="mt-1 text-xs font-semibold text-amber-700">
+                        Late fee: PKR {voucher.lateFeeAmount.toLocaleString("en-PK")}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="p-3">
-                  <h4 className="font-semibold text-brand-950 truncate">{voucher.title}</h4>
-                  <p className="text-xs text-stone-500 mt-1">
-                    Uploaded on {new Date(voucher.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </SectionShell>
 
       <SectionShell

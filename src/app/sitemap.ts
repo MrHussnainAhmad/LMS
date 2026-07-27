@@ -47,6 +47,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     },
     {
+      url: 'https://nisaab360.app/pricing',
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.9,
+    },
+    {
       url: 'https://nisaab360.app/lms-pakistan',
       lastModified: new Date(),
       changeFrequency: 'weekly',

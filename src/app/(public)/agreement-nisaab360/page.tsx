@@ -1,9 +1,10 @@
+/* eslint-disable react/no-unescaped-entities */
 import { db } from "@/db";
 import { institutions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { PrintButton } from "./PrintButton";
 import { BackButton } from "./BackButton";
-import Link from "next/link";
+import { getPricingPlan } from "@/lib/pricing";
 
 export default async function AgreementPage({
   searchParams,
@@ -17,6 +18,7 @@ export default async function AgreementPage({
   let instLocation = "______________________________________________________";
   let isFilled = false;
   let docTitle = "Nisaab360 Service Agreement";
+  let selectedPlan = typeof params.plan === "string" ? getPricingPlan(params.plan) : undefined;
 
   if (idParam && typeof idParam === "string") {
     const institutionId = parseInt(idParam, 10);
@@ -30,6 +32,7 @@ export default async function AgreementPage({
       if (institution) {
         instName = institution.name;
         instLocation = `${institution.address}, ${institution.city}, ${institution.country}`;
+        selectedPlan = getPricingPlan(institution.pricingPlan);
         isFilled = true;
         docTitle = `${instName} and Nisaab360`;
       }
@@ -37,7 +40,7 @@ export default async function AgreementPage({
   }
 
   return (
-    <div className="min-h-screen bg-stone-100 py-8 px-4 sm:px-6 lg:px-8 print:bg-white print:py-0 print:px-0">
+    <div className="public-document min-h-screen px-4 py-6 sm:px-6 sm:py-10 lg:px-8 print:bg-white print:px-0 print:py-0">
       <div className="max-w-4xl mx-auto">
         {/* Controls Header - Hidden on Print */}
         <div className="flex justify-between items-center mb-6 print:hidden">
@@ -50,7 +53,7 @@ export default async function AgreementPage({
         </div>
 
         {/* Document Container */}
-        <div className="bg-white p-8 sm:p-12 shadow-sm rounded-lg border border-stone-200 print:shadow-none print:border-none print:p-0">
+        <div className="border border-border bg-surface p-5 sm:p-10 lg:p-12 print:border-none print:bg-white print:p-0">
           <div className="text-center mb-10">
             <h1 className="text-2xl font-bold font-serif mb-2">SERVICE AGREEMENT</h1>
             <p className="text-stone-600 font-serif">Between Nisaab360 and {isFilled ? instName : "Institution"}</p>
@@ -62,8 +65,28 @@ export default async function AgreementPage({
             </p>
 
             <section className="space-y-4">
-              <h2 className="text-lg font-bold">1. Fee</h2>
-              <p>The fees and payment terms are as agreed upon in the Document Agreement and applicable invoices.</p>
+              <h2 className="text-lg font-bold">1. Selected Plan & Fee</h2>
+              {selectedPlan ? (
+                <div className="border border-stone-300 p-4 text-left">
+                  <p className="text-base">
+                    <strong>{selectedPlan.name}</strong> — {selectedPlan.audience}
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <span className="block text-xs uppercase tracking-wide text-stone-500">One-time setup</span>
+                      <strong>{selectedPlan.setup}</strong>
+                    </div>
+                    <div>
+                      <span className="block text-xs uppercase tracking-wide text-stone-500">Monthly fee</span>
+                      <strong>{selectedPlan.monthly}</strong>
+                      <span className="block text-sm text-stone-600">{selectedPlan.monthlyDetail}</span>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm text-stone-600">{selectedPlan.scale}</p>
+                </div>
+              ) : (
+                <p>No pricing plan was selected with this request. Fees and payment terms will be confirmed before activation.</p>
+              )}
 
               <h2 className="text-lg font-bold">2. Scope of Services</h2>
               <p>The Provider agrees to provide access to the Nisaab360 online Learning Management System (LMS) and associated digital services (the "Services"). All services are provided entirely <strong>online</strong>.</p>

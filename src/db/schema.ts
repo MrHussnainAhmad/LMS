@@ -16,7 +16,7 @@ import {
   uniqueIndex,
   primaryKey
 } from 'drizzle-orm/pg-core';
-import { relations, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 // --- ENUMS ---
 export const roleEnum = pgEnum('user_role', ['SUPER_ADMIN', 'EMPLOYEE', 'INSTITUTION', 'INSTITUTION_ADMIN', 'STAFF', 'STUDENT']);
@@ -75,11 +75,15 @@ export const institutions = pgTable('institutions', {
   contactEmail: varchar('contact_email', { length: 255 }).notNull(),
   contactPhone: varchar('contact_phone', { length: 50 }).notNull(),
   registrationNumber: varchar('registration_number', { length: 100 }).notNull(),
+  pricingPlan: varchar('pricing_plan', { length: 20 }).$type<'BASIC' | 'STANDARD' | 'PREMIUM'>(),
   proofDocumentKey: varchar('proof_document_key', { length: 255 }).notNull(),
   status: instStatusEnum('status').default('PENDING').notNull(),
   rejectionReason: text('rejection_reason'),
   adminPasswordHash: text('admin_password_hash').notNull(),
   acceptFeeVouchers: boolean('accept_fee_vouchers').default(false).notNull(),
+  feeVoucherOpenDay: integer('fee_voucher_open_day'),
+  feeVoucherLateDay: integer('fee_voucher_late_day'),
+  feeVoucherLateFee: integer('fee_voucher_late_fee').default(0).notNull(),
   allowGraduatedStudentAccess: boolean('allow_graduated_student_access').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
@@ -461,6 +465,7 @@ export const announcements = pgTable('announcements', {
   targetSectionId: integer('target_section_id').references(() => sections.id, { onDelete: 'cascade' }),
   targetUserRole: roleEnum('target_user_role'),
   targetUserId: integer('target_user_id'),
+  automationKey: varchar('automation_key', { length: 255 }).unique(),
   title: varchar('title', { length: 255 }).notNull(),
   content: text('content').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -587,10 +592,31 @@ export const feeVouchers = pgTable('fee_vouchers', {
   studentId: integer('student_id').references(() => students.id, { onDelete: 'cascade' }).notNull(),
   title: varchar('title', { length: 255 }).notNull(),
   imageUrl: varchar('image_url', { length: 500 }).notNull(),
+  billingMonth: varchar('billing_month', { length: 7 }),
+  lateFeeAmount: integer('late_fee_amount').default(0).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   studentCreatedIdx: index('fee_vouchers_student_created_idx').on(t.studentId, t.createdAt),
   institutionCreatedIdx: index('fee_vouchers_institution_created_idx').on(t.institutionId, t.createdAt),
+  institutionStudentMonthUnique: unique('fee_vouchers_institution_student_month_unique').on(t.institutionId, t.studentId, t.billingMonth),
+}));
+
+export const feeVoucherCycles = pgTable('fee_voucher_cycles', {
+  id: serial('id').primaryKey(),
+  institutionId: integer('institution_id').references(() => institutions.id, { onDelete: 'cascade' }).notNull(),
+  studentId: integer('student_id').references(() => students.id, { onDelete: 'cascade' }).notNull(),
+  billingMonth: varchar('billing_month', { length: 7 }).notNull(),
+  status: varchar('status', { length: 20 }).$type<'DUE' | 'LATE' | 'SUBMITTED'>().default('DUE').notNull(),
+  lateFeeAmount: integer('late_fee_amount').default(0).notNull(),
+  voucherId: integer('voucher_id').references(() => feeVouchers.id, { onDelete: 'set null' }),
+  lateMarkedAt: timestamp('late_marked_at'),
+  submittedAt: timestamp('submitted_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  institutionStudentMonthUnique: unique('fee_voucher_cycles_institution_student_month_unique').on(t.institutionId, t.studentId, t.billingMonth),
+  institutionMonthStatusIndex: index('fee_voucher_cycles_institution_month_status_idx').on(t.institutionId, t.billingMonth, t.status),
+  voucherUnique: unique('fee_voucher_cycles_voucher_unique').on(t.voucherId),
 }));
 
 // --- PLATFORM REVIEWS ---

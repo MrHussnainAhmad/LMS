@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toaster";
-import { Receipt, UploadCloud, FileImage, Plus, X } from "lucide-react";
+import { Receipt, UploadCloud, FileImage, X } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 
@@ -11,11 +11,52 @@ interface Voucher {
   id: number;
   title: string;
   imageUrl: string;
+  billingMonth: string | null;
+  lateFeeAmount: number;
   createdAt: string;
+}
+
+interface VoucherSchedule {
+  billingMonth: string;
+  monthLabel: string;
+  openDay: number;
+  lateDay: number;
+  configuredLateFee: number;
+  status: "DUE" | "LATE" | "SUBMITTED";
+  lateFeeAmount: number;
+  canSubmit: boolean;
+  alreadySubmitted: boolean;
+}
+
+type VouchersResponse = {
+  vouchers: Voucher[];
+  nextCursor: string | null;
+  schedule: VoucherSchedule;
+};
+
+type UploadSignatureResponse = {
+  apiKey: string;
+  timestamp: number;
+  signature: string;
+  cloudName: string;
+};
+
+type CloudinaryUploadResponse = {
+  secure_url?: string;
+};
+
+function ordinal(day: number) {
+  const remainder100 = day % 100;
+  if (remainder100 >= 11 && remainder100 <= 13) return `${day}th`;
+  if (day % 10 === 1) return `${day}st`;
+  if (day % 10 === 2) return `${day}nd`;
+  if (day % 10 === 3) return `${day}rd`;
+  return `${day}th`;
 }
 
 export function FeeVouchersClient() {
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [schedule, setSchedule] = useState<VoucherSchedule | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -26,22 +67,25 @@ export function FeeVouchersClient() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchVouchers();
-  }, []);
-
-  const fetchVouchers = async (cursor?: string) => {
+  const fetchVouchers = useCallback(async (cursor?: string) => {
     try {
       const suffix = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
-      const res: any = await api.get(`/api/student/vouchers${suffix}`);
+      const res = await api.get<VouchersResponse>(`/api/student/vouchers${suffix}`);
       setVouchers((current) => cursor ? [...current, ...(res.vouchers || [])] : (res.vouchers || []));
       setNextCursor(res.nextCursor || null);
-    } catch (err: any) {
+      if (!cursor) setSchedule(res.schedule || null);
+    } catch {
       toast({ title: "Error", description: "Failed to load vouchers", variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void fetchVouchers();
+    });
+  }, [fetchVouchers]);
 
   const loadMore = async () => {
     if (!nextCursor) return;
@@ -129,7 +173,7 @@ export function FeeVouchersClient() {
       }
 
       // 2. Get Cloudinary signature
-      const sigRes: any = await api.post("/api/upload/signature", { folder: "vouchers" });
+      const sigRes = await api.post<UploadSignatureResponse>("/api/upload/signature", { folder: "vouchers" });
       
       // 3. Upload to Cloudinary
       const formData = new FormData();
@@ -148,7 +192,8 @@ export function FeeVouchersClient() {
         throw new Error("Failed to upload image to Cloudinary");
       }
 
-      const cloudinaryData = await cloudinaryResponse.json();
+      const cloudinaryData = await cloudinaryResponse.json() as CloudinaryUploadResponse;
+      if (!cloudinaryData.secure_url) throw new Error("Cloudinary did not return an image URL");
       const imageUrl = cloudinaryData.secure_url;
 
       // 4. Save to database
@@ -162,9 +207,13 @@ export function FeeVouchersClient() {
       setSelectedFile(null);
       setPreviewUrl(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      fetchVouchers();
-    } catch (err: any) {
-      toast({ title: "Upload Failed", description: err.message, variant: "destructive" });
+      await fetchVouchers();
+    } catch (err: unknown) {
+      toast({
+        title: "Upload Failed",
+        description: err instanceof Error ? err.message : "Voucher upload failed",
+        variant: "destructive",
+      });
     } finally {
       setUploading(false);
     }
@@ -178,6 +227,38 @@ export function FeeVouchersClient() {
           <p className="text-stone-500 mt-1">Upload and manage your fee payment vouchers.</p>
         </div>
       </div>
+
+      {schedule && (
+        <div className={`rounded-lg border p-4 ${
+          schedule.status === "LATE"
+            ? "border-amber-300 bg-amber-50"
+            : schedule.status === "SUBMITTED"
+              ? "border-emerald-300 bg-emerald-50"
+              : "border-blue-200 bg-blue-50"
+        }`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold text-brand-950">{schedule.monthLabel} voucher</p>
+              <p className="mt-1 text-sm text-stone-600">
+                Uploads open on the {ordinal(schedule.openDay)} and become late on the {ordinal(schedule.lateDay)}.
+              </p>
+            </div>
+            <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-bold uppercase tracking-wide text-brand-800">
+              {schedule.status === "SUBMITTED" ? "Submitted" : schedule.status === "LATE" ? "Overdue" : "Due"}
+            </span>
+          </div>
+          {schedule.status === "LATE" && schedule.lateFeeAmount > 0 && (
+            <p className="mt-3 text-sm font-semibold text-amber-900">
+              Late fee applied: PKR {schedule.lateFeeAmount.toLocaleString("en-PK")}
+            </p>
+          )}
+          {!schedule.canSubmit && !schedule.alreadySubmitted && (
+            <p className="mt-3 text-sm text-stone-600">
+              This month’s upload window has not opened yet.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
@@ -245,10 +326,14 @@ export function FeeVouchersClient() {
 
                 <Button 
                   type="submit" 
-                  disabled={uploading || !selectedFile || !title.trim()} 
+                  disabled={uploading || !schedule?.canSubmit || !selectedFile || !title.trim()}
                   className="w-full bg-brand-800 text-white hover:bg-brand-900"
                 >
-                  {uploading ? "Uploading..." : "Submit Voucher"}
+                  {uploading
+                    ? "Uploading..."
+                    : schedule?.alreadySubmitted
+                      ? "Already submitted this month"
+                      : "Submit Voucher"}
                 </Button>
               </form>
             </CardContent>
@@ -271,7 +356,7 @@ export function FeeVouchersClient() {
               ) : vouchers.length === 0 ? (
                 <div className="text-center py-6 sm:py-10 text-stone-500 bg-stone-50 rounded-lg border border-dashed border-stone-200">
                   <Receipt className="h-10 w-10 mx-auto mb-3 text-stone-400 opacity-50" />
-                  <p>You haven't uploaded any fee vouchers yet.</p>
+                  <p>You haven&apos;t uploaded any fee vouchers yet.</p>
                 </div>
               ) : (
                 <>
@@ -292,6 +377,11 @@ export function FeeVouchersClient() {
                         <div className="p-3">
                           <h4 className="font-semibold text-brand-950 truncate">{v.title}</h4>
                           <p className="text-xs text-stone-500 mt-1">Uploaded on {new Date(v.createdAt).toLocaleDateString()}</p>
+                          {v.lateFeeAmount > 0 && (
+                            <p className="mt-1 text-xs font-semibold text-amber-700">
+                              Late fee: PKR {v.lateFeeAmount.toLocaleString("en-PK")}
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}

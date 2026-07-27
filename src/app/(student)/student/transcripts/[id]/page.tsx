@@ -1,10 +1,9 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { db } from "@/db";
 import { batchExamResults, batchExamSubjects, batchExams, subjects, institutions } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PrintButton } from "./PrintButton";
@@ -63,7 +62,7 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-12">
-      <div className="flex items-center justify-between print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <Link href="/student/transcripts" prefetch={false}>
           <Button variant="ghost" size="sm" className="gap-2">
             <ArrowLeft className="h-4 w-4" /> Back
@@ -90,8 +89,8 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
         </div>
 
         {/* Results Table */}
-        <div className="mb-10">
-          <table className="w-full text-left border-collapse">
+        <div className="mb-10 overflow-x-auto">
+          <table className="w-full min-w-[540px] border-collapse text-left">
             <thead>
               <tr className="border-b-2 border-stone-300 text-stone-900">
                 <th className="py-3 px-2 font-semibold">Subject</th>

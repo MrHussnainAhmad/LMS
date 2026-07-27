@@ -10,17 +10,17 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: '#f0f4f8',
-          100: '#d9e2ec',
-          200: '#bcccdc',
-          300: '#9fb3c8',
-          400: '#829ab1',
-          500: '#627d98',
-          600: '#486581',
-          700: '#334e68',
-          800: '#243b53', // Deep navy primary
-          900: '#102a43', // Ink navy
-          950: '#0b1d2e',
+          50: '#f3f5e8',
+          100: '#e8edc8',
+          200: '#d9e695',
+          300: '#c7de5d',
+          400: '#adc64b',
+          500: '#8fa83b',
+          600: '#6f842f',
+          700: '#526329',
+          800: '#354127',
+          900: '#222c22',
+          950: '#171c1a',
         },
         stone: {
           50: '#faf9f8',
@@ -36,12 +36,12 @@ const config: Config = {
           950: '#23211f',
         },
         accent: {
-          DEFAULT: '#e63946', // Sharp accent
-          hover: '#d62828',
+          DEFAULT: '#d95937',
+          hover: '#bd452a',
         },
-        success: '#2a9d8f',
-        warning: '#e9c46a',
-        danger: '#e76f51',
+        success: '#287e68',
+        warning: '#b78225',
+        danger: '#c64935',
         background: "var(--background)",
         foreground: "var(--foreground)",
         surface: "var(--surface)",
@@ -78,10 +78,10 @@ const config: Config = {
       },
       borderRadius: {
         sm: '0.125rem',
-        DEFAULT: '0.25rem', // Restrained
-        md: '0.375rem',
-        lg: '0.5rem',
-        xl: '0.75rem',
+        DEFAULT: '0.2rem',
+        md: '0.25rem',
+        lg: '0.375rem',
+        xl: '0.5rem',
       },
       boxShadow: {
         sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',

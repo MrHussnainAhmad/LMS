@@ -374,11 +374,11 @@ export function StudentsClient({
           pageSize={rowsPerPage}
         />
         {totalCount !== undefined && page !== undefined && limit !== undefined && (
-          <div className="flex items-center justify-between px-4 py-3 border-t">
+          <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-stone-500">
               Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, totalCount)} of {totalCount} results
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 self-stretch sm:self-auto">
               <Button 
                 variant="outline" 
                 size="sm" 

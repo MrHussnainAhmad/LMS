@@ -1,45 +1,40 @@
 "use client";
 
 import { useState } from "react";
+import { ShieldCheck } from "lucide-react";
+import { PublicAccessShell } from "@/components/layout/PublicAccessShell";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { api } from "@/lib/api-client";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toaster";
-import { useRouter } from "next/navigation";
-import { ShieldCheck, ArrowLeft } from "lucide-react";
-import Link from "next/link";
+import { api } from "@/lib/api-client";
 
 export default function SaLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setIsLoading(true);
 
-    const formData = new FormData(e.currentTarget);
-    const emailOrUsername = formData.get("email");
-    const password = formData.get("password");
-    const securityAnswer = formData.get("securityAnswer");
+    const formData = new FormData(event.currentTarget);
 
     try {
       await api.post("/api/auth/login", {
-        emailOrUsername,
-        password,
+        emailOrUsername: formData.get("email"),
+        password: formData.get("password"),
         roleHint: "SUPER_ADMIN",
-        securityAnswer,
+        securityAnswer: formData.get("securityAnswer"),
       });
 
       toast({ title: "Authorized", description: "Welcome Super Admin", variant: "success" });
-      
+
       const isLocal = window.location.hostname.includes("localhost");
       window.location.href = isLocal ? "/sa/dashboard" : "https://sa.nisaab360.app/dashboard";
-    } catch (err: any) {
+    } catch (error: unknown) {
       toast({
         title: "Access Denied",
-        description: err.message || "Invalid credentials",
+        description: error instanceof Error ? error.message : "Invalid credentials",
         variant: "destructive",
       });
     } finally {
@@ -48,49 +43,56 @@ export default function SaLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-brand-950 p-4 relative">
-      <a 
-        href="#"
-        onClick={(e) => {
-          e.preventDefault();
-          const isLocal = window.location.hostname.includes("localhost");
-          window.location.href = isLocal ? "/" : "https://nisaab360.app/";
-        }}
-        className="absolute top-6 left-6 flex items-center gap-2 text-sm font-medium text-brand-300 hover:text-white transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Home
-      </a>
-      <div className="w-full max-w-[400px]">
-        <div className="text-center mb-8 flex flex-col items-center">
-          <ShieldCheck className="h-12 w-12 text-brand-400 mb-4" />
-          <h1 className="text-2xl font-display font-bold text-white mb-2">Restricted Area</h1>
-          <p className="text-brand-300 text-sm">Super Admin Authentication</p>
+    <PublicAccessShell
+      compact
+      eyebrow="Restricted system access"
+      title="Super admin"
+      description="Authenticate with your administrator credentials and security answer."
+    >
+      <Card className="overflow-hidden">
+        <div className="flex items-start gap-4 border-b border-border bg-brand-950 p-5 text-white sm:p-6">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center border border-white/15 bg-white/5">
+            <ShieldCheck className="h-5 w-5 text-brand-300" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold">Protected administration area</p>
+            <p className="mt-1 text-xs leading-5 text-white/60">
+              Access is limited to authorized platform operators.
+            </p>
+          </div>
         </div>
 
-        <Card className="p-6 bg-surface border-border">
+        <div className="p-5 sm:p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-stone-700">Email</label>
-              <Input name="email" type="email" placeholder="admin@domain.com" required />
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-stone-700" htmlFor="super-admin-email">Email</label>
+              <Input id="super-admin-email" name="email" type="email" placeholder="admin@domain.com" required />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-stone-700">Password</label>
-              <Input name="password" type="password" placeholder="••••••••" required />
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-stone-700" htmlFor="super-admin-password">Password</label>
+              <Input id="super-admin-password" name="password" type="password" placeholder="Enter your password" required />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-stone-700">Security Question Answer</label>
-              <Input name="securityAnswer" type="password" placeholder="Answer your security question..." required />
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-stone-700" htmlFor="security-answer">
+                Security question answer
+              </label>
+              <Input
+                id="security-answer"
+                name="securityAnswer"
+                type="password"
+                placeholder="Enter your security answer"
+                required
+              />
             </div>
 
-            <Button type="submit" className="w-full mt-6" disabled={isLoading}>
+            <Button type="submit" className="mt-6 w-full" disabled={isLoading}>
               {isLoading ? "Authenticating..." : "Login"}
             </Button>
           </form>
-        </Card>
-      </div>
-    </div>
+        </div>
+      </Card>
+    </PublicAccessShell>
   );
 }

@@ -7,6 +7,7 @@ import { Building2, Users, UserSquare2, BookOpen, Layers, UserCircle, Phone, Mai
 import { StatCard } from "@/components/ui/stat-card";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { getPricingPlan } from "@/lib/pricing";
 
 export default async function SAInstitutionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
@@ -20,6 +21,7 @@ export default async function SAInstitutionDetailPage({ params }: { params: Prom
     name: institutions.name,
     username: institutions.username,
     type: institutions.type,
+    pricingPlan: institutions.pricingPlan,
     status: institutions.status,
     city: institutions.city,
     country: institutions.country,
@@ -56,6 +58,7 @@ export default async function SAInstitutionDetailPage({ params }: { params: Prom
     db.select({ name: sections.name }).from(sections).where(eq(sections.institutionId, institutionId)),
   ]);
   const owner = ownerRows[0];
+  const selectedPlan = getPricingPlan(institution.pricingPlan);
   const studentsCount = studentsCountRows[0];
   const staffCount = staffCountRows[0];
   const classesCount = classesCountRows[0];
@@ -106,6 +109,12 @@ export default async function SAInstitutionDetailPage({ params }: { params: Prom
               <div>
                 <p className="text-sm text-stone-500">Type</p>
                 <p className="font-medium text-stone-900">{institution.type}</p>
+              </div>
+              <div>
+                <p className="text-sm text-stone-500">Selected Plan</p>
+                <p className="font-medium text-stone-900">
+                  {selectedPlan ? `${selectedPlan.name} — ${selectedPlan.monthly}` : "Not selected"}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-stone-500">Status</p>

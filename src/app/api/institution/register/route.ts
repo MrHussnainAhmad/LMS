@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
       contactEmail: data.contactEmail,
       contactPhone: data.contactPhone,
       registrationNumber: data.registrationNumber,
+      pricingPlan: data.pricingPlan,
       logoKey: data.logoKey,
       proofDocumentKey: data.proofDocumentKey,
       adminPasswordHash,
@@ -39,8 +40,12 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ message: 'Institution registered successfully. Pending approval.' }, { status: 201 });
-  } catch (err: any) {
-    if (err.code === '23505') { // Postgres unique constraint violation
+  } catch (err: unknown) {
+    const errorCode =
+      err && typeof err === 'object' && 'code' in err
+        ? (err as { code?: unknown }).code
+        : undefined;
+    if (errorCode === '23505') { // Postgres unique constraint violation
       return NextResponse.json({ error: 'Username or email already exists' }, { status: 409 });
     }
     console.error('Registration Error:', err);

@@ -16,11 +16,11 @@ interface StatCardProps {
 export function StatCard({ title, value, icon: Icon, trend, className }: StatCardProps) {
   return (
     <Card className={className}>
-      <CardContent className="p-6 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-stone-500 mb-1">{title}</p>
+      <CardContent className="flex items-center justify-between gap-4 p-4 sm:p-6">
+        <div className="min-w-0">
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.11em] text-stone-500">{title}</p>
           <div className="flex items-baseline gap-2">
-            <h4 className="text-3xl font-display font-bold text-brand-950">{value}</h4>
+            <h4 className="truncate font-display text-2xl font-semibold tracking-tight text-brand-950 sm:text-3xl">{value}</h4>
             {trend && (
               <span className={`text-xs font-semibold ${trend.isPositive ? 'text-success' : 'text-danger'}`}>
                 {trend.isPositive ? '+' : ''}{trend.value}%
@@ -28,8 +28,8 @@ export function StatCard({ title, value, icon: Icon, trend, className }: StatCar
             )}
           </div>
         </div>
-        <div className="h-12 w-12 rounded-full bg-brand-50 flex items-center justify-center">
-          <Icon className="h-6 w-6 text-brand-700" />
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-brand-200 bg-brand-50">
+          <Icon className="h-5 w-5 text-brand-700" />
         </div>
       </CardContent>
     </Card>

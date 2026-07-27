@@ -22,6 +22,7 @@ export default async function SAInstitutionsPage({ searchParams }: { searchParam
       name: institutions.name,
       username: institutions.username,
       type: institutions.type,
+      pricingPlan: institutions.pricingPlan,
       city: institutions.city,
       country: institutions.country,
       status: institutions.status,
@@ -78,6 +79,7 @@ export default async function SAInstitutionsPage({ searchParams }: { searchParam
                 <tr>
                   <th className="px-6 py-4 font-medium">Institution Name</th>
                   <th className="px-6 py-4 font-medium">Type</th>
+                  <th className="px-6 py-4 font-medium">Plan</th>
                   <th className="px-6 py-4 font-medium">Location</th>
                   <th className="px-6 py-4 font-medium">Status</th>
                   <th className="px-6 py-4 font-medium">Registered At</th>
@@ -87,7 +89,7 @@ export default async function SAInstitutionsPage({ searchParams }: { searchParam
               <tbody className="divide-y divide-border">
                 {allInstitutions.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-4 sm:py-8 text-center text-stone-500">
+                    <td colSpan={7} className="px-6 py-4 sm:py-8 text-center text-stone-500">
                       No institutions found.
                     </td>
                   </tr>
@@ -108,6 +110,9 @@ export default async function SAInstitutionsPage({ searchParams }: { searchParam
                       </div>
                     </td>
                     <td className="px-6 py-4 text-stone-600 font-medium">{inst.type}</td>
+                    <td className="px-6 py-4 text-stone-600 font-medium">
+                      {inst.pricingPlan ?? "Not selected"}
+                    </td>
                     <td className="px-6 py-4 text-stone-600">
                       {inst.city}, {inst.country}
                     </td>
@@ -151,7 +156,7 @@ export default async function SAInstitutionsPage({ searchParams }: { searchParam
             </table>
           </div>
           {totalCount > PAGE_SIZE && (
-            <div className="flex items-center justify-between border-t border-border px-6 py-4">
+            <div className="flex flex-col gap-3 border-t border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <p className="text-sm text-stone-500">
                 Showing {offset + 1}-{Math.min(offset + PAGE_SIZE, totalCount)} of {totalCount} institutions
               </p>

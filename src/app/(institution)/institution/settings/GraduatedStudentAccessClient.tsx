@@ -22,11 +22,11 @@ export function GraduatedStudentAccessClient({ allowGraduatedStudentAccess }: { 
 
   return (
     <div className="flex items-center justify-between gap-4">
-      <div>
+      <div className="min-w-0">
         <h4 className="text-sm font-medium text-stone-900">Graduated Student Access</h4>
         <p className="text-sm text-stone-500">Allow graduated students to log in for profile, transcripts, and attendance only.</p>
       </div>
-      <label className="relative inline-flex cursor-pointer items-center">
+      <label className="relative inline-flex shrink-0 cursor-pointer items-center">
         <input
           type="checkbox"
           className="sr-only peer"

@@ -3,44 +3,44 @@
 
 @layer base {
   :root {
-    --background: #faf9f8;
-    --foreground: #23211f;
-    --surface: #ffffff;
-    --border: #e8e5e1;
-    --ring: #102a43;
-    --popover: #ffffff;
-    --popover-foreground: #23211f;
-    --muted: #f4f2f0;
-    --muted-foreground: #757069;
-    --card: #ffffff;
-    --card-foreground: #23211f;
-    --primary: #102a43;
+    --background: #f2efe7;
+    --foreground: #171c1a;
+    --surface: #fbf9f4;
+    --border: #d9d4c9;
+    --ring: #526329;
+    --popover: #fbf9f4;
+    --popover-foreground: #171c1a;
+    --muted: #e9e5dc;
+    --muted-foreground: #68716d;
+    --card: #fbf9f4;
+    --card-foreground: #171c1a;
+    --primary: #171c1a;
     --primary-foreground: #ffffff;
-    --secondary: #f4f2f0;
-    --secondary-foreground: #23211f;
-    --destructive: #e63946;
+    --secondary: #e9e5dc;
+    --secondary-foreground: #171c1a;
+    --destructive: #c64935;
     --destructive-foreground: #ffffff;
     --font-inter: 'Inter', sans-serif;
     --font-bricolage: 'Bricolage Grotesque', sans-serif;
   }
 
   .dark {
-    --background: #102a43;
-    --foreground: #faf9f8;
-    --surface: #0b1d2e;
-    --border: #243b53;
-    --ring: #829ab1;
-    --popover: #102a43;
-    --popover-foreground: #faf9f8;
-    --muted: #243b53;
-    --muted-foreground: #9fb3c8;
-    --card: #0b1d2e;
-    --card-foreground: #faf9f8;
-    --primary: #ffffff;
-    --primary-foreground: #102a43;
-    --secondary: #243b53;
-    --secondary-foreground: #faf9f8;
-    --destructive: #d62828;
+    --background: #171c1a;
+    --foreground: #f2efe7;
+    --surface: #202724;
+    --border: #3a433f;
+    --ring: #c7de5d;
+    --popover: #202724;
+    --popover-foreground: #f2efe7;
+    --muted: #2c3531;
+    --muted-foreground: #adb5b0;
+    --card: #202724;
+    --card-foreground: #f2efe7;
+    --primary: #c7de5d;
+    --primary-foreground: #171c1a;
+    --secondary: #2c3531;
+    --secondary-foreground: #f2efe7;
+    --destructive: #d96a57;
     --destructive-foreground: #ffffff;
   }
 }
@@ -317,5 +317,163 @@
   100% {
     opacity: 0;
     transform: translateX(-70px) scaleX(1);
+  }
+}
+
+/* Shared application canvas
+   Keeps the editorial homepage language consistent across all authenticated
+   portals without adding page-specific scripts or network work. */
+.app-shell {
+  background:
+    linear-gradient(rgba(23, 28, 26, 0.035) 1px, transparent 1px),
+    var(--background);
+  background-size: 100% 72px;
+}
+
+.app-content {
+  width: 100%;
+  max-width: 1440px;
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.app-content > *,
+.app-content form,
+.app-content section,
+.app-content article,
+.app-content div {
+  min-width: 0;
+}
+
+.app-content img,
+.app-content video,
+.app-content canvas {
+  max-width: 100%;
+}
+
+.app-content .bg-white {
+  background-color: var(--surface) !important;
+}
+
+.app-content .bg-stone-50 {
+  background-color: #f6f3ec !important;
+}
+
+.app-content .rounded-3xl {
+  border-radius: 0.75rem !important;
+}
+
+.app-content .rounded-2xl {
+  border-radius: 0.625rem !important;
+}
+
+.app-content .rounded-xl {
+  border-radius: 0.5rem !important;
+}
+
+.app-content .shadow-xl,
+.app-content .shadow-2xl,
+.app-content .shadow-lg,
+.app-content .shadow-md {
+  box-shadow: 0 1px 0 rgba(23, 28, 26, 0.06), 0 12px 30px rgba(23, 28, 26, 0.045) !important;
+}
+
+.app-content [class*="bg-gradient-to"] {
+  background-color: #171c1a !important;
+  background-image: none !important;
+}
+
+.app-content h1 {
+  letter-spacing: -0.045em;
+}
+
+.app-content h2,
+.app-content h3 {
+  letter-spacing: -0.025em;
+}
+
+.app-content :where(input, textarea, select, button, a):focus-visible {
+  outline: 2px solid #6f842f;
+  outline-offset: 2px;
+}
+
+.public-canvas {
+  min-height: 100svh;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 1px), rgba(23, 28, 26, 0.055) 50%, transparent calc(50% + 1px)),
+    var(--background);
+  color: var(--foreground);
+}
+
+.public-document {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.public-document .prose {
+  color: #4f5954;
+}
+
+.public-document .prose :where(h1, h2, h3, h4, strong) {
+  color: var(--foreground);
+}
+
+@media (max-width: 767px) {
+  .app-shell {
+    background-size: 100% 56px;
+  }
+
+  .app-content {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .app-content h1 {
+    font-size: clamp(1.65rem, 8vw, 2.15rem) !important;
+    line-height: 1.05 !important;
+  }
+
+  .app-content h2 {
+    line-height: 1.12;
+  }
+
+  .app-content .p-10,
+  .app-content .p-12 {
+    padding: 1.25rem !important;
+  }
+
+  .app-content .px-8,
+  .app-content .px-10,
+  .app-content .px-12 {
+    padding-inline: 1rem !important;
+  }
+
+  .app-content .gap-8,
+  .app-content .gap-10,
+  .app-content .gap-12 {
+    gap: 1.25rem !important;
+  }
+
+  .app-content [role="tablist"] {
+    max-width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .app-content [role="dialog"] {
+    max-height: calc(100svh - 1rem);
+    overflow-y: auto;
+  }
+
+  .app-content table {
+    font-size: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *,
+  .public-canvas * {
+    scroll-behavior: auto !important;
   }
 }

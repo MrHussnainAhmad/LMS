@@ -1,4 +1,5 @@
 import { checkExpoPushReceipts } from "@/lib/notifications";
+import { processFeeVoucherSchedules } from "@/lib/fee-voucher-schedule";
 import { gracefulShutdown } from "@/lib/process-lifecycle";
 
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -11,6 +12,7 @@ const intervalMs = Number.isFinite(intervalFromEnvironment) && intervalFromEnvir
 let stopping = false;
 let timer: NodeJS.Timeout | undefined;
 let runInFlight: Promise<void> | undefined;
+let lastFeeVoucherScheduleHour: number | undefined;
 
 async function runOnce() {
   try {
@@ -18,6 +20,18 @@ async function runOnce() {
     console.info("Push receipt worker completed", result);
   } catch (error) {
     console.error("Push receipt worker failed", error);
+  }
+
+  const currentHour = Math.floor(Date.now() / 3_600_000);
+  if (lastFeeVoucherScheduleHour === currentHour) return;
+
+  try {
+    const result = await processFeeVoucherSchedules();
+    lastFeeVoucherScheduleHour = currentHour;
+    console.info("Fee voucher schedule completed", result);
+  } catch (error) {
+    // Leave the hour unset so the next worker interval retries safely.
+    console.error("Fee voucher schedule failed", error);
   }
 }
 

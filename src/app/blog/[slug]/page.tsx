@@ -3,8 +3,7 @@ import { db } from "@/db";
 import { blogs } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import ReactMarkdown from "react-markdown";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { PublicPageHeader } from "@/components/layout/PublicPageHeader";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -51,22 +50,11 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FDFCFB] selection:bg-brand-500 selection:text-white">
-      <header className="sticky top-0 z-50 flex items-center px-6 md:px-12 py-4 backdrop-blur-2xl bg-white/60 border-b border-stone-200/50">
-        <Link href="https://nisaab360.app" className="flex items-center gap-3 group">
-          <div className="h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-brand-100 transition-transform group-hover:scale-105">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/Logo.png" alt="Nisaab360 logo" className="h-full w-full object-contain" />
-          </div>
-          <span className="font-display font-extrabold text-xl bg-gradient-to-r from-stone-900 to-stone-700 bg-clip-text text-transparent tracking-tight">Nisaab360</span>
-        </Link>
-        <Link href="/" className="ml-auto text-sm font-semibold text-stone-500 hover:text-stone-900 flex items-center gap-2">
-          <ArrowLeft className="w-4 h-4" /> Back to Blog
-        </Link>
-      </header>
+    <div className="public-document flex min-h-screen flex-col selection:bg-brand-300 selection:text-brand-950">
+      <PublicPageHeader backHref="/blog" backLabel="Back to blog" />
 
-      <main className="flex-1 w-full max-w-3xl mx-auto px-6 py-16 md:py-24">
-        <article className="prose prose-stone md:prose-lg lg:prose-xl max-w-none prose-headings:font-display prose-headings:font-bold prose-a:text-brand-600 hover:prose-a:text-brand-700 prose-img:rounded-2xl">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-12 sm:px-6 md:py-20">
+        <article className="prose prose-stone max-w-none md:prose-lg prose-headings:font-display prose-headings:font-semibold prose-a:text-brand-700 hover:prose-a:text-brand-900 prose-img:rounded-md">
           <h1 className="mb-6">{blog.title}</h1>
           <div className="flex items-center gap-4 text-sm text-stone-500 mb-12 font-medium border-b border-stone-200 pb-8">
             <span className="px-3 py-1 bg-stone-100 rounded-full">{blog.authorRole.replace('_', ' ')}</span>
@@ -94,8 +82,8 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         </article>
       </main>
 
-      <footer className="w-full bg-white border-t border-stone-200 py-6 sm:py-10 px-6 text-center mt-12">
-        <p className="text-stone-400 text-sm">&copy; {new Date().getFullYear()} Nisaab360 Inc. All rights reserved.</p>
+      <footer className="mt-12 w-full border-t border-border px-6 py-6 text-center">
+        <p className="text-xs text-stone-500">&copy; {new Date().getFullYear()} Nisaab360. All rights reserved.</p>
       </footer>
     </div>
   );

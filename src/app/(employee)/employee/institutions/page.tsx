@@ -36,6 +36,7 @@ export default async function EmployeeVerificationQueuePage({ searchParams }: { 
     name: institutions.name,
     username: institutions.username,
     type: institutions.type,
+    pricingPlan: institutions.pricingPlan,
     city: institutions.city,
     country: institutions.country,
     status: institutions.status,
@@ -85,6 +86,7 @@ export default async function EmployeeVerificationQueuePage({ searchParams }: { 
                 <tr>
                   <th className="px-6 py-4 font-medium">Institution Name</th>
                   <th className="px-6 py-4 font-medium">Type</th>
+                  <th className="px-6 py-4 font-medium">Plan</th>
                   <th className="px-6 py-4 font-medium">Location</th>
                   <th className="px-6 py-4 font-medium">Status</th>
                   <th className="px-6 py-4 font-medium">Submitted At</th>
@@ -94,7 +96,7 @@ export default async function EmployeeVerificationQueuePage({ searchParams }: { 
               <tbody className="divide-y divide-border">
                 {allInstitutions.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-6 sm:py-12 text-center">
+                    <td colSpan={7} className="px-6 py-6 sm:py-12 text-center">
                       <div className="flex flex-col items-center justify-center text-stone-500">
                         <FileSearch className="h-10 w-10 text-stone-300 mb-3" />
                         <p className="text-base font-medium text-stone-600">No Applications</p>
@@ -119,6 +121,9 @@ export default async function EmployeeVerificationQueuePage({ searchParams }: { 
                       </div>
                     </td>
                     <td className="px-6 py-4 text-stone-600">{inst.type}</td>
+                    <td className="px-6 py-4 text-stone-600 font-medium">
+                      {inst.pricingPlan ?? "Not selected"}
+                    </td>
                     <td className="px-6 py-4 text-stone-600">{inst.city}, {inst.country}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-md text-xs font-bold ${
