@@ -8,6 +8,17 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req:
   const institutionId = getTenantContext(session);
 
   const [institution] = await db.select({
+    name: institutions.name,
+    type: institutions.type,
+    username: institutions.username,
+    registrationNumber: institutions.registrationNumber,
+    contactEmail: institutions.contactEmail,
+    contactPhone: institutions.contactPhone,
+    address: institutions.address,
+    city: institutions.city,
+    country: institutions.country,
+    logoKey: institutions.logoKey,
+    signatureKey: institutions.signatureKey,
     acceptFeeVouchers: institutions.acceptFeeVouchers,
     feeVoucherOpenDay: institutions.feeVoucherOpenDay,
     feeVoucherLateDay: institutions.feeVoucherLateDay,
@@ -17,7 +28,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req:
     .where(eq(institutions.id, institutionId))
     .limit(1);
 
-  return NextResponse.json(institution || {});
+  return NextResponse.json({ profile: institution || {} });
 });
 
 export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
