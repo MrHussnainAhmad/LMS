@@ -7,6 +7,7 @@ import { getCachedOrFetch } from '@/lib/redis';
 
 export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
   const instId = getTenantContext(session);
+  const campusId = req.nextUrl.searchParams.get('campusId');
 
   const last7Days = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date();
@@ -14,36 +15,57 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
     return d.toISOString().split('T')[0];
   });
 
+  // attendances does not have campusId, we join students
+  const campusFilterStudent = campusId ? eq(students.campusId, Number(campusId)) : undefined;
+  const campusFilterClass = undefined; // classes do not have campusId
+
   const [recentAttendance, classDistRows, examPerfRows] = await Promise.all([
-    getCachedOrFetch(`cache:dashboard:attendance:${instId}:${last7Days[0]}`, 60, () =>
-      db.select({ date: attendances.date, status: attendances.status, value: sql<number>`count(*)` })
+    getCachedOrFetch(`cache:dashboard:attendance:${instId}:${last7Days[0]}:${campusId || 'all'}`, 60, () => {
+      let q = db.select({ date: attendances.date, status: attendances.status, value: sql<number>`count(*)` })
         .from(attendances)
-        .where(and(eq(attendances.institutionId, instId), gte(attendances.date, last7Days[0])))
-        .groupBy(attendances.date, attendances.status)
-    ),
-    getCachedOrFetch(`cache:dashboard:class-dist:${instId}`, 60, () =>
-      db.select({
+        .leftJoin(students, eq(attendances.studentId, students.id));
+        
+      if (campusFilterStudent) {
+        return q.where(and(eq(attendances.institutionId, instId), gte(attendances.date, last7Days[0]), campusFilterStudent))
+          .groupBy(attendances.date, attendances.status);
+      } else {
+        return q.where(and(eq(attendances.institutionId, instId), gte(attendances.date, last7Days[0])))
+          .groupBy(attendances.date, attendances.status);
+      }
+    }),
+    getCachedOrFetch(`cache:dashboard:class-dist:${instId}:${campusId || 'all'}`, 60, () => {
+      let q = db.select({
         name: classes.name,
         value: sql<number>`count(${students.id})`
       })
       .from(classes)
-      .leftJoin(students, eq(students.classId, classes.id))
+      .leftJoin(students, campusFilterStudent ? and(eq(students.classId, classes.id), campusFilterStudent) : eq(students.classId, classes.id))
       .where(eq(classes.institutionId, instId))
       .groupBy(classes.id, classes.name)
-      .orderBy(classes.level)
-    ),
-    getCachedOrFetch(`cache:dashboard:exam-perf:${instId}`, 60, () =>
-      db.select({
+      .orderBy(classes.level);
+      return q;
+    }),
+    getCachedOrFetch(`cache:dashboard:exam-perf:${instId}:${campusId || 'all'}`, 60, () => {
+      let q = db.select({
         title: tests.title,
         average: sql<number>`avg(${marks.marksObtained} / ${marks.totalMarks} * 100)`
       })
       .from(tests)
       .innerJoin(marks, eq(marks.testId, tests.id))
-      .where(eq(tests.institutionId, instId))
-      .groupBy(tests.id, tests.title, tests.createdAt)
-      .orderBy(desc(tests.createdAt))
-      .limit(5)
-    ),
+      .leftJoin(students, eq(marks.studentId, students.id));
+
+      if (campusFilterStudent) {
+         return q.where(and(eq(tests.institutionId, instId), campusFilterStudent))
+          .groupBy(tests.id, tests.title, tests.createdAt)
+          .orderBy(desc(tests.createdAt))
+          .limit(5);
+      } else {
+         return q.where(eq(tests.institutionId, instId))
+          .groupBy(tests.id, tests.title, tests.createdAt)
+          .orderBy(desc(tests.createdAt))
+          .limit(5);
+      }
+    }),
   ]);
 
   const trendMap = new Map<string, { date: string; PRESENT: number; ABSENT: number; LEAVE: number; LATE: number }>();
