@@ -62,9 +62,8 @@ function ShieldIcon() {
 function N360Mark() {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-      <div style={{ width: 18, height: 18, borderRadius: 4, background: NAVY, border: `1.5px solid ${GOLD}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <span style={{ fontSize: 9, fontWeight: 800, color: GOLD, fontFamily: "Georgia, serif", lineHeight: 1 }}>N</span>
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/Logo.png" alt="Nisaab360" style={{ width: 22, height: 22, objectFit: "contain", flexShrink: 0 }} />
       <div>
         <div style={{ fontSize: 7.5, fontWeight: 700, color: NAVY, letterSpacing: "0.04em", lineHeight: 1 }}>Nisaab360</div>
         <div style={{ fontSize: 6, color: MUTED, letterSpacing: "0.06em", lineHeight: 1.2 }}>Student Platform</div>
