@@ -50,6 +50,7 @@ export default function UpdateNotifier() {
     const onFocus = () => void checkVersion();
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
+    void checkVersion();
 
     return () => {
       ignore = true;
