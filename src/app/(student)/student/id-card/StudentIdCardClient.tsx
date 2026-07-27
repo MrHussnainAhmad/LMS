@@ -2,225 +2,236 @@
 
 import { useState } from "react";
 
-type StudentCardData = {
-  id: number;
-  name: string;
-  fatherName: string | null;
-  phone: string | null;
-  emergencyContact: string | null;
-  profilePictureUrl: string | null;
-  loginRollNumber: string;
-  classRollNumber: string;
-  className: string;
-  sectionName: string;
+const W = 380;
+const H = 240;
+const NAVY  = "#0E1E3D";
+const GOLD  = "#B8963E";
+const CREAM = "#F5F0E8";
+const LIGHT = "#FAFAF9";
+const RULE  = "#E4DDD1";
+const MUTED = "#8A8070";
+const DARK  = "#1C1612";
+const FONT  = "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif";
+const TEXTURE = `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 20L20 0' stroke='rgba(255,255,255,0.025)' stroke-width='1'/%3E%3C/svg%3E")`;
+
+const FLIP_CSS = `
+.idc-scene{perspective:1200px;cursor:pointer;user-select:none;-webkit-user-select:none;}
+.idc-inner{position:relative;width:${W}px;height:${H}px;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.4,0,.2,1);}
+.idc-inner.idc-flipped{transform:rotateY(180deg);}
+.idc-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:12px;overflow:hidden;}
+.idc-back{transform:rotateY(180deg);}
+@media print{.idc-scene{cursor:default;}.idc-inner{transform:none!important;}.idc-back{display:none;}.no-print{display:none!important;}}
+`;
+
+type Props = {
+  student: {
+    id: number;
+    name: string;
+    fatherName: string | null;
+    phone: string | null;
+    emergencyContact: string | null;
+    profilePictureUrl: string | null;
+    loginRollNumber: string;
+    classRollNumber: string;
+    className: string;
+    sectionName: string;
+  };
+  institution: {
+    name: string;
+    logoKey: string;
+    signatureKey: string | null;
+  };
 };
 
-type InstitutionData = {
-  name: string;
-  logoKey: string;
-  signatureKey: string | null;
-};
-
-/* ── Nisaab360 inline SVG logo ───────────────────────────────────────────────── */
-function Nisaab360Logo({ size = 28 }: { size?: number }) {
+function PhoneIcon() {
   return (
-    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Nisaab360">
-      <rect width="40" height="40" rx="8" fill="#1e3a5f" />
-      <text x="20" y="27" textAnchor="middle" fontSize="18" fontWeight="bold" fill="#f0c040" fontFamily="serif">N</text>
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.7 12 19.79 19.79 0 0 1 1.62 3.38 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.37a16 16 0 0 0 5.72 5.72l.94-.94a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
     </svg>
   );
 }
 
-function VerifiedBadge() {
+function ShieldIcon() {
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 4,
-      background: "linear-gradient(135deg, #16a34a 0%, #15803d 100%)",
-      borderRadius: 20, padding: "3px 10px", color: "#fff",
-      fontSize: 9, fontWeight: 700, letterSpacing: "0.05em",
-    }}>
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-      VERIFIED
-    </div>
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
   );
 }
 
-function InfoPill({ label, value }: { label: string; value: string }) {
+function N360Mark() {
   return (
-    <div>
-      <div style={{ fontSize: 6.5, color: "rgba(255,255,255,0.45)", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>{label}</div>
-      <div style={{ fontSize: 9.5, fontWeight: 600, color: "#fff" }}>{value}</div>
-    </div>
-  );
-}
-
-function BackRow({ icon, label, value }: { icon: string; label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-      <span style={{ fontSize: 11 }}>{icon}</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+      <div style={{ width: 18, height: 18, borderRadius: 4, background: NAVY, border: `1.5px solid ${GOLD}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <span style={{ fontSize: 9, fontWeight: 800, color: GOLD, fontFamily: "Georgia, serif", lineHeight: 1 }}>N</span>
+      </div>
       <div>
-        <div style={{ fontSize: 7, color: "#94a3b8", textTransform: "uppercase" as const, letterSpacing: "0.07em" }}>{label}</div>
-        <div style={{ fontSize: 10, fontWeight: 600, color: "#1e293b" }}>{value}</div>
+        <div style={{ fontSize: 7.5, fontWeight: 700, color: NAVY, letterSpacing: "0.04em", lineHeight: 1 }}>Nisaab360</div>
+        <div style={{ fontSize: 6, color: MUTED, letterSpacing: "0.06em", lineHeight: 1.2 }}>Student Platform</div>
       </div>
     </div>
   );
 }
 
-export function StudentIdCardClient({ student, institution }: { student: StudentCardData; institution: InstitutionData }) {
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 6.5, color: "rgba(255,255,255,0.35)", textTransform: "uppercase" as const, letterSpacing: "0.1em", marginBottom: 1.5 }}>{label}</div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: CREAM }}>{value}</div>
+    </div>
+  );
+}
+
+function ContactRow({ Icon, label, value }: { Icon: () => React.ReactNode; label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+      <div style={{ paddingTop: 2, flexShrink: 0 }}><Icon /></div>
+      <div>
+        <div style={{ fontSize: 7, color: MUTED, textTransform: "uppercase" as const, letterSpacing: "0.08em", marginBottom: 1 }}>{label}</div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: DARK }}>{value}</div>
+      </div>
+    </div>
+  );
+}
+
+export function StudentIdCardClient({ student, institution }: Props) {
   const [flipped, setFlipped] = useState(false);
 
-  const cardW = 338;
-  const cardH = 213;
-
-  const frontStyle: React.CSSProperties = {
-    width: cardW, minHeight: cardH,
-    background: "linear-gradient(145deg, #0f2044 0%, #1a3a6e 60%, #0d2a55 100%)",
-    borderRadius: 14, position: "relative", overflow: "hidden",
-    color: "#fff", fontFamily: "'Segoe UI', system-ui, sans-serif",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
-  };
-
-  const backStyle: React.CSSProperties = {
-    width: cardW, minHeight: cardH,
-    background: "#fff",
-    borderRadius: 14, position: "relative", overflow: "hidden",
-    fontFamily: "'Segoe UI', system-ui, sans-serif",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-    border: "1.5px solid #e2e8f0",
-  };
-
   return (
     <div>
-      <style>{`
-        @media print {
-          body * { visibility: hidden }
-          #student-print-card, #student-print-card * { visibility: visible }
-          #student-print-card { position: absolute; left: 40px; top: 40px; }
-          .no-print { display: none !important; }
-        }
-      `}</style>
+      <style>{FLIP_CSS}</style>
 
-      <div id="student-print-card" style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
-        {/* FRONT */}
-        <div style={frontStyle}>
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: "linear-gradient(90deg, #f0c040 0%, #f59e0b 50%, #f0c040 100%)" }} />
-          <div style={{ position: "absolute", top: -30, right: -30, width: 100, height: 100, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
-          <div style={{ position: "absolute", bottom: -20, left: -20, width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+        <div
+          className="idc-scene"
+          style={{ width: W, height: H }}
+          onClick={() => setFlipped((f) => !f)}
+          title={flipped ? "Click to see front" : "Click to see back"}
+          id="student-print-card"
+        >
+          <div className={`idc-inner${flipped ? " idc-flipped" : ""}`}>
 
-          <div style={{ display: "flex", padding: "16px 14px 14px", gap: 12, position: "relative" }}>
-            <div style={{
-              width: 72, height: 88, borderRadius: 8, overflow: "hidden", flexShrink: 0,
-              background: "rgba(255,255,255,0.12)", border: "2px solid rgba(240,192,64,0.6)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              {student.profilePictureUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={student.profilePictureUrl} alt={student.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              ) : (
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-              )}
-            </div>
+            {/* FRONT */}
+            <div className="idc-face" style={{ background: NAVY, backgroundImage: TEXTURE, fontFamily: FONT, color: "#fff", display: "flex", flexDirection: "column" }}>
+              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: GOLD, zIndex: 1 }} />
 
-            <div style={{ flex: 1, overflow: "hidden" }}>
-              <div style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.12em", color: "#f0c040", textTransform: "uppercase", marginBottom: 2 }}>
-                {institution.name}
-              </div>
-              <div style={{ fontSize: 7, color: "rgba(255,255,255,0.5)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
-                Student Identity Card
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", lineHeight: 1.2, marginBottom: 2 }}>
-                {student.name}
-              </div>
-              {student.fatherName && (
-                <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", marginBottom: 6 }}>
-                  S/O · D/O: {student.fatherName}
-                </div>
-              )}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 8px" }}>
-                <InfoPill label="Class" value={student.className} />
-                <InfoPill label="Section" value={student.sectionName} />
-                <InfoPill label="Roll No." value={student.classRollNumber} />
-                <InfoPill label="ID" value={student.loginRollNumber} />
-              </div>
-            </div>
-          </div>
-
-          <div style={{
-            position: "absolute", bottom: 0, left: 0, right: 0,
-            background: "rgba(0,0,0,0.25)", padding: "6px 14px",
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {institution.logoKey && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={institution.logoKey} alt="logo" style={{ height: 18, width: 18, objectFit: "contain", borderRadius: 3 }} />
-              )}
-            </div>
-            {institution.signatureKey && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={institution.signatureKey} alt="signature" style={{ height: 20, maxWidth: 70, objectFit: "contain", filter: "brightness(0) invert(1)", opacity: 0.85 }} />
-                <div style={{ fontSize: 6, color: "rgba(255,255,255,0.5)", marginTop: 1, letterSpacing: "0.08em" }}>PRINCIPAL</div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* BACK */}
-        <div style={backStyle}>
-          <div style={{ height: 4, background: "linear-gradient(90deg, #f0c040 0%, #f59e0b 50%, #f0c040 100%)" }} />
-          <div style={{ padding: "12px 14px 10px" }}>
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 7.5, fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>
-                Contact Information
-              </div>
-              <BackRow icon="📱" label="Student Phone" value={student.phone || "—"} />
-              <BackRow icon="🚨" label="Emergency" value={student.emergencyContact || "—"} />
-            </div>
-            <div style={{ height: 1, background: "#e2e8f0", marginBottom: 10 }} />
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Nisaab360Logo size={26} />
-                <div>
-                  <div style={{ fontSize: 8.5, fontWeight: 800, color: "#1e3a5f" }}>Nisaab360</div>
-                  <div style={{ fontSize: 6.5, color: "#94a3b8" }}>Powered by</div>
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px 10px 17px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
                 {institution.logoKey && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={institution.logoKey} alt={institution.name} style={{ height: 26, maxWidth: 60, objectFit: "contain" }} />
+                  <img src={institution.logoKey} alt="" style={{ height: 22, width: 22, objectFit: "contain", borderRadius: 3, flexShrink: 0 }} />
                 )}
-                <div style={{ fontSize: 7.5, fontWeight: 700, color: "#1e3a5f", maxWidth: 80, textAlign: "right", lineHeight: 1.2 }}>
-                  {institution.name}
+                <div style={{ flex: 1, overflow: "hidden" }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", color: CREAM, textTransform: "uppercase" as const, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {institution.name}
+                  </div>
+                </div>
+                <div style={{ fontSize: 6.5, fontWeight: 600, color: GOLD, letterSpacing: "0.14em", textTransform: "uppercase" as const, flexShrink: 0 }}>Student ID</div>
+              </div>
+
+              <div style={{ flex: 1, display: "flex", padding: "12px 14px 12px 17px" }}>
+                <div style={{ width: 68, height: 85, borderRadius: 6, overflow: "hidden", flexShrink: 0, marginRight: 14, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {student.profilePictureUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={student.profilePictureUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1.2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+                    </svg>
+                  )}
+                </div>
+                <div style={{ flex: 1, overflow: "hidden" }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", lineHeight: 1.2, marginBottom: 3 }}>{student.name}</div>
+                  {student.fatherName && (
+                    <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", marginBottom: 10 }}>{student.fatherName}</div>
+                  )}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 7, columnGap: 12 }}>
+                    <Field label="Class" value={student.className} />
+                    <Field label="Section" value={student.sectionName} />
+                    <Field label="Roll No." value={student.classRollNumber} />
+                    <Field label="Login ID" value={student.loginRollNumber} />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ padding: "7px 14px 7px 17px", borderTop: "1px solid rgba(255,255,255,0.07)", background: "rgba(0,0,0,0.18)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+                  {institution.signatureKey ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={institution.signatureKey} alt="Principal Signature" style={{ height: 22, maxWidth: 80, objectFit: "contain", filter: "brightness(0) invert(1)", opacity: 0.7 }} />
+                      <div style={{ fontSize: 6, color: "rgba(255,255,255,0.35)", letterSpacing: "0.12em", textTransform: "uppercase" as const }}>Principal</div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ width: 72, borderBottom: "1px solid rgba(255,255,255,0.2)", marginBottom: 2 }} />
+                      <div style={{ fontSize: 6, color: "rgba(255,255,255,0.3)", letterSpacing: "0.12em", textTransform: "uppercase" as const }}>Principal</div>
+                    </>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 1.5, alignItems: "flex-end", opacity: 0.2 }}>
+                  {[10, 16, 10, 20, 12, 18, 10, 14, 20, 10, 16, 12].map((h, i) => (
+                    <div key={i} style={{ width: 2, height: h, background: "#fff", borderRadius: 1 }} />
+                  ))}
                 </div>
               </div>
             </div>
-            <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
-              <VerifiedBadge />
+
+            {/* BACK */}
+            <div className="idc-face idc-back" style={{ background: LIGHT, fontFamily: FONT, border: `1px solid ${RULE}`, display: "flex", flexDirection: "column" }}>
+              <div style={{ height: 3, background: GOLD, flexShrink: 0 }} />
+              <div style={{ background: NAVY, padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+                <span style={{ fontSize: 7.5, fontWeight: 700, color: CREAM, letterSpacing: "0.1em", textTransform: "uppercase" as const }}>{student.name}</span>
+                <span style={{ fontSize: 7, color: GOLD, letterSpacing: "0.06em" }}>{student.loginRollNumber}</span>
+              </div>
+              <div style={{ flex: 1, padding: "14px 16px 12px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <ContactRow Icon={PhoneIcon} label="Student Contact" value={student.phone || "Not provided"} />
+                  <ContactRow Icon={ShieldIcon} label="Emergency Contact" value={student.emergencyContact || "Not provided"} />
+                </div>
+                <div style={{ height: 1, background: RULE, margin: "4px 0" }} />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <N360Mark />
+                  <div style={{ fontSize: 14, color: RULE }}>·</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {institution.logoKey && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={institution.logoKey} alt="" style={{ height: 20, maxWidth: 50, objectFit: "contain" }} />
+                    )}
+                    <div style={{ fontSize: 7.5, fontWeight: 700, color: DARK, maxWidth: 90, textAlign: "right" as const, lineHeight: 1.3 }}>
+                      {institution.name}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding: "5px 16px", background: CREAM, borderTop: `1px solid ${RULE}`, display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={GOLD} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span style={{ fontSize: 7, fontWeight: 700, color: MUTED, letterSpacing: "0.1em", textTransform: "uppercase" as const }}>
+                  Verified Student — Nisaab360
+                </span>
+              </div>
             </div>
+
           </div>
         </div>
-      </div>
 
-      {/* Action buttons */}
-      <div className="no-print mt-6 flex justify-center gap-3">
+        {/* Flip hint */}
+        <div style={{ fontSize: 10, color: "#aaa", letterSpacing: "0.04em" }}>
+          {flipped ? "Back" : "Front"} · click to flip
+        </div>
+
+        {/* Print button */}
         <button
-          onClick={() => setFlipped(!flipped)}
-          className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
-        >
-          {flipped ? "Show Front" : "Show Back"}
-        </button>
-        <button
+          className="no-print mt-2 inline-flex items-center gap-2 rounded-lg bg-brand-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
           onClick={() => window.print()}
-          className="rounded-lg bg-brand-800 px-5 py-2 text-sm font-semibold text-white hover:bg-brand-700 flex items-center gap-2"
         >
-          🖨️ Print / Download
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9" />
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+            <rect x="6" y="14" width="12" height="8" />
+          </svg>
+          Print / Save as PDF
         </button>
       </div>
     </div>
