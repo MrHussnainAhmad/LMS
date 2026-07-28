@@ -73,10 +73,6 @@ export default async function AgreementPage({
                   </p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <div>
-                      <span className="block text-xs uppercase tracking-wide text-stone-500">One-time setup</span>
-                      <strong>{selectedPlan.setup}</strong>
-                    </div>
-                    <div>
                       <span className="block text-xs uppercase tracking-wide text-stone-500">Monthly fee</span>
                       <strong>{selectedPlan.monthly}</strong>
                       <span className="block text-sm text-stone-600">{selectedPlan.monthlyDetail}</span>

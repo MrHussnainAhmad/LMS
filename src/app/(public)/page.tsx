@@ -26,7 +26,7 @@ import {
 import { LandingHeader } from "@/components/layout/LandingHeader";
 import { LandingMotion } from "@/components/landing/LandingMotion";
 import { ModelScene } from "@/components/landing/ModelScene";
-import { pricingOffers, pricingPlans } from "@/lib/pricing";
+import { pricingPlans } from "@/lib/pricing";
 import styles from "./landing.module.css";
 
 const landingModels = {
@@ -487,8 +487,8 @@ export default async function LandingPage() {
             <p className={styles.overline}>Pricing</p>
             <h2>A plan that fits the school you are building.</h2>
             <p>
-              Start with a predictable monthly price, then move to per-student billing as
-              your institution grows. Setup is charged once.
+              Choose the monthly plan that fits your current student count, with a custom
+              option for large multi-campus institutions.
             </p>
             <Link href="/pricing" className={styles.pricingPageLink}>
               Explore full pricing
@@ -498,8 +498,8 @@ export default async function LandingPage() {
           <div className={styles.priceTable}>
             <div className={styles.priceHeader}>
               <span>Plan</span>
-              <span>Monthly</span>
-              <span>Setup · once</span>
+              <span>Price / month</span>
+              <span>Student range</span>
               <span />
             </div>
             {pricingPlans.map((plan) => (
@@ -516,8 +516,7 @@ export default async function LandingPage() {
                   <small>{plan.monthlyDetail}</small>
                 </span>
                 <span>
-                  <b>{plan.setup}</b>
-                  <small>{plan.scale}</small>
+                  <b>{plan.scale}</b>
                 </span>
                 <Link href={`/register?plan=${plan.id.toLowerCase()}`}>
                   Choose {plan.name}
@@ -525,20 +524,6 @@ export default async function LandingPage() {
                 </Link>
               </div>
             ))}
-            <div className={styles.offerStrip}>
-              <p>
-                <strong>Special offers</strong>
-                Flexible ways to save when you join or refer another school.
-              </p>
-              <div>
-                {pricingOffers.map((offer) => (
-                  <Link href="/pricing#offers" key={offer.title}>
-                    <span>{offer.label}</span>
-                    <strong>{offer.title}</strong>
-                  </Link>
-                ))}
-              </div>
-            </div>
           </div>
         </section>
 

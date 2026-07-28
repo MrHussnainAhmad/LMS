@@ -75,7 +75,7 @@ export const institutions = pgTable('institutions', {
   contactEmail: varchar('contact_email', { length: 255 }).notNull(),
   contactPhone: varchar('contact_phone', { length: 50 }).notNull(),
   registrationNumber: varchar('registration_number', { length: 100 }).notNull(),
-  pricingPlan: varchar('pricing_plan', { length: 20 }).$type<'BASIC' | 'STANDARD' | 'PREMIUM'>(),
+  pricingPlan: varchar('pricing_plan', { length: 20 }).$type<'BASIC' | 'STANDARD' | 'PREMIUM' | 'ENTERPRISE'>(),
   proofDocumentKey: varchar('proof_document_key', { length: 255 }).notNull(),
   status: instStatusEnum('status').default('PENDING').notNull(),
   rejectionReason: text('rejection_reason'),

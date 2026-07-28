@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Check, Gift, Star } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Star } from "lucide-react";
 import { LandingHeader } from "@/components/layout/LandingHeader";
-import { pricingOffers, pricingPlans } from "@/lib/pricing";
+import { pricingPlans } from "@/lib/pricing";
 import styles from "./pricing.module.css";
 
 export const metadata: Metadata = {
@@ -38,12 +38,12 @@ export default function PricingPage() {
           <div className={styles.heroSide}>
             <p>
               Choose the plan that matches your institution today. Each plan combines a
-              one-time setup fee with straightforward monthly billing.
+              straightforward monthly billing and a student range that is easy to understand.
             </p>
             <div className={styles.heroPrice}>
               <span>Monthly plans from</span>
-              <strong>PKR 3,000</strong>
-              <small>plus one-time setup</small>
+              <strong>Rs. 3,500</strong>
+              <small>for up to 300 students</small>
             </div>
           </div>
         </section>
@@ -88,22 +88,22 @@ export default function PricingPage() {
                 </div>
 
                 <div className={styles.setupPrice}>
-                  <span>One-time setup</span>
-                  <strong>{plan.setup}</strong>
+                  <span>Student range</span>
+                  <strong>{plan.scale}</strong>
                 </div>
 
                 <ul>
+                  <li>
+                    <Check size={15} />
+                    Clear monthly pricing
+                  </li>
                   <li>
                     <Check size={15} />
                     {plan.scale}
                   </li>
                   <li>
                     <Check size={15} />
-                    Simple monthly billing
-                  </li>
-                  <li>
-                    <Check size={15} />
-                    One-time onboarding setup
+                    Nisaab360 platform access
                   </li>
                 </ul>
 
@@ -115,42 +115,6 @@ export default function PricingPage() {
             ))}
           </div>
 
-          <div className={styles.annualNote}>
-            <div className={styles.giftIcon}>
-              <Gift size={19} />
-            </div>
-            <p>
-              <strong>Planning for the full year?</strong>
-              Prepay 12 months and your one-time setup fee is waived.
-            </p>
-            <Link href="/register">
-              Claim annual offer
-              <ArrowRight size={15} />
-            </Link>
-          </div>
-        </section>
-
-        <section className={styles.offersSection} id="offers">
-          <div className={styles.offersIntro}>
-            <p className={styles.eyebrow}>Special offers</p>
-            <h2>Three more ways to make the move easier.</h2>
-            <p>
-              Choose an offer that matches how your school wants to get started with
-              Nisaab360.
-            </p>
-          </div>
-          <div className={styles.offerList}>
-            {pricingOffers.map((offer, index) => (
-              <article key={offer.title}>
-                <span className={styles.offerNumber}>0{index + 1}</span>
-                <div>
-                  <p>{offer.label}</p>
-                  <h3>{offer.title}</h3>
-                </div>
-                <p>{offer.detail}</p>
-              </article>
-            ))}
-          </div>
         </section>
 
         <section className={styles.billingSection}>
@@ -159,18 +123,12 @@ export default function PricingPage() {
             <h2>No complicated pricing formula.</h2>
           </div>
           <div className={styles.billingRows}>
-            <div>
-              <span>Basic</span>
-              <p>PKR 3,000 each month for a school with up to 200 students.</p>
-            </div>
-            <div>
-              <span>Standard</span>
-              <p>PKR 6 per student each month, with a PKR 4,000 monthly minimum.</p>
-            </div>
-            <div>
-              <span>Premium</span>
-              <p>PKR 8 per student each month for larger institutional rollouts.</p>
-            </div>
+            {pricingPlans.map((plan) => (
+              <div key={plan.id}>
+                <span>{plan.name}</span>
+                <p>{plan.monthly} per month — {plan.scale}.</p>
+              </div>
+            ))}
           </div>
         </section>
 
