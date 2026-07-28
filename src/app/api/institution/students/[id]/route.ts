@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { classes, sections, students } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { campuses, classes, sections, studentPromotions, students } from "@/db/schema";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { requireRole, getTenantContext } from "@/lib/rbac";
 import { invalidateUserValidity } from "@/lib/user";
 import { invalidateInstitutionRosterCaches } from "@/lib/redis";
@@ -18,6 +18,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (_req
   const [student] = await db.select({
     id: students.id,
     name: students.name,
+    fatherName: students.fatherName,
     gender: students.gender,
     loginRollNumber: students.loginRollNumber,
     classRollNumber: students.classRollNumber,
@@ -27,12 +28,15 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (_req
     yearOfJoining: students.yearOfJoining,
     phone: students.phone,
     age: students.age,
+    campusId: students.campusId,
+    campusName: campuses.name,
     className: classes.name,
     sectionName: sections.name,
   })
     .from(students)
     .innerJoin(classes, eq(students.classId, classes.id))
     .innerJoin(sections, eq(students.sectionId, sections.id))
+    .leftJoin(campuses, eq(students.campusId, campuses.id))
     .where(and(eq(students.id, studentId), eq(students.institutionId, tenantId)))
     .limit(1);
 
@@ -40,7 +44,40 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (_req
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ student });
+  const promotionHistory = await db.select({
+    id: studentPromotions.id,
+    fromClassId: studentPromotions.fromClassId,
+    toClassId: studentPromotions.toClassId,
+    status: studentPromotions.status,
+    fromRollNumber: studentPromotions.fromRollNumber,
+    toRollNumber: studentPromotions.toRollNumber,
+    createdAt: studentPromotions.createdAt,
+  })
+    .from(studentPromotions)
+    .where(and(eq(studentPromotions.studentId, studentId), eq(studentPromotions.institutionId, tenantId)))
+    .orderBy(desc(studentPromotions.createdAt));
+
+  const historyClassIds = [...new Set(
+    promotionHistory.flatMap((row) => [row.fromClassId, row.toClassId].filter((value): value is number => value !== null))
+  )];
+  const historyClasses = historyClassIds.length
+    ? await db.select({ id: classes.id, name: classes.name })
+      .from(classes)
+      .where(and(eq(classes.institutionId, tenantId), inArray(classes.id, historyClassIds)))
+    : [];
+  const historyClassNames = new Map(historyClasses.map((row) => [row.id, row.name]));
+
+  return NextResponse.json({
+    student: {
+      ...student,
+      promotionHistory: promotionHistory.map((row) => ({
+        ...row,
+        fromClassName: historyClassNames.get(row.fromClassId) || "Previous class",
+        toClassName: row.status === "GRADUATED" ? "Graduated" : historyClassNames.get(row.toClassId || 0) || "Current class",
+        createdAt: row.createdAt.toISOString(),
+      })),
+    },
+  });
 });
 
 export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { params, session }) => {
