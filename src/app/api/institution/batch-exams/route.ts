@@ -4,8 +4,78 @@ import {
   classes, sections, subjects, students, staffAssignments
 } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, desc } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+
+export async function GET(req: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN") || !session.institutionId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const url = new URL(req.url);
+    const type = url.searchParams.get("type"); // optional: MONTHLY|MID|FINAL|PROMOTION
+
+    const institutionId = session.institutionId;
+    const conditions = [eq(batchExams.institutionId, institutionId)];
+    if (type && ["MONTHLY", "MID", "FINAL", "PROMOTION"].includes(type)) {
+      conditions.push(eq(batchExams.type, type as any));
+    }
+
+    const batches = await db
+      .select({
+        id: batchExams.id,
+        title: batchExams.title,
+        type: batchExams.type,
+        className: classes.name,
+        sectionName: sections.name,
+        createdAt: batchExams.createdAt,
+        officialPublishedAt: batchExams.officialPublishedAt,
+      })
+      .from(batchExams)
+      .innerJoin(classes, eq(batchExams.classId, classes.id))
+      .leftJoin(sections, eq(batchExams.sectionId, sections.id))
+      .where(and(...conditions))
+      .orderBy(desc(batchExams.createdAt));
+
+    const subjectRows = await db
+      .select({
+        batchExamId: batchExamSubjects.batchExamId,
+        isPublished: batchExamSubjects.isPublished,
+        reviewDeadline: batchExamSubjects.reviewDeadline,
+      })
+      .from(batchExamSubjects)
+      .innerJoin(batchExams, eq(batchExamSubjects.batchExamId, batchExams.id))
+      .where(and(...conditions));
+
+    const now = new Date();
+    const subjectsByBatch = new Map<number, typeof subjectRows>();
+    for (const row of subjectRows) {
+      if (!subjectsByBatch.has(row.batchExamId)) subjectsByBatch.set(row.batchExamId, []);
+      subjectsByBatch.get(row.batchExamId)!.push(row);
+    }
+
+    const result = batches.map((b) => {
+      const subs = subjectsByBatch.get(b.id) || [];
+      const allSubjectsPublished = subs.length > 0 && subs.every((s) => {
+        if (s.isPublished) return true;
+        if (!s.reviewDeadline) return false;
+        return now > s.reviewDeadline;
+      });
+      return {
+        ...b,
+        sectionName: b.sectionName || null,
+        allSubjectsPublished,
+      };
+    });
+
+    return NextResponse.json({ batches: result });
+  } catch (error: any) {
+    console.error("Batch exams list error:", error);
+    return NextResponse.json({ error: error.message || "Failed to list batch exams" }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {

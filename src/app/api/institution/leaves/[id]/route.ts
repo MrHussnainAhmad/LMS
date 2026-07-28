@@ -5,7 +5,7 @@ import { leaveRequests, staffAttendances } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createNotification } from "@/lib/notifications";
 
-export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { params, session }) => {
+export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { params, session }) => {
   try {
     const { id } = await params;
     const leaveId = parseInt(id, 10);
