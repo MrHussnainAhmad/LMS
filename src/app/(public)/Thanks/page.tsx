@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { BookOpen, CheckCircle2, Download, Monitor, Wifi } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { BookOpen, CheckCircle2, Monitor, Wifi } from "lucide-react";
 import { PublicPageHeader } from "@/components/layout/PublicPageHeader";
 
 export const metadata: Metadata = {
@@ -79,17 +77,6 @@ export default function ThanksPage() {
               })}
             </ol>
 
-            <div className="mt-10 flex flex-wrap gap-3">
-              <Button asChild size="lg">
-                <Link href="/institution-login">Go to institution login</Link>
-              </Button>
-              <Button asChild variant="outline" size="lg">
-                <Link href="/download-app">
-                  <Download className="mr-2 h-4 w-4" />
-                  Download page
-                </Link>
-              </Button>
-            </div>
           </div>
 
           <aside className="border-b border-r border-border bg-[#e9e5dc] p-5 sm:p-7">
