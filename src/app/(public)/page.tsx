@@ -548,6 +548,21 @@ export default async function LandingPage() {
             <Image src="/Logo.png" alt="Nisaab360" width={36} height={36} />
             <strong>Nisaab360</strong>
             <p>One system for the work between the bells.</p>
+            <a
+              href="https://saasbrowser.com/en/saas/1591437/nisaab360"
+              target="_blank"
+              rel="noopener"
+              className={styles.verifiedBadge}
+            >
+              {/* External verification badge is hosted by SaaSBrowser. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://files.saasbrowser.com/xlnuotdo3wchj3kcdggnnx8kl7ts"
+                alt="Nisaab360 - B2B software directory verified badge"
+                width="200"
+                height="133"
+              />
+            </a>
           </div>
           <nav>
             <p>Platform</p>

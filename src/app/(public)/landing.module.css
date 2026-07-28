@@ -947,6 +947,18 @@
   font-size: 0.68rem;
 }
 
+.verifiedBadge {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 0.65rem;
+}
+
+.verifiedBadge img {
+  display: block;
+  width: 200px;
+  height: auto;
+}
+
 .footerMain nav > p {
   margin-bottom: 1rem;
   color: rgba(255, 255, 255, 0.32);
