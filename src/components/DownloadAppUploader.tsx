@@ -1,11 +1,16 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import Link from "next/link";
-import { Download, Upload, Link as LinkIcon } from "lucide-react";
+import { Download, Link as LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function DownloadAppUploader() {
+export function DownloadAppUploader({
+  type = "app",
+  heading = "Mobile App Link",
+}: {
+  type?: "app" | "software";
+  heading?: string;
+}) {
   const [url, setUrl] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -19,14 +24,14 @@ export function DownloadAppUploader() {
     setMessage(null);
     setError(null);
     try {
-      const response = await fetch("/api/download-app", {
+      const response = await fetch(`/api/download-${type}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Update failed.");
-      setMessage(body.message || "App download link updated successfully.");
+      setMessage(body.message || `${type === "app" ? "App" : "Software"} download link updated successfully.`);
       setUrl("");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Update failed.");
@@ -38,7 +43,7 @@ export function DownloadAppUploader() {
   return (
     <form onSubmit={saveLink} className="max-w-xl space-y-5 rounded-xl border border-border bg-surface p-6 shadow-sm">
       <div>
-        <h2 className="text-lg font-semibold text-brand-950">Replace App Download Link</h2>
+        <h2 className="text-lg font-semibold text-brand-950">{heading}</h2>
         <p className="mt-1 text-sm text-stone-600">Enter a direct download link (e.g. from GitHub Releases).</p>
       </div>
       <input
@@ -57,7 +62,7 @@ export function DownloadAppUploader() {
           {isSaving ? "Saving…" : "Save link"}
         </Button>
         <Button asChild variant="outline">
-          <a href="/api/download-app"><Download className="mr-2 h-4 w-4" />Test download link</a>
+          <a href={`/api/download-${type}`}><Download className="mr-2 h-4 w-4" />Test download link</a>
         </Button>
       </div>
     </form>

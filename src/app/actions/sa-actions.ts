@@ -190,8 +190,31 @@ export async function updateAppVersionAction(version: string) {
   return { success: true };
 }
 
+export async function updateSoftwareVersionAction(version: string) {
+  const session = await getSession();
+  if (!session || (session.role !== "SUPER_ADMIN" && session.role !== "EMPLOYEE")) {
+    throw new Error("Unauthorized");
+  }
+
+  const normalizedVersion = version.trim();
+  if (!normalizedVersion || normalizedVersion.length > 50) {
+    throw new Error("Provide a software version up to 50 characters.");
+  }
+
+  const { systemSettings } = await import("@/db/schema");
+  const settings = await db.select().from(systemSettings).limit(1);
+  if (settings.length === 0) {
+    await db.insert(systemSettings).values({ softwareVersion: normalizedVersion });
+  } else {
+    await db.update(systemSettings).set({ softwareVersion: normalizedVersion, updatedAt: new Date() }).where(eq(systemSettings.id, settings[0].id));
+  }
+
+  revalidatePath("/sa/apps");
+  revalidatePath("/employee/apps");
+  return { success: true };
+}
+
 import { tickets, ticketHistory } from "@/db/schema";
-import { and } from "drizzle-orm";
 
 export async function updateTicketPlatformStatusAction(ticketId: number, platformStatus: "RECEIVED" | "WORKING" | "RESOLVED") {
   const session = await getSession();

@@ -2,7 +2,7 @@
 
 import { AppShell } from "@/components/layout/AppShell";
 import type { ShellBrand } from "@/components/layout/BrandMark";
-import { LayoutDashboard, Building2, FileText, Star, Ticket, Newspaper } from "lucide-react";
+import { LayoutDashboard, Building2, FileText, Star, Ticket, Newspaper, Download } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
   { label: "Dashboard", href: "/employee/dashboard", icon: LayoutDashboard },
@@ -11,6 +11,7 @@ const SIDEBAR_ITEMS = [
   { label: "Footer Pages", href: "/employee/pages", icon: FileText },
   { label: "Platform Support", href: "/employee/tickets", icon: Ticket },
   { label: "Blogs", href: "/employee/blogs", icon: Newspaper },
+  { label: "Apps", href: "/employee/apps", icon: Download },
 ];
 
 export function EmployeeShell({

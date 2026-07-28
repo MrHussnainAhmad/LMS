@@ -728,6 +728,7 @@ export const staffAttendances = pgTable('staff_attendances', {
 export const systemSettings = pgTable('system_settings', {
   id: serial('id').primaryKey(),
   mobileAppVersion: varchar('mobile_app_version', { length: 50 }).notNull().default('1.0.0'),
+  softwareVersion: varchar('software_version', { length: 50 }).notNull().default('1.0.0'),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 

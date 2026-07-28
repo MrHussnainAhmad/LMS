@@ -45,7 +45,13 @@ export function LandingHeader() {
             href="/download-app"
             className="text-[12px] font-semibold text-[#171c1a]/58 transition-colors hover:text-[#171c1a]"
           >
-            Download
+            Mobile app
+          </Link>
+          <Link
+            href="/download-software"
+            className="text-[12px] font-semibold text-[#171c1a]/58 transition-colors hover:text-[#171c1a]"
+          >
+            Software
           </Link>
         </nav>
 
@@ -88,6 +94,7 @@ export function LandingHeader() {
               ["Customers", "/#testimonials"],
               ["Pricing", "/pricing"],
               ["Download app", "/download-app"],
+              ["Download software", "/download-software"],
               ["Employee login", "/employee-login"],
             ].map(([label, href]) => (
               <Link

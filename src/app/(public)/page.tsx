@@ -564,7 +564,8 @@ export default async function LandingPage() {
             <Link href="#platform">Institution view</Link>
             <Link href="#features">Features</Link>
             <Link href="/pricing">Pricing</Link>
-            <Link href="/download-app">Download</Link>
+            <Link href="/download-app">Mobile app</Link>
+            <Link href="/download-software">Software</Link>
           </nav>
           <nav>
             <p>Access</p>

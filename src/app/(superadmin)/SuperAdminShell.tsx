@@ -14,7 +14,7 @@ const SIDEBAR_ITEMS = [
   { label: "Audit Logs", href: "/sa/audit", icon: Activity },
   { label: "Footer Pages", href: "/sa/pages", icon: FileText },
   { label: "Blogs", href: "/sa/blogs", icon: Newspaper },
-  { label: "App Download", href: "/sa/download-app", icon: Download },
+  { label: "Apps", href: "/sa/apps", icon: Download },
 ];
 
 export function SuperAdminShell({
