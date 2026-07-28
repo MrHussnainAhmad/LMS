@@ -957,7 +957,9 @@
   display: block;
   width: 200px;
   height: auto;
+  /* Invert the dark lettering, then blend the new black image background into the footer. */
   filter: invert(1);
+  mix-blend-mode: screen;
 }
 
 .footerMain nav > p {
