@@ -957,6 +957,7 @@
   display: block;
   width: 200px;
   height: auto;
+  filter: invert(1);
 }
 
 .footerMain nav > p {
