@@ -6,7 +6,44 @@ import { requireRole, getTenantContext } from "@/lib/rbac";
 import { invalidateUserValidity } from "@/lib/user";
 import { invalidateInstitutionRosterCaches } from "@/lib/redis";
 
-export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { params, session }) => {
+export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (_req: NextRequest, { params, session }) => {
+  const { id } = await params;
+  const tenantId = getTenantContext(session);
+  const studentId = parseInt(id);
+
+  if (isNaN(studentId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
+
+  const [student] = await db.select({
+    id: students.id,
+    name: students.name,
+    gender: students.gender,
+    loginRollNumber: students.loginRollNumber,
+    classRollNumber: students.classRollNumber,
+    profilePictureUrl: students.profilePictureUrl,
+    emergencyContact: students.emergencyContact,
+    parentalWhatsapp: students.parentalWhatsapp,
+    yearOfJoining: students.yearOfJoining,
+    phone: students.phone,
+    age: students.age,
+    className: classes.name,
+    sectionName: sections.name,
+  })
+    .from(students)
+    .innerJoin(classes, eq(students.classId, classes.id))
+    .innerJoin(sections, eq(students.sectionId, sections.id))
+    .where(and(eq(students.id, studentId), eq(students.institutionId, tenantId)))
+    .limit(1);
+
+  if (!student) {
+    return NextResponse.json({ error: "Student not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ student });
+});
+
+export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { params, session }) => {
   const { id } = await params;
   const tenantId = getTenantContext(session);
   const studentId = parseInt(id);
@@ -74,7 +111,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { par
   }
 });
 
-export const DELETE = requireRole(["INSTITUTION"], async (req: NextRequest, { params, session }) => {
+export const DELETE = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { params, session }) => {
   const { id } = await params;
   const tenantId = getTenantContext(session);
   const studentId = parseInt(id);

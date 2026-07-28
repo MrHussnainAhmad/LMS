@@ -6,18 +6,14 @@ import {
 import { getSession } from "@/lib/auth";
 import { and, eq, inArray, desc } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+import { getTenantContext, requireRole } from "@/lib/rbac";
 
-export async function GET(req: NextRequest) {
+export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   try {
-    const session = await getSession();
-    if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN") || !session.institutionId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const url = new URL(req.url);
     const type = url.searchParams.get("type"); // optional: MONTHLY|MID|FINAL|PROMOTION
 
-    const institutionId = session.institutionId;
+    const institutionId = getTenantContext(session);
     const conditions = [eq(batchExams.institutionId, institutionId)];
     if (type && ["MONTHLY", "MID", "FINAL", "PROMOTION"].includes(type)) {
       conditions.push(eq(batchExams.type, type as any));
@@ -75,7 +71,7 @@ export async function GET(req: NextRequest) {
     console.error("Batch exams list error:", error);
     return NextResponse.json({ error: error.message || "Failed to list batch exams" }, { status: 500 });
   }
-}
+});
 
 export async function POST(req: NextRequest) {
   try {

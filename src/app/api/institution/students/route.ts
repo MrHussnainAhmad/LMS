@@ -41,7 +41,7 @@ async function getOrCreateWholeClassSection(institutionId: number, classId: numb
   return createdSection;
 }
 
-export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { session }) => {
+export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
   try {
     const tenantId = getTenantContext(session);
     const body = await req.json();
