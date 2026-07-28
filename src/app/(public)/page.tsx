@@ -499,6 +499,7 @@ export default async function LandingPage() {
             <div className={styles.priceHeader}>
               <span>Plan</span>
               <span>Price / month</span>
+              <span>Setup fee</span>
               <span>Student range</span>
               <span />
             </div>
@@ -514,6 +515,10 @@ export default async function LandingPage() {
                 <span>
                   <b>{plan.monthly}</b>
                   <small>{plan.monthlyDetail}</small>
+                </span>
+                <span>
+                  <b>{plan.setup}</b>
+                  <small>one time</small>
                 </span>
                 <span>
                   <b>{plan.scale}</b>

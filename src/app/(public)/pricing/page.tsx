@@ -38,7 +38,7 @@ export default function PricingPage() {
           <div className={styles.heroSide}>
             <p>
               Choose the plan that matches your institution today. Each plan combines a
-              straightforward monthly billing and a student range that is easy to understand.
+              a one-time setup fee, straightforward monthly billing, and a student range that is easy to understand.
             </p>
             <div className={styles.heroPrice}>
               <span>Monthly plans from</span>
@@ -88,8 +88,8 @@ export default function PricingPage() {
                 </div>
 
                 <div className={styles.setupPrice}>
-                  <span>Student range</span>
-                  <strong>{plan.scale}</strong>
+                  <span>One-time setup</span>
+                  <strong>{plan.setup}</strong>
                 </div>
 
                 <ul>

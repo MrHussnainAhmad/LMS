@@ -54,6 +54,18 @@
     font-family: var(--font-inter), sans-serif;
   }
 
+  /* Preserve scrolling while keeping the application shell visually clean. */
+  .app-shell main,
+  .app-shell nav {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .app-shell main::-webkit-scrollbar,
+  .app-shell nav::-webkit-scrollbar {
+    display: none;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-bricolage), sans-serif;
     letter-spacing: -0.025em;
