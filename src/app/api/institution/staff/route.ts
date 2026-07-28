@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff, staffTeachableSubjects, institutions, campuses, subjects, institutionCustomRoles } from '@/db/schema';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, ilike, or } from 'drizzle-orm';
 import { hashPassword as hash } from '@/lib/argon2-pool';
 import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStaffSchema } from '@/lib/validators/staff';
@@ -12,10 +12,33 @@ import { generateStaffEmail } from '@/lib/login-identifiers';
 // select on the Add Section form. Fetched lazily on the client, never joined with requests.
 export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
   const tenantId = getTenantContext(session);
+  const url = new URL(req.url);
+  const query = (url.searchParams.get('q') || '').trim();
+  const campusIdParam = url.searchParams.get('campusId');
+  const campusId = campusIdParam ? Number(campusIdParam) : null;
 
-  const rows = await db.select({ id: staff.id, name: staff.name })
+  const conditions = [eq(staff.institutionId, tenantId), eq(staff.isActive, true)];
+  if (Number.isInteger(campusId)) {
+    conditions.push(eq(staff.campusId, campusId as number));
+  }
+  if (query) {
+    conditions.push(or(
+      ilike(staff.name, `%${query}%`),
+      ilike(staff.email, `%${query}%`)
+    )!);
+  }
+
+  const rows = await db.select({
+    id: staff.id,
+    name: staff.name,
+    email: staff.email,
+    campus: campuses.name,
+    role: institutionCustomRoles.name,
+  })
     .from(staff)
-    .where(and(eq(staff.institutionId, tenantId), eq(staff.isActive, true)))
+    .leftJoin(campuses, eq(staff.campusId, campuses.id))
+    .leftJoin(institutionCustomRoles, eq(staff.customRoleId, institutionCustomRoles.id))
+    .where(and(...conditions))
     .orderBy(staff.name);
 
   return NextResponse.json({ staff: rows });

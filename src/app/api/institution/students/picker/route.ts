@@ -14,8 +14,13 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
   const url = new URL(req.url);
   const query = (url.searchParams.get('q') || '').trim();
   const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '', 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
+  const campusIdParam = url.searchParams.get('campusId');
+  const campusId = campusIdParam ? Number(campusIdParam) : null;
 
   const conditions = [eq(students.institutionId, institutionId), eq(students.isActive, true)];
+  if (Number.isInteger(campusId)) {
+    conditions.push(eq(students.campusId, campusId as number));
+  }
   if (query) {
     conditions.push(or(
       ilike(students.name, `%${query}%`),
