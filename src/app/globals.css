@@ -54,15 +54,17 @@
     font-family: var(--font-inter), sans-serif;
   }
 
-  /* Preserve scrolling while keeping the application shell visually clean. */
-  .app-shell main,
-  .app-shell nav {
+  /* Preserve scrolling while keeping all surfaces visually clean. */
+  *,
+  *::before,
+  *::after {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
 
-  .app-shell main::-webkit-scrollbar,
-  .app-shell nav::-webkit-scrollbar {
+  *::-webkit-scrollbar {
+    width: 0;
+    height: 0;
     display: none;
   }
 
