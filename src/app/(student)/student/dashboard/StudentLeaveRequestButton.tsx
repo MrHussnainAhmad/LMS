@@ -110,7 +110,7 @@ export function StudentLeaveRequestButton() {
               </div>
               <div className="mt-8 hidden md:block">
                 <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm border border-white/10">
-                  <p className="text-sm italic text-orange-50 font-medium leading-snug">"Taking time to rest and recover is just as important as the work itself."</p>
+	                  <p className="text-sm italic text-orange-50 font-medium leading-snug">&quot;Taking time to rest and recover is just as important as the work itself.&quot;</p>
                 </div>
               </div>
             </div>

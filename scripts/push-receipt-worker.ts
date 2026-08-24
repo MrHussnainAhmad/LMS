@@ -1,5 +1,6 @@
-import { checkExpoPushReceipts } from "@/lib/notifications";
+import { checkExpoPushReceipts, pruneResolvedPushTickets } from "@/lib/notifications";
 import { processFeeVoucherSchedules } from "@/lib/fee-voucher-schedule";
+import { pruneExpiredRefreshTokens } from "@/lib/token-maintenance";
 import { gracefulShutdown } from "@/lib/process-lifecycle";
 
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -13,6 +14,32 @@ let stopping = false;
 let timer: NodeJS.Timeout | undefined;
 let runInFlight: Promise<void> | undefined;
 let lastFeeVoucherScheduleHour: number | undefined;
+let lastTokenPruneHour: number | undefined;
+let lastTicketPruneHour: number | undefined;
+
+/**
+ * Run a maintenance task at most once per wall-clock hour.
+ *
+ * Each task carries its own guard so one failing task neither blocks the others nor
+ * makes them re-run every interval: on failure the hour is left unset, so only that
+ * task retries on the next tick.
+ */
+async function runHourly(
+  name: string,
+  lastHour: number | undefined,
+  currentHour: number,
+  task: () => Promise<{ deleted: number } | undefined>,
+): Promise<number | undefined> {
+  if (lastHour === currentHour) return lastHour;
+  try {
+    const result = await task();
+    if (result && result.deleted > 0) console.info(`${name} completed`, result);
+    return currentHour;
+  } catch (error) {
+    console.error(`${name} failed`, error);
+    return lastHour;
+  }
+}
 
 async function runOnce() {
   try {
@@ -23,6 +50,21 @@ async function runOnce() {
   }
 
   const currentHour = Math.floor(Date.now() / 3_600_000);
+
+  lastTokenPruneHour = await runHourly(
+    "Refresh token prune",
+    lastTokenPruneHour,
+    currentHour,
+    pruneExpiredRefreshTokens,
+  );
+
+  lastTicketPruneHour = await runHourly(
+    "Push ticket prune",
+    lastTicketPruneHour,
+    currentHour,
+    pruneResolvedPushTickets,
+  );
+
   if (lastFeeVoucherScheduleHour === currentHour) return;
 
   try {

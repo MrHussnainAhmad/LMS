@@ -3,18 +3,69 @@ services:
     image: postgres:16-alpine
     init: true
     ports:
-      - "5433:5432"
+      # Loopback only. This was published as "5433:5432", which binds 0.0.0.0 and
+      # exposes Postgres to the internet/LAN even though the backend network is
+      # internal. Nothing in the stack connects through the host (the app uses
+      # pgbouncer:6432 and postgres:5432 over the docker network), so this is
+      # purely an admin convenience — it keeps working over an SSH tunnel.
+      - "127.0.0.1:5433:5432"
     restart: unless-stopped
+    # Memory settings sized for the *whole* box, not for Postgres alone.
+    #
+    # This VPS has 8 GB and also runs two Next replicas, Valkey (260 MB), Caddy,
+    # PgBouncer and the worker. The previous values assumed a dedicated database
+    # server: shared_buffers=3GB plus effective_cache_size=9GB told the planner it
+    # had 9 GB of OS page cache on a box with 8 GB total, so it systematically
+    # under-estimated the cost of large scans and chose them over index paths; and
+    # work_mem=32MB x max_connections=100 is a 3.2 GB worst case that could OOM the
+    # box (the OOM killer usually takes the largest process, i.e. Postgres itself).
+    #
+    #   shared_buffers=1536MB       ~19% of RAM, leaves room for everything else
+    #   effective_cache_size=4GB    honest estimate of shared_buffers + OS cache
+    #   work_mem=16MB               per sort/hash node; PgBouncer caps real backends
+    #                               at DEFAULT_POOL_SIZE+RESERVE (30), so the
+    #                               realistic ceiling is ~480MB, not 3.2GB
+    #   random_page_cost=1.1        NVMe/SSD: a random read is not 4x a sequential
+    #                               one. This is the single most common cause of a
+    #                               planner preferring a seq scan over an index.
+    #   effective_io_concurrency=200 SSD queue depth, enables prefetch for bitmap scans
+    #   jit=off                     PG16 defaults JIT on above jit_above_cost=100000.
+    #                               For short OLTP statements the LLVM compile costs
+    #                               more CPU than it saves, and it is charged to the
+    #                               request. This is CPU handed straight back.
+    #   max_wal_size=2GB            fewer forced checkpoints under write bursts
+    #                               (attendance/marks entry), so less write
+    #                               amplification from repeated full-page images
+    #   autovacuum_* lowered        attendances/marks/notifications/expo_push_tickets
+    #                               are append-heavy; the 20% default scale factor
+    #                               lets tens of thousands of dead rows accumulate
+    #                               before a vacuum, which bloats indexes and slows
+    #                               every read of those tables
+    #   idle_in_transaction_session_timeout
+    #                               a wedged transaction blocks vacuum on every
+    #                               table it touched; with transaction pooling
+    #                               nothing legitimately idles inside one
     command: >
       postgres
-      -c shared_buffers=3GB
-      -c effective_cache_size=9GB
-      -c work_mem=32MB
-      -c maintenance_work_mem=512MB
+      -c shared_buffers=1536MB
+      -c effective_cache_size=4GB
+      -c work_mem=16MB
+      -c maintenance_work_mem=256MB
       -c max_connections=100
       -c checkpoint_completion_target=0.9
-      -c wal_buffers=64MB
+      -c wal_buffers=32MB
+      -c max_wal_size=2GB
+      -c min_wal_size=512MB
       -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c jit=off
+      -c autovacuum_vacuum_scale_factor=0.05
+      -c autovacuum_analyze_scale_factor=0.02
+      -c autovacuum_naptime=30s
+      -c autovacuum_vacuum_cost_limit=1000
+      -c idle_in_transaction_session_timeout=60s
+      -c track_io_timing=on
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -91,6 +142,14 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # Bound the V8 heap per replica. Left unset, V8 sizes the old space from total
+      # system memory (~4 GB on this box), so two replicas plus Postgres can exhaust
+      # RAM — and the kernel's OOM killer then usually picks the largest process,
+      # which is Postgres. A 1 GB ceiling converts a whole-box outage into a bounded,
+      # restartable single-replica failure: Docker restarts it and Caddy's health
+      # check has already moved traffic to the other replica. Smaller heaps also mean
+      # shorter, more predictable GC pauses.
+      NODE_OPTIONS: --max-old-space-size=1024
       # App -> PgBouncer, NOT direct to postgres
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
       # Direct postgres URL for migrations (Prisma/Drizzle)
@@ -100,7 +159,7 @@ services:
       # Explicit DB pool max limit per replica
       DB_POOL_MAX: ${DB_POOL_MAX:-15}
       # Shared auth secret
-      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-replace-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       # Required for the authenticated/manual push-receipt endpoint.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
       # Add your other Next.js env vars here
@@ -136,13 +195,15 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # Same heap ceiling as app; see the comment there.
+      NODE_OPTIONS: --max-old-space-size=1024
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
       DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
       REDIS_URL: redis://valkey:6379
       # Explicit DB pool max limit per replica
       DB_POOL_MAX: ${DB_POOL_MAX:-15}
       # Shared auth secret
-      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-replace-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       # Required for the authenticated/manual push-receipt endpoint.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
       NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}
@@ -179,7 +240,18 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # The worker only ever holds a few thousand rows at a time; a 384 MB ceiling is
+      # ample and keeps it from competing with Postgres for RAM. --enable-source-maps
+      # keeps stack traces pointing at the TypeScript sources now that the entry
+      # point is a compiled bundle (see the push-receipt-worker stage in Dockerfile).
+      NODE_OPTIONS: --max-old-space-size=384 --enable-source-maps
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
+      # Without this, every cache invalidation the worker triggers (fee-voucher
+      # announcements and notifications invalidate student dashboard/announcement
+      # keys) silently connected to 127.0.0.1:6379 inside the worker container,
+      # failed, and was swallowed — so the two web replicas kept serving stale
+      # cached data until the TTL expired. The worker is already on appnet.
+      REDIS_URL: redis://valkey:6379
       # Receipt processing is intentionally low-concurrency and must not add a
       # second five-connection application pool behind PgBouncer.
       DB_POOL_MAX: 1
@@ -216,6 +288,33 @@ services:
       retries: 3
       start_period: 10s
 
+  # BROKEN: this service cannot start, which is why no nightly backup is being made
+  # (bugs.md: "backup is not being made ... midnight everyday").
+  #
+  # Root cause: `build: ./backup` points at a directory that does not exist in this
+  # repository. It is not git-ignored either (checked .gitignore) — it was simply
+  # never committed, so `docker compose up` fails to build this one service and the
+  # rest of the stack comes up without it. Nothing logs a backup failure because no
+  # backup container ever runs.
+  #
+  # To restore backups, either:
+  #   1. Recreate ./backup (a Dockerfile wrapping a postgres-backup-to-S3 image), or
+  #   2. Replace the build with a pinned upstream image. The env var names below
+  #      (POSTGRES_DATABASE, SCHEDULE, BACKUP_KEEP_DAYS, S3_ENDPOINT/S3_PREFIX/...)
+  #      match eeshugerman/postgres-backup-s3, so that is almost certainly what
+  #      ./backup was built FROM:
+  #        image: eeshugerman/postgres-backup-s3:16
+  # Deliberately not changed here: pulling a third-party image into production is
+  # the deployer's call, and the two spellings must be verified against whatever the
+  # VPS is actually running.
+  #
+  # Two further things to check once it builds, because both fail silently:
+  #   - B2_REGION unset makes S3_ENDPOINT "https://s3..backblazeb2.com", so every
+  #     upload fails while pg_dump still reports success.
+  #   - BACKUP_KEEP_WEEKS/MONTHS are prodrigestivill/postgres-backup-local options
+  #     and are ignored by the S3 image; only BACKUP_KEEP_DAYS takes effect.
+  #   - There is no healthcheck and no alerting on this service, so verify a restore
+  #     (not just the presence of an object in the bucket) after fixing it.
   postgres-backup:
     build: ./backup
     init: true

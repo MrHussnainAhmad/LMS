@@ -314,7 +314,7 @@ export function PublishResultsForm({
           </div>
           
           <p className="text-xs text-stone-500 mt-2">
-            CSV must contain a column named "Roll Number". Other columns should exactly match subject names or codes.
+	            CSV must contain a column named &quot;Roll Number&quot;. Other columns should exactly match subject names or codes.
           </p>
         </div>
 

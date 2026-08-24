@@ -4,7 +4,7 @@ import { notifications } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { eq, and, desc, inArray, gte, count } from "drizzle-orm";
 import { resolveUserCreatedAt } from "@/lib/user";
-import { getCachedOrFetch, redis } from "@/lib/redis";
+import { getRawCachedOrFetch, redis } from "@/lib/redis";
 import type { JWTPayload } from "@/lib/auth-types";
 
 const NOTIFICATIONS_CACHE_TTL_SECONDS = 20;
@@ -29,7 +29,11 @@ async function invalidateNotificationCaches(session: JWTPayload) {
 
 export const GET = requireRole(["STUDENT", "STAFF", "INSTITUTION", "EMPLOYEE", "SUPER_ADMIN"], async (req: NextRequest, { session }) => {
   try {
-    const payload = await getCachedOrFetch(notificationsCacheKey(session), NOTIFICATIONS_CACHE_TTL_SECONDS, async () => {
+    // Raw passthrough: this route hands the cached payload straight back, so
+    // parsing it into 50 objects only to re-serialise them is pure waste on
+    // every hit. The stored value is byte-identical to what getCachedOrFetch
+    // wrote, so existing cache entries stay valid.
+    const payload = await getRawCachedOrFetch(notificationsCacheKey(session), NOTIFICATIONS_CACHE_TTL_SECONDS, async () => {
       const userCreatedAt = await resolveUserCreatedAt(session);
 
       const notificationScope = and(
@@ -58,13 +62,13 @@ export const GET = requireRole(["STUDENT", "STAFF", "INSTITUTION", "EMPLOYEE", "
           .where(and(notificationScope, eq(notifications.isRead, false))),
       ]);
 
-      return {
+      return JSON.stringify({
         notifications: userNotifications,
         unreadCount: unreadCountRows[0]?.value ?? 0,
-      };
+      });
     });
 
-    return NextResponse.json(payload);
+    return new NextResponse(payload, { headers: { "Content-Type": "application/json" } });
   } catch (error) {
     console.error("Error fetching notifications:", error);
     return NextResponse.json({ error: "Failed to fetch notifications" }, { status: 500 });

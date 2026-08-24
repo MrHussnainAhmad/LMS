@@ -47,6 +47,9 @@ for (const file of walk(path.join(root, "src"))) {
     const re = new RegExp(`\\.(?:from|update|delete)\\(${table}\\)`, "g");
     let match;
     while ((match = re.exec(text))) {
+      const context = text.slice(Math.max(0, match.index - 250), match.index + 650);
+      const allowCrossTenant = context.includes(`tenant-audit: allow-cross-tenant ${table}`);
+      if (allowCrossTenant) continue;
       const snippet = text.slice(match.index, match.index + 650);
       if (!snippet.includes(`${table}.institutionId`) && !snippet.includes("institutionId")) {
         offenders.push(`${relativeFile}: possible unscoped ${table} query`);

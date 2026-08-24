@@ -48,7 +48,12 @@ export const superAdmins = pgTable('super_admins', {
   securityAnswerHash: text('security_answer_hash').notNull(),
   isSuperAdmin: boolean('is_super_admin').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  // The login CTE matches `lower(email)`. The unique constraint's B-tree is on the
+  // raw column, which the planner cannot use for a function call — so every login
+  // sequentially scanned this table. Mirrors staff_lower_email_idx.
+  lowerEmailIndex: index('super_admins_lower_email_idx').on(sql`lower(${t.email})`),
+}));
 
 // --- EMPLOYEES ---
 export const employees = pgTable('employees', {
@@ -59,7 +64,10 @@ export const employees = pgTable('employees', {
   mustChangePassword: boolean('must_change_password').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-});
+}, (t) => ({
+  // See super_admins_lower_email_idx: `lower(email)` needs its own expression index.
+  lowerEmailIndex: index('employees_lower_email_idx').on(sql`lower(${t.email})`),
+}));
 
 // --- INSTITUTIONS ---
 export const institutions = pgTable('institutions', {
@@ -89,6 +97,9 @@ export const institutions = pgTable('institutions', {
   deletedAt: timestamp('deleted_at'),
 }, (t) => ({
   statusCreatedIndex: index('institutions_status_created_idx').on(t.status, t.createdAt),
+  // Institution login matches `lower(contact_email)`; this table grows with every
+  // tenant, so the sequential scan it replaced got worse over time.
+  lowerContactEmailIndex: index('institutions_lower_contact_email_idx').on(sql`lower(${t.contactEmail})`),
 }));
 
 // --- ACCOUNT DELETIONS ---
@@ -416,7 +427,15 @@ export const onlineTests = pgTable('online_tests', {
   mode: onlineTestModeEnum('mode').notNull(),
   durationMinutes: integer('duration_minutes').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  // The student test list (api/student/tests) drives off this table filtered by
+  // institution_id and ordered by created_at DESC, id DESC. With only the unique
+  // index on test_id, that was a sequential scan plus a sort on every request.
+  // The column order matches the query so Postgres can walk this index backwards
+  // and stop at the page limit. Ascending is deliberate: a backward scan serves
+  // an all-DESC ORDER BY, so no explicit DESC is needed.
+  institutionCreatedIndex: index('online_tests_institution_created_idx').on(t.institutionId, t.createdAt, t.id),
+}));
 
 export const onlineTestQuestions = pgTable('online_test_questions', {
   id: serial('id').primaryKey(),
@@ -559,6 +578,11 @@ export const refreshTokens = pgTable('refresh_tokens', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   userIndex: index('refresh_tokens_user_idx').on(t.userRole, t.userId),
+  // Serves the hourly prune in lib/token-maintenance.ts. Without it, the
+  // `expires_at < cutoff` scan reads the whole table every hour; with it the
+  // delete touches only the rows it removes. One extra btree insert per login is
+  // far cheaper than an hourly sequential scan of a table that only grows.
+  expiresAtIndex: index('refresh_tokens_expires_at_idx').on(t.expiresAt),
 }));
 
 // --- ACCOUNT LOCKOUTS ---
@@ -751,7 +775,10 @@ export const institutionAdmins = pgTable('institution_admins', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  // See super_admins_lower_email_idx.
+  lowerEmailIndex: index('institution_admins_lower_email_idx').on(sql`lower(${t.email})`),
+}));
 
 // --- TICKETS ---
 export const tickets = pgTable('tickets', {

@@ -91,9 +91,13 @@ async function getLandingData() {
         .where(eq(institutions.status, "APPROVED")),
       db
         .select({ count: sql<number>`count(*)` })
+        // tenant-audit: allow-cross-tenant students — public platform-wide total
         .from(students)
         .where(sql`${students.deletedAt} IS NULL`),
-      db.select({ count: sql<number>`count(*)` }).from(tests),
+      db
+        .select({ count: sql<number>`count(*)` })
+        // tenant-audit: allow-cross-tenant tests — public platform-wide total
+        .from(tests),
       db
         .select({
           count: sql<number>`count(*)`,

@@ -1,5 +1,5 @@
 import { SignJWT } from 'jose';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { NextRequest } from 'next/server';
 import { cache } from 'react';
 import { db } from '@/db';
@@ -8,8 +8,10 @@ import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
 import { UserRole, JWTPayload } from './auth-types';
 import { verifyAccessToken, getSessionEdge } from './auth-edge';
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-key-12345');
+import { getJwtSecret } from './jwt-secret';
+import { SESSION_HEADER, SESSION_SIG_HEADER, verifySessionPayload } from './session-header';
+import { getCachedOrFetch, studentEnrichCacheKey } from './redis';
+import { verifyUserExists } from './user';
 
 export { verifyAccessToken };
 export type { UserRole, JWTPayload };
@@ -19,7 +21,6 @@ const WEB_SESSION_EXPIRY_DAYS = 5;
 const ACCESS_TOKEN_EXPIRY = `${WEB_SESSION_EXPIRY_DAYS}d`;
 
 async function getCookieScope() {
-  const { headers } = await import('next/headers');
   const requestHeaders = await headers();
   const host = (requestHeaders.get('host') || '').split(':')[0].toLowerCase();
   const domain = host === 'nisaab360.app' || host.endsWith('.nisaab360.app') ? '.nisaab360.app' : undefined;
@@ -32,7 +33,7 @@ export async function createAccessToken(payload: JWTPayload) {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(ACCESS_TOKEN_EXPIRY)
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 export async function createTokens(payload: JWTPayload) {
@@ -103,9 +104,14 @@ export async function clearAuthCookies() {
 /**
  * Request-scoped session for RSC pages/layouts.
  *
- * When middleware already verified the JWT and set `x-user-session`, trust that
- * payload for read-only page renders (no Redis/DB validity round-trip). API
- * mutations still use getSessionFromRequest → verifyUserExists.
+ * When middleware already verified the JWT it forwards the payload as
+ * `x-user-session` plus an HMAC in `x-user-session-sig`. A payload whose
+ * signature does not verify is discarded and the cookie is checked instead, so a
+ * forged header can neither authenticate nor pick its own role/tenant.
+ *
+ * For a middleware-signed payload the JWT is not re-verified and the Valkey/DB
+ * liveness round-trip is skipped for read-only page renders. API mutations still
+ * go through getSessionFromRequest → verifyUserExists.
  *
  * Deactivation is enforced within JWT lifetime (5d) plus every mutating API call.
  * Validity cache invalidation still applies to API traffic immediately.
@@ -113,16 +119,18 @@ export async function clearAuthCookies() {
 export const getSession = cache(async (): Promise<JWTPayload | null> => {
   let session: JWTPayload | null = null;
   let fromMiddleware = false;
-  const { headers } = await import('next/headers');
   const headersList = await headers();
-  const sessionHeader = headersList.get('x-user-session');
-  
+  const sessionHeader = headersList.get(SESSION_HEADER);
+
   if (sessionHeader) {
-    try {
-      session = JSON.parse(sessionHeader) as JWTPayload;
-      fromMiddleware = true;
-    } catch {
-      // fallback
+    const signed = await verifySessionPayload(sessionHeader, headersList.get(SESSION_SIG_HEADER));
+    if (signed) {
+      try {
+        session = JSON.parse(sessionHeader) as JWTPayload;
+        fromMiddleware = true;
+      } catch {
+        // fallback
+      }
     }
   }
 
@@ -134,7 +142,6 @@ export const getSession = cache(async (): Promise<JWTPayload | null> => {
   if (!session) return null;
 
   if (!fromMiddleware) {
-    const { verifyUserExists } = await import('./user');
     const exists = await verifyUserExists(session.role, session.userId);
     if (!exists) return null;
   }
@@ -154,7 +161,6 @@ export async function getSessionFromRequest(req: NextRequest): Promise<JWTPayloa
   }
 
   if (session) {
-    const { verifyUserExists } = await import('./user');
     const exists = await verifyUserExists(session.role, session.userId);
     if (!exists) return null;
     session = await enrichSession(session);
@@ -163,6 +169,20 @@ export async function getSessionFromRequest(req: NextRequest): Promise<JWTPayloa
   return session;
 }
 
+/**
+ * Backfills the academic-status claims for STUDENT tokens issued before those
+ * claims existed. Tokens live 5 days (web) to 30 days (refreshed native), so this
+ * is a long tail, not a one-off: without a cache it is an extra `students ⋈
+ * institutions` round trip on *every* request from those clients.
+ *
+ * Cached for 2 minutes and invalidated explicitly by the only two writers of the
+ * underlying values — batch promotion (`lib/batch-promotion.ts`) and the
+ * institution graduate-access toggle. Freshly minted tokens already carry these
+ * claims for their full 5-day lifetime, so a 120s ceiling is strictly tighter
+ * than the staleness the current design already accepts.
+ */
+const ENRICH_CACHE_TTL_SECONDS = 120;
+
 async function enrichSession(session: JWTPayload): Promise<JWTPayload> {
   if (session.role !== 'STUDENT') return session;
   // Login/refresh already embed these claims — skip the join when present.
@@ -170,14 +190,27 @@ async function enrichSession(session: JWTPayload): Promise<JWTPayload> {
     return session;
   }
 
-  const [student] = await db.select({
-    academicStatus: students.academicStatus,
-    graduatedAccessAllowed: institutions.allowGraduatedStudentAccess,
-  })
-    .from(students)
-    .innerJoin(institutions, eq(students.institutionId, institutions.id))
-    .where(eq(students.id, session.userId))
-    .limit(1);
+  const fetchEnrichment = async () => {
+    const [student] = await db.select({
+      academicStatus: students.academicStatus,
+      graduatedAccessAllowed: institutions.allowGraduatedStudentAccess,
+    })
+      .from(students)
+      .innerJoin(institutions, eq(students.institutionId, institutions.id))
+      .where(eq(students.id, session.userId))
+      .limit(1);
+    return student ?? null;
+  };
+
+  // A token without an institutionId claim cannot form the invalidatable key, so
+  // it falls through to the uncached query rather than to a key nothing clears.
+  const student = session.institutionId
+    ? await getCachedOrFetch(
+        studentEnrichCacheKey(session.institutionId, session.userId),
+        ENRICH_CACHE_TTL_SECONDS,
+        fetchEnrichment,
+      )
+    : await fetchEnrichment();
 
   if (!student) return session;
   return {

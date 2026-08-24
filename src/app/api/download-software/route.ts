@@ -26,10 +26,17 @@ export const POST = requireRole(["SUPER_ADMIN", "EMPLOYEE"], async (req: NextReq
       return NextResponse.json({ error: "Provide a valid download link." }, { status: 400 });
     }
 
+    // Scheme allow-list. `new URL()` alone accepts `javascript:`, `data:` and
+    // `file:` — a stored redirect target that browsers may treat very differently
+    // from a download link. Only the two schemes a real download uses are stored.
+    let parsed: URL;
     try {
-      new URL(url);
+      parsed = new URL(url);
     } catch {
       return NextResponse.json({ error: "Provide a valid URL." }, { status: 400 });
+    }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return NextResponse.json({ error: "Provide an http or https URL." }, { status: 400 });
     }
 
     await mkdir(DOWNLOAD_DIRECTORY, { recursive: true });

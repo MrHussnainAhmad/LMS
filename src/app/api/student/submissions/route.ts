@@ -61,7 +61,6 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
 
     const assignmentConditions = [
-      eq(assignments.institutionId, session.institutionId),
       eq(assignments.classId, student.classId),
       // sectionId can be null if assignment is for whole class, or match student's section
       or(eq(assignments.sectionId, student.sectionId), isNull(assignments.sectionId)),
@@ -86,7 +85,7 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
       })
       .from(assignments)
       .leftJoin(subjects, eq(assignments.subjectId, subjects.id))
-      .where(and(...assignmentConditions))
+      .where(and(eq(assignments.institutionId, session.institutionId), ...assignmentConditions))
       .orderBy(desc(assignments.dueAt), desc(assignments.id))
       .limit(limit + 1);
 

@@ -17,7 +17,7 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
   const campusIdParam = url.searchParams.get('campusId');
   const campusId = campusIdParam ? Number(campusIdParam) : null;
 
-  const conditions = [eq(students.institutionId, institutionId), eq(students.isActive, true)];
+  const conditions = [eq(students.isActive, true)];
   if (Number.isInteger(campusId)) {
     conditions.push(eq(students.campusId, campusId as number));
   }
@@ -40,7 +40,7 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
     .from(students)
     .innerJoin(classes, eq(students.classId, classes.id))
     .innerJoin(sections, eq(students.sectionId, sections.id))
-    .where(and(...conditions))
+    .where(and(eq(students.institutionId, institutionId), ...conditions))
     .orderBy(students.name)
     .limit(limit);
 

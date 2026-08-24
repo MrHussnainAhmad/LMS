@@ -2,13 +2,38 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSessionEdge } from './lib/auth-edge';
 import { applyCorsHeaders, corsPreflight } from './lib/cors';
+import { SESSION_HEADER, SESSION_SIG_HEADER, signSessionPayload, stripSessionHeaders } from './lib/session-header';
+import { DEFAULT_MAX_BODY_BYTES, bodyTooLargeResponse, exceedsDeclaredBodyLimit } from './lib/http';
 
 const WEB_SESSION_MAX_AGE = 5 * 24 * 60 * 60;
 
 export async function middleware(request: NextRequest) {
+  // Global body ceiling, enforced at the edge before any handler, Server Action
+  // or `req.json()` allocates. `requireRole` repeats this check for defence in
+  // depth, but ~18 mutating routes authenticate via `getSession()` instead and
+  // are only covered here. One header read; far above every real payload
+  // (largest is a 500-row CSV import).
+  if (
+    request.method !== 'GET' &&
+    request.method !== 'HEAD' &&
+    exceedsDeclaredBodyLimit(request, DEFAULT_MAX_BODY_BYTES)
+  ) {
+    const tooLarge = bodyTooLargeResponse();
+    return request.nextUrl.pathname.startsWith('/api')
+      ? applyCorsHeaders(request, tooLarge)
+      : tooLarge;
+  }
+
+  // Sanitised copy of the inbound headers, built once and used by every
+  // next()/rewrite() below. `x-user-session` is a trusted internal header, so a
+  // client-supplied one must never survive into a handler.
+  const requestHeaders = new Headers(request.headers);
+  stripSessionHeaders(requestHeaders);
+  const forwarded = { request: { headers: requestHeaders } };
+
   if (request.nextUrl.pathname.startsWith('/api')) {
     if (request.method === 'OPTIONS') return corsPreflight(request);
-    return applyCorsHeaders(request, NextResponse.next());
+    return applyCorsHeaders(request, NextResponse.next(forwarded));
   }
 
   const session = await getSessionEdge(request.cookies);
@@ -63,7 +88,9 @@ export async function middleware(request: NextRequest) {
         request
       );
     }
-    const res = rewritePath ? NextResponse.rewrite(new URL(rewritePath, request.url)) : NextResponse.next();
+    const res = rewritePath
+      ? NextResponse.rewrite(new URL(rewritePath, request.url), forwarded)
+      : NextResponse.next(forwarded);
     return keepWebSessionAlive(res, request);
   }
 
@@ -125,14 +152,15 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  const requestHeaders = new Headers(request.headers);
   if (session) {
-    requestHeaders.set('x-user-session', JSON.stringify(session));
+    const serialized = JSON.stringify(session);
+    requestHeaders.set(SESSION_HEADER, serialized);
+    requestHeaders.set(SESSION_SIG_HEADER, await signSessionPayload(serialized));
   }
-  
-  const nextRes = rewritePath 
-    ? NextResponse.rewrite(new URL(rewritePath, request.url), { request: { headers: requestHeaders } })
-    : NextResponse.next({ request: { headers: requestHeaders } });
+
+  const nextRes = rewritePath
+    ? NextResponse.rewrite(new URL(rewritePath, request.url), forwarded)
+    : NextResponse.next(forwarded);
 
   if (session) {
     nextRes.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -233,7 +261,15 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico, sitemap.xml, robots.txt (metadata files)
+     * - models (face-recognition model weights, served straight from public/)
+     * - anything with a static asset extension
+     *
+     * The extension group matters for CPU: middleware previously ran for every
+     * `public/` asset and installer download, and each invocation cloned the
+     * request headers and did a full HMAC `jwtVerify` of the session cookie for a
+     * file that has no auth semantics at all. A single portal page pulls dozens
+     * of these.
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
+    '/((?!api|_next/static|_next/image|models/|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:js|mjs|css|map|png|jpg|jpeg|gif|svg|webp|avif|ico|woff|woff2|ttf|otf|eot|mp4|webm|wasm|exe|apk|zip|dmg)$).*)',
   ],
 };

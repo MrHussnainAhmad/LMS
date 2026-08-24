@@ -7,7 +7,20 @@ import { getCachedOrFetch } from '@/lib/redis';
 
 export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
   const instId = getTenantContext(session);
-  const campusId = req.nextUrl.searchParams.get('campusId');
+  const campusIdParam = req.nextUrl.searchParams.get('campusId');
+
+  // Same validation as /api/institution/dashboard, and for the same two reasons:
+  // an unvalidated value reached `Number()` (so `?campusId=abc` produced NaN and a
+  // 500), and it was interpolated into three Valkey keys, so each distinct string
+  // minted three new entries whose misses cost an attendance group-by, a
+  // class-distribution join and an exam-average aggregate.
+  let campusId: number | null = null;
+  if (campusIdParam !== null && campusIdParam !== '') {
+    campusId = Number(campusIdParam);
+    if (!Number.isInteger(campusId) || campusId <= 0) {
+      return NextResponse.json({ error: 'campusId must be a positive integer' }, { status: 400 });
+    }
+  }
 
   const last7Days = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date();
@@ -16,12 +29,12 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
   });
 
   // attendances does not have campusId, we join students
-  const campusFilterStudent = campusId ? eq(students.campusId, Number(campusId)) : undefined;
+  const campusFilterStudent = campusId !== null ? eq(students.campusId, campusId) : undefined;
   const campusFilterClass = undefined; // classes do not have campusId
 
   const [recentAttendance, classDistRows, examPerfRows] = await Promise.all([
-    getCachedOrFetch(`cache:dashboard:attendance:${instId}:${last7Days[0]}:${campusId || 'all'}`, 60, () => {
-      let q = db.select({ date: attendances.date, status: attendances.status, value: sql<number>`count(*)` })
+    getCachedOrFetch(`cache:dashboard:attendance:${instId}:${last7Days[0]}:${campusId ?? 'all'}`, 60, () => {
+      const q = db.select({ date: attendances.date, status: attendances.status, value: sql<number>`count(*)` })
         .from(attendances)
         .leftJoin(students, eq(attendances.studentId, students.id));
         
@@ -33,8 +46,8 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
           .groupBy(attendances.date, attendances.status);
       }
     }),
-    getCachedOrFetch(`cache:dashboard:class-dist:${instId}:${campusId || 'all'}`, 60, () => {
-      let q = db.select({
+    getCachedOrFetch(`cache:dashboard:class-dist:${instId}:${campusId ?? 'all'}`, 60, () => {
+      const q = db.select({
         name: classes.name,
         value: sql<number>`count(${students.id})`
       })
@@ -45,8 +58,8 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
       .orderBy(classes.level);
       return q;
     }),
-    getCachedOrFetch(`cache:dashboard:exam-perf:${instId}:${campusId || 'all'}`, 60, () => {
-      let q = db.select({
+    getCachedOrFetch(`cache:dashboard:exam-perf:${instId}:${campusId ?? 'all'}`, 60, () => {
+      const q = db.select({
         title: tests.title,
         average: sql<number>`avg(${marks.marksObtained} / ${marks.totalMarks} * 100)`
       })

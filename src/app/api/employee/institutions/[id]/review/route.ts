@@ -6,6 +6,7 @@ import { requireRole } from '@/lib/rbac';
 import { reviewInstitutionSchema } from '@/lib/validators/institution';
 import { sendEmail, InstitutionStatusEmail } from '@/lib/email';
 import { logAudit } from '@/lib/audit';
+import { getClientIp } from '@/lib/client-ip';
 import { invalidateUserValidity } from '@/lib/user';
 
 export const POST = requireRole(['SUPER_ADMIN', 'EMPLOYEE'], async (req: NextRequest, { params, session }) => {
@@ -37,7 +38,7 @@ export const POST = requireRole(['SUPER_ADMIN', 'EMPLOYEE'], async (req: NextReq
     actorRole: session.role,
     action: `REVIEW_INSTITUTION_${status}`,
     target: `Institution ${institutionId}`,
-    ip: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+    ip: getClientIp(req),
   });
 
   await sendEmail({

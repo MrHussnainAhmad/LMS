@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest, getLightSessionFromRequest, UserRole, JWTPayload } from './auth';
+import { DEFAULT_MAX_BODY_BYTES, bodyTooLargeResponse, exceedsDeclaredBodyLimit } from './http';
 
 type RouteHandler = (
   req: NextRequest,
@@ -10,6 +11,8 @@ type RequireRoleOptions = {
   allowPasswordChangeRequired?: boolean;
   /** Skip Redis/DB user validity + student enrich — for heartbeat/unread only. */
   light?: boolean;
+  /** Override the request-body ceiling for routes with genuinely larger payloads. */
+  maxBodyBytes?: number;
 };
 
 function enforceSessionGuards(
@@ -55,6 +58,12 @@ export function requireRole(
 ) {
   return async (req: NextRequest, context: any) => {
     try {
+      // Cheapest possible rejection: refuse an oversized body before spending any
+      // work on it. Covers every requireRole-wrapped handler without touching them.
+      if (exceedsDeclaredBodyLimit(req, options?.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES)) {
+        return bodyTooLargeResponse();
+      }
+
       const session = options?.light
         ? await getLightSessionFromRequest(req)
         : await getSessionFromRequest(req);

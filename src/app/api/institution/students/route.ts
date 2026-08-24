@@ -6,6 +6,7 @@ import { hashPassword as hash } from '@/lib/argon2-pool';
 import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStudentSchema } from '@/lib/validators/student';
 import { logAudit } from '@/lib/audit';
+import { getClientIp } from '@/lib/client-ip';
 import { generateStudentLoginRollNumber } from '@/lib/login-identifiers';
 import { allocateAdmissionSequences } from '@/lib/admission-sequences';
 
@@ -124,7 +125,7 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
           actorRole: session.role,
           action: 'CREATE_STUDENT',
           target: `Student ${newStudent.id}`,
-          ip: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+          ip: getClientIp(req),
         });
       } catch (auditError) {
         console.error("Create student audit failed:", auditError);

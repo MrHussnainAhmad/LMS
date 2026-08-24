@@ -209,7 +209,7 @@ export default async function InstitutionSettingsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
-              <p className="text-stone-500 text-sm mb-4">Download a complete archive of your institution's records (Students, Staff, Classes, Sections) in CSV format.</p>
+	              <p className="text-stone-500 text-sm mb-4">Download a complete archive of your institution&apos;s records (Students, Staff, Classes, Sections) in CSV format.</p>
               <div className="flex flex-col sm:flex-row gap-3 mt-4">
                 <a href="/api/institution/export" download>
                   <button className="bg-brand-800 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-brand-900 transition-colors w-full sm:w-auto">
@@ -232,15 +232,16 @@ export default async function InstitutionSettingsPage() {
               <div className="space-y-4">
                 <div className="text-sm text-stone-500 space-y-2">
                   <p><strong>Note:</strong> This is only for on-request actions.</p>
-                  <p>Please do not try to reset anyone's personal data like this.</p>
-                  <p>This will just reset the user's password to a temporary credential.</p>
+	                  <p>Please do not try to reset anyone&apos;s personal data like this.</p>
+	                  <p>This will just reset the user&apos;s password to a temporary credential.</p>
                 </div>
-                <a href="/institution/reset-password-panel" className="inline-block mt-2">
-                  <button className="bg-stone-800 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-stone-900 transition-colors w-full sm:w-auto flex items-center justify-center gap-2">
-                    <Shield className="h-4 w-4" />
-                    Reset User Password
-                  </button>
-                </a>
+	                <Link
+	                  href="/institution/reset-password-panel"
+	                  className="bg-stone-800 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-stone-900 transition-colors w-full sm:w-auto inline-flex mt-2 items-center justify-center gap-2"
+	                >
+	                  <Shield className="h-4 w-4" />
+	                  Reset User Password
+	                </Link>
               </div>
             </CardContent>
           </Card>

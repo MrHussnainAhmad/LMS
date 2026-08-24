@@ -7,13 +7,36 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Dedicated lightweight runtime for the receipt-only worker. It intentionally
-# retains TypeScript tooling so it can execute the existing shared source directly.
+# Dedicated lightweight runtime for the receipt-only worker.
+#
+# The entry point is bundled ahead of time instead of being executed through tsx.
+# tsx loads its own ESM loader hook plus the esbuild transform pipeline into the
+# worker process and re-transpiles the shared TypeScript sources on every start,
+# which costs ~80-150 MB of RSS for the lifetime of a process whose actual job is a
+# few queries a minute. On an 8 GB box shared with Postgres that is worth removing.
+#
+# --packages=external keeps every bare import (pg, drizzle-orm, ioredis,
+# next/server) resolving from node_modules at runtime, so nothing about module
+# resolution changes — only the TypeScript-to-JavaScript step moves from startup to
+# build time. esbuild reads tsconfig.json, so the "@/..." path aliases in the shared
+# libraries resolve exactly as they do under tsx.
+#
+# Fallback if a future import breaks bundling: the sources and tsx are still present
+# in this stage, so the previous command works unchanged:
+#   CMD ["./node_modules/.bin/tsx", "scripts/push-receipt-worker.ts"]
 FROM deps AS push-receipt-worker
 WORKDIR /app
 COPY . .
+RUN ./node_modules/.bin/esbuild scripts/push-receipt-worker.ts \
+      --bundle \
+      --platform=node \
+      --target=node20 \
+      --format=cjs \
+      --packages=external \
+      --sourcemap \
+      --outfile=dist/push-receipt-worker.cjs
 ENV NODE_ENV production
-CMD ["./node_modules/.bin/tsx", "scripts/push-receipt-worker.ts"]
+CMD ["node", "dist/push-receipt-worker.cjs"]
 
 # Rebuild the source code only when needed
 FROM base AS builder

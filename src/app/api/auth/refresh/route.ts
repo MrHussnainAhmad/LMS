@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { employees, institutions, refreshTokens, staff, students, superAdmins } from '@/db/schema';
+import { employees, institutionAdmins, institutions, refreshTokens, staff, students, superAdmins } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 import { clearAuthCookies, createAccessToken, setAuthCookies } from '@/lib/auth';
 import type { JWTPayload, UserRole } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import { withRateLimit } from '@/lib/rate-limit';
+import { AUTH_MAX_BODY_BYTES, bodyTooLargeResponse, readJsonBody } from '@/lib/http';
 
 async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPayload | null> {
   switch (role) {
@@ -87,7 +88,6 @@ async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPay
       } : null;
     }
     case 'INSTITUTION_ADMIN': {
-      const { institutionAdmins } = await import('@/db/schema');
       const [user] = await db.select({
         institutionId: institutionAdmins.institutionId,
         createdAt: institutionAdmins.createdAt,
@@ -111,10 +111,15 @@ export async function POST(req: NextRequest) {
   }
 
   const cookieStore = await cookies();
-  const body = await req.json().catch(() => ({}));
-  const refreshToken = typeof body.refreshToken === 'string'
-    ? body.refreshToken
-    : cookieStore.get('refresh_token')?.value;
+  // Web clients send no body and read the token from the cookie; native clients
+  // post `{ refreshToken }`. Either way nothing legitimate is large, and this is
+  // an unauthenticated endpoint, so the body is capped rather than buffered whole.
+  const parsedBody = await readJsonBody<{ refreshToken?: unknown }>(req, AUTH_MAX_BODY_BYTES);
+  if (!parsedBody.ok && parsedBody.status === 413) return bodyTooLargeResponse();
+  const bodyRefreshToken = parsedBody.ok && typeof parsedBody.data?.refreshToken === 'string'
+    ? parsedBody.data.refreshToken
+    : null;
+  const refreshToken = bodyRefreshToken ?? cookieStore.get('refresh_token')?.value;
 
   if (!refreshToken) {
     return NextResponse.json({ error: 'No refresh token' }, { status: 401 });
@@ -149,8 +154,14 @@ export async function POST(req: NextRequest) {
   const accessToken = await createAccessToken(payload);
   await setAuthCookies(accessToken, refreshToken);
 
-  return NextResponse.json({
-    message: 'Token refreshed',
-    ...(typeof body.refreshToken === 'string' ? { accessToken, refreshToken } : {}),
-  });
+  return NextResponse.json(
+    {
+      message: 'Token refreshed',
+      // Native clients that posted the token get the rotated pair back in the
+      // body; web clients rely on the cookies set above. Unchanged behaviour.
+      ...(bodyRefreshToken ? { accessToken, refreshToken } : {}),
+    },
+    // This body can carry bearer tokens: never let an intermediary store it.
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
 }

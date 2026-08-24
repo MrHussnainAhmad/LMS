@@ -21,7 +21,10 @@ export const DELETE = requireRole(["STAFF"], async (req: NextRequest, { session,
     if (test.staffId !== session.userId) return NextResponse.json({ error: "You can only delete tests you hosted" }, { status: 403 });
 
     // Drizzle schema handles cascading deletes for online_tests, marks, questions, and submissions
-    await db.delete(tests).where(eq(tests.id, testId));
+    await db.delete(tests).where(and(
+      eq(tests.id, testId),
+      eq(tests.institutionId, session.institutionId),
+    ));
 
     return NextResponse.json({ success: true, message: "Test deleted successfully" });
   } catch (error) {
@@ -53,11 +56,17 @@ export const PATCH = requireRole(["STAFF"], async (req: NextRequest, { session, 
     if (test.staffId !== session.userId) return NextResponse.json({ error: "You can only edit tests you hosted" }, { status: 403 });
 
     // Update test title
-    await db.update(tests).set({ title }).where(eq(tests.id, testId));
+    await db.update(tests).set({ title }).where(and(
+      eq(tests.id, testId),
+      eq(tests.institutionId, session.institutionId),
+    ));
 
     // Update online test duration if applicable
     if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
-      await db.update(onlineTests).set({ durationMinutes }).where(eq(onlineTests.testId, testId));
+      await db.update(onlineTests).set({ durationMinutes }).where(and(
+        eq(onlineTests.testId, testId),
+        eq(onlineTests.institutionId, session.institutionId),
+      ));
     }
 
     return NextResponse.json({ success: true, message: "Test updated successfully" });

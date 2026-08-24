@@ -1,15 +1,21 @@
 import { jwtVerify } from 'jose';
 import { UserRole, JWTPayload } from './auth-types'; // We'll move types here
+import { getJwtSecret } from './jwt-secret';
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-key-12345');
+// Imported lazily: getJwtSecret() throws when the secret is missing in production,
+// and that must surface as a request error, not as a module-load failure.
+let jwtKeyPromise: Promise<CryptoKey> | null = null;
 
-const jwtKeyPromise = crypto.subtle.importKey(
-  'raw',
-  JWT_SECRET,
-  { name: 'HMAC', hash: 'SHA-256' },
-  false,
-  ['sign', 'verify']
-);
+function getJwtKey(): Promise<CryptoKey> {
+  if (!jwtKeyPromise) {
+    const secret = new Uint8Array(getJwtSecret()).buffer;
+    jwtKeyPromise = crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, [
+      'sign',
+      'verify',
+    ]);
+  }
+  return jwtKeyPromise;
+}
 
 /**
  * Short-lived verified-token memo (signature already checked).
@@ -50,7 +56,7 @@ export async function verifyAccessToken(token: string): Promise<JWTPayload | nul
   }
 
   try {
-    const key = await jwtKeyPromise;
+    const key = await getJwtKey();
     const { payload } = await jwtVerify(token, key, { algorithms: ['HS256'] });
     const typed = payload as unknown as JWTPayload;
     rememberVerifiedToken(token, typed);

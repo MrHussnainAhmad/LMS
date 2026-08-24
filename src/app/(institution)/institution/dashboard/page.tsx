@@ -75,7 +75,7 @@ export default async function InstitutionDashboard() {
             className="group-hover:ring-2 group-hover:ring-brand-500 transition-all cursor-pointer h-full"
           />
           <p className="text-xs text-brand-600 mt-2 font-medium flex items-center justify-end group-hover:underline">
-            View Teacher's Attendance &rarr;
+	            View Teacher&apos;s Attendance &rarr;
           </p>
         </Link>
       </div>

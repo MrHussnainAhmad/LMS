@@ -8,6 +8,7 @@ import { staffAssignments } from "@/db/schema";
 import { eq, and, gt, lt, inArray, count } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 import { generateStaffEmail } from "@/lib/login-identifiers";
+import { invalidateStudentEnrichCache } from "@/lib/redis";
 
 const WHOLE_CLASS_SECTION_NAME = "Whole Class";
 
@@ -528,6 +529,9 @@ export async function updateGraduatedStudentAccessAction(allowGraduatedStudentAc
   await db.update(institutions)
     .set({ allowGraduatedStudentAccess })
     .where(eq(institutions.id, institutionId));
+
+  // Cached session enrichment (lib/auth.ts) carries a copy of this access gate.
+  await invalidateStudentEnrichCache(institutionId);
 
   revalidatePath("/institution/settings");
   return { success: true };

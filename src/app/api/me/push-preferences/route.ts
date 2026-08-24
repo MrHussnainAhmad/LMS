@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { staff, students } from "@/db/schema";
 import { getSessionFromRequest } from "@/lib/auth";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 function booleanOrUndefined(value: unknown) {
   return typeof value === "boolean" ? value : undefined;
@@ -14,13 +14,17 @@ export async function GET(req: NextRequest) {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     if (session.role === "STUDENT") {
+      if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       const [student] = await db
         .select({
           testNotifications: students.testPushNotificationsEnabled,
           announcementNotifications: students.announcementPushNotificationsEnabled,
         })
         .from(students)
-        .where(eq(students.id, session.userId))
+        .where(and(
+          eq(students.id, session.userId),
+          eq(students.institutionId, session.institutionId),
+        ))
         .limit(1);
 
       return NextResponse.json({
@@ -30,12 +34,16 @@ export async function GET(req: NextRequest) {
     }
 
     if (session.role === "STAFF") {
+      if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       const [staffUser] = await db
         .select({
           announcementNotifications: staff.announcementPushNotificationsEnabled,
         })
         .from(staff)
-        .where(eq(staff.id, session.userId))
+        .where(and(
+          eq(staff.id, session.userId),
+          eq(staff.institutionId, session.institutionId),
+        ))
         .limit(1);
 
       return NextResponse.json({
@@ -65,6 +73,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (session.role === "STUDENT") {
+      if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       const update: {
         testPushNotificationsEnabled?: boolean;
         announcementPushNotificationsEnabled?: boolean;
@@ -73,8 +82,12 @@ export async function PATCH(req: NextRequest) {
       if (testNotifications !== undefined) update.testPushNotificationsEnabled = testNotifications;
       if (announcementNotifications !== undefined) update.announcementPushNotificationsEnabled = announcementNotifications;
 
-      await db.update(students).set(update).where(eq(students.id, session.userId));
+      await db.update(students).set(update).where(and(
+        eq(students.id, session.userId),
+        eq(students.institutionId, session.institutionId),
+      ));
     } else if (session.role === "STAFF") {
+      if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       const update: {
         announcementPushNotificationsEnabled?: boolean;
       } = {};
@@ -87,7 +100,10 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ error: "Staff can only manage announcement push preferences" }, { status: 400 });
       }
 
-      await db.update(staff).set(update).where(eq(staff.id, session.userId));
+      await db.update(staff).set(update).where(and(
+        eq(staff.id, session.userId),
+        eq(staff.institutionId, session.institutionId),
+      ));
     } else {
       return NextResponse.json({ error: "Only students and staff can manage push preferences" }, { status: 403 });
     }

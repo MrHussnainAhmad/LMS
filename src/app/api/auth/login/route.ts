@@ -9,6 +9,12 @@ import { PlatformLoginKind, withPlatformLoginRateLimit, withRateLimit } from '@/
 import { logAudit } from '@/lib/audit';
 import { loginSchema } from '@/lib/validators/auth';
 import { getUserCreatedAt } from '@/lib/user';
+import { getClientIp } from '@/lib/client-ip';
+import { AUTH_MAX_BODY_BYTES, readJsonBody } from '@/lib/http';
+import { redis } from '@/lib/redis';
+
+/** Single pre-authentication failure response: never distinguishes "no such user" from "wrong password". */
+const INVALID_CREDENTIALS = { error: 'Invalid credentials' };
 
 const MAX_FAILED_LOGINS = Number(process.env.AUTH_LOCKOUT_MAX_FAILED || 5);
 const LOCKOUT_WINDOW_MINUTES = Number(process.env.AUTH_LOCKOUT_WINDOW_MINUTES || 15);
@@ -169,13 +175,19 @@ async function recordFailedLogin(role: UserRole, userId: number, institutionId: 
 
 async function rejectFailedLogin(role: UserRole, userId: number, institutionId: number | undefined, ip: string) {
   await recordFailedLogin(role, userId, institutionId, ip);
-  return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+  return NextResponse.json(INVALID_CREDENTIALS, { status: 401 });
 }
 
 function getLoginLookupRoles(roleHint?: UserRole) {
   if (roleHint === 'INSTITUTION') return ['INSTITUTION', 'INSTITUTION_ADMIN'] as UserRole[];
   if (roleHint === 'STAFF') return ['STAFF', 'INSTITUTION_ADMIN'] as UserRole[];
-  return roleHint ? [roleHint] : LOGIN_LOOKUP_ORDER;
+  // Copy, never the module constant itself: the cached-role fast path below
+  // splice/unshifts this array to try the remembered role first. Returning
+  // LOGIN_LOOKUP_ORDER by reference let one request permanently reorder the
+  // lookup priority for every later request in that process — shared mutable
+  // state whose effect (which role wins when one identifier exists in two
+  // tables) depended on whoever logged in most recently.
+  return roleHint ? [roleHint] : [...LOGIN_LOOKUP_ORDER];
 }
 
 async function runPostLoginSideEffects(params: {
@@ -202,17 +214,25 @@ async function runPostLoginSideEffects(params: {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const parsed = loginSchema.safeParse(body);
+    const bodyResult = await readJsonBody(req, AUTH_MAX_BODY_BYTES);
+    if (!bodyResult.ok) {
+      return NextResponse.json({ error: bodyResult.error }, { status: bodyResult.status });
+    }
+    const parsed = loginSchema.safeParse(bodyResult.data);
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
     const { emailOrUsername, password, roleHint, securityAnswer, returnTokens } = parsed.data;
     const loginIdentifier = emailOrUsername.trim().toLowerCase();
-    const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';
+    const ip = getClientIp(req);
     const lookupRoles = getLoginLookupRoles(roleHint);
 
+    // Asked for before any lookup, so the prompt never doubles as a
+    // "this identifier is a Super Admin" oracle.
+    if (roleHint === 'SUPER_ADMIN' && !securityAnswer) {
+      return NextResponse.json({ error: 'Security answer required for Super Admin' }, { status: 400 });
+    }
     // Rate-limit before any DB / hash work so brute-force storms don't waste CPU.
     const earlyPlatformKind: PlatformLoginKind | null =
       roleHint === 'SUPER_ADMIN' ? 'super-admin'
@@ -234,7 +254,6 @@ export async function POST(req: NextRequest) {
     let campusId: number | undefined;
     let mustChangePassword = false;
 
-    const { redis } = await import('@/lib/redis');
     const cacheKey = `auth:role:${loginIdentifier}`;
     const cachedRole = await redis.get(cacheKey).catch(() => null);
     
@@ -409,7 +428,9 @@ export async function POST(req: NextRequest) {
 
     if (admin) {
       if (!securityAnswer) {
-        return NextResponse.json({ error: 'Security answer required for Super Admin' }, { status: 400 });
+        // Reachable only without roleHint (the Super Admin form is handled above);
+        // stay generic so it cannot confirm the identifier.
+        return NextResponse.json(INVALID_CREDENTIALS, { status: 401 });
       }
       await assertNotLocked('SUPER_ADMIN', admin.id);
       const isValidPassword = await verify(admin.passwordHash, password);
@@ -431,18 +452,19 @@ export async function POST(req: NextRequest) {
         return await rejectFailedLogin('EMPLOYEE', emp.id, undefined, ip);
       }
     } else if (inst) {
+      await assertNotLocked('INSTITUTION', inst.id);
+      const isValid = await verify(inst.adminPasswordHash, password);
+      if (!isValid) {
+        return await rejectFailedLogin('INSTITUTION', inst.id, inst.id, ip);
+      }
+      // Status is reported only to someone who proved they own the account, so it
+      // is no longer an enumeration oracle — but the reason is still specific.
       if (inst.status !== 'APPROVED') {
         return NextResponse.json({ error: 'Institution account is not APPROVED' }, { status: 403 });
       }
-      await assertNotLocked('INSTITUTION', inst.id);
-      const isValid = await verify(inst.adminPasswordHash, password);
-      if (isValid) {
-        user = inst;
-        role = 'INSTITUTION';
-        institutionId = inst.id;
-      } else {
-        return await rejectFailedLogin('INSTITUTION', inst.id, inst.id, ip);
-      }
+      user = inst;
+      role = 'INSTITUTION';
+      institutionId = inst.id;
     } else if (instAdmin) {
       await assertNotLocked('INSTITUTION_ADMIN', instAdmin.id);
       const isValid = await verify(instAdmin.passwordHash, password);
@@ -454,41 +476,39 @@ export async function POST(req: NextRequest) {
         return await rejectFailedLogin('INSTITUTION_ADMIN', instAdmin.id, instAdmin.institutionId, ip);
       }
     } else if (stf) {
+      await assertNotLocked('STAFF', stf.id);
+      const isValid = await verify(stf.passwordHash, password);
+      if (!isValid) {
+        return await rejectFailedLogin('STAFF', stf.id, stf.institutionId, ip);
+      }
       if (!stf.isActive) {
         return NextResponse.json({ error: 'Account deactivated' }, { status: 403 });
       }
-      await assertNotLocked('STAFF', stf.id);
-      const isValid = await verify(stf.passwordHash, password);
-      if (isValid) {
-        user = stf;
-        role = 'STAFF';
-        institutionId = stf.institutionId;
-        campusId = stf.campusId || undefined;
-        mustChangePassword = stf.mustChangePassword;
-      } else {
-        return await rejectFailedLogin('STAFF', stf.id, stf.institutionId, ip);
-      }
+      user = stf;
+      role = 'STAFF';
+      institutionId = stf.institutionId;
+      campusId = stf.campusId || undefined;
+      mustChangePassword = stf.mustChangePassword;
     } else if (stu) {
+      await assertNotLocked('STUDENT', stu.id);
+      const isValid = await verify(stu.passwordHash, password);
+      if (!isValid) {
+        return await rejectFailedLogin('STUDENT', stu.id, stu.institutionId, ip);
+      }
       if (!stu.isActive) {
         return NextResponse.json({ error: 'Account deactivated' }, { status: 403 });
       }
       if (stu.academicStatus === 'GRADUATED' && !stu.graduatedAccessAllowed) {
         return NextResponse.json({ error: 'Graduate access is restricted by your institution' }, { status: 403 });
       }
-      await assertNotLocked('STUDENT', stu.id);
-      const isValid = await verify(stu.passwordHash, password);
-      if (isValid) {
-        user = stu;
-        role = 'STUDENT';
-        institutionId = stu.institutionId;
-        mustChangePassword = stu.mustChangePassword;
-      } else {
-        return await rejectFailedLogin('STUDENT', stu.id, stu.institutionId, ip);
-      }
+      user = stu;
+      role = 'STUDENT';
+      institutionId = stu.institutionId;
+      mustChangePassword = stu.mustChangePassword;
     }
 
     if (!user || !role) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+      return NextResponse.json(INVALID_CREDENTIALS, { status: 401 });
     }
 
     if (redis.status === 'ready') {
@@ -523,12 +543,16 @@ export async function POST(req: NextRequest) {
       ip,
     }));
 
-    return NextResponse.json({
-      message: 'Logged in successfully',
-      role,
-      mustChangePassword,
-      ...(returnTokens ? { accessToken, refreshToken } : {}),
-    });
+    return NextResponse.json(
+      {
+        message: 'Logged in successfully',
+        role,
+        mustChangePassword,
+        ...(returnTokens ? { accessToken, refreshToken } : {}),
+      },
+      // Tokens can appear in this body for mobile/desktop clients — never cache it.
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('Account temporarily locked')) {
       return NextResponse.json({ error: err.message }, { status: 423 });

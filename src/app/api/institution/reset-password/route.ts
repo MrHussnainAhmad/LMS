@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 import { logAudit } from "@/lib/audit";
+import { getClientIp } from "@/lib/client-ip";
 import { invalidateUserValidity } from "@/lib/user";
 
 export async function POST(req: NextRequest) {
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest) {
         actorRole: session.role,
         action: "PASSWORD_RESET",
         target: targetIdStr,
-        ip: req.headers.get("x-forwarded-for") ?? "127.0.0.1",
+        ip: getClientIp(req),
       });
     } catch (e) {
       console.error("Audit log failed for password reset", e);

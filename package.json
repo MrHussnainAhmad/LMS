@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/prepare-standalone.mjs && node --env-file=.env .next/standalone/server.js",
     "lint": "eslint",
     "lint:tenant": "node scripts/audit-tenant-scope.mjs"
   },

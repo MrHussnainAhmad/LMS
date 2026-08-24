@@ -105,7 +105,14 @@ async function deleteKeysByPattern(pattern: string) {
     for await (const keys of stream as AsyncIterable<string[]>) {
       if (keys.length) keysToDelete.push(...keys);
     }
-    if (keysToDelete.length) await redis.del(...keysToDelete);
+    // UNLINK, not DEL: reclaiming memory happens on a background thread, so a
+    // large invalidation never stalls the single Valkey command loop that every
+    // request's cache lookup is queued behind.
+    if (keysToDelete.length) {
+      for (let i = 0; i < keysToDelete.length; i += 500) {
+        await redis.unlink(...keysToDelete.slice(i, i + 500));
+      }
+    }
   } catch (err) {
     console.warn(`Redis SCAN/delete error for pattern ${pattern}:`, err);
   }
@@ -121,7 +128,12 @@ export async function invalidateInstitutionRosterCaches(institutionId: number) {
       `cache:dashboard:students:${institutionId}`,
       `cache:dashboard:class-dist:${institutionId}`,
     );
-    await deleteKeysByPattern(`cache:staff:marks:${institutionId}:*`);
+    // Deliberately no `cache:staff:marks:*` SCAN here any more. Nothing writes
+    // that key family (the staff marks route is uncached), so the pattern could
+    // never match — but SCAN walks the *entire* keyspace regardless of the
+    // pattern, in `count: 100` steps, on Valkey's single command thread. That
+    // was a full keyspace walk on every student create/update/delete and every
+    // staff assessment creation, in front of every concurrent cache lookup.
   } catch (err) {
     console.warn(`Cache invalidation error for institution ${institutionId}:`, err);
   }
@@ -131,10 +143,41 @@ export async function invalidateInstitutionRosterCaches(institutionId: number) {
 export async function invalidateStudentDashboardCache(institutionId: number, studentId: number) {
   if (redis.status !== 'ready') return;
   try {
-    await redis.del(`cache:student:dashboard:${studentId}:${institutionId}`);
-    await deleteKeysByPattern(`cache:student:dashboard:web:${studentId}:${institutionId}:*`);
+    // The web dashboard key is suffixed with `new Date().getDay()`, so the key
+    // set is exactly seven — enumerate them instead of SCANning the keyspace.
+    const webKeys = Array.from({ length: 7 }, (_, day) => `cache:student:dashboard:web:${studentId}:${institutionId}:${day}`);
+    await redis.unlink(`cache:student:dashboard:${studentId}:${institutionId}`, ...webKeys);
   } catch (err) {
     console.warn(`Cache invalidation error for student dashboard ${studentId}:${institutionId}:`, err);
+  }
+}
+
+export function studentEnrichCacheKey(institutionId: number, studentId: number) {
+  return `cache:student:enrich:${institutionId}:${studentId}`;
+}
+
+/**
+ * Drop the cached academic-status enrichment (see `enrichSession` in lib/auth.ts).
+ *
+ * Call with `studentIds` when specific students change academic status, and
+ * without it when an institution-wide setting changes — the latter SCANs, but it
+ * only ever runs on an admin toggle, not on request traffic.
+ */
+export async function invalidateStudentEnrichCache(institutionId: number, studentIds?: number[]) {
+  if (redis.status !== 'ready') return;
+  try {
+    if (studentIds && studentIds.length > 0) {
+      const keys = studentIds.map((id) => studentEnrichCacheKey(institutionId, id));
+      // Chunked: a whole-batch promotion can pass thousands of ids, and one
+      // enormous DEL would block the single Valkey thread.
+      for (let i = 0; i < keys.length; i += 500) {
+        await redis.unlink(...keys.slice(i, i + 500));
+      }
+      return;
+    }
+    await deleteKeysByPattern(`cache:student:enrich:${institutionId}:*`);
+  } catch (err) {
+    console.warn(`Cache invalidation error for student enrichment ${institutionId}:`, err);
   }
 }
 

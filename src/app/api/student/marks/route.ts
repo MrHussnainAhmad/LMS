@@ -4,6 +4,7 @@ import { marks, tests, subjects, onlineTests } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { windowRange } from "@/lib/month-window";
 import { eq, and, desc, gte, lte, lt, or } from "drizzle-orm";
+import { getCachedOrFetch, redis } from "@/lib/redis";
 
 const DEFAULT_WINDOW_MONTHS_BACK = 1; // current month + 1 prior = 2 months total
 const DEFAULT_LIMIT = 50;
@@ -12,7 +13,6 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const { getCachedOrFetch } = await import('@/lib/redis');
     const searchParams = req.nextUrl.searchParams;
     const paginated = ["limit", "cursor", "from", "to"].some((key) => searchParams.has(key));
 
@@ -82,7 +82,6 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
     }
 
     const canonicalQuery = `limit=${limitValue}&cursor=${cursor ?? ""}&from=${from ?? ""}&to=${to ?? ""}`;
-    const { redis } = await import("@/lib/redis");
     const version = await redis.get(`cache:student:marks:version:${session.userId}`).catch(() => null) ?? "0";
     const cacheKey = `cache:student:marks:${session.userId}:v${version}:${canonicalQuery}`;
     const rows = await getCachedOrFetch(cacheKey, 60, () => db.select({

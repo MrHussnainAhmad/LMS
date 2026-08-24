@@ -100,7 +100,7 @@ export function StaffLeavesClient({ initialRequests }: { initialRequests: StaffL
                 <div className="flex-1">
                   <h4 className="text-sm font-semibold text-stone-900 mb-2">Reason for Leave</h4>
                   <div className="text-sm text-stone-600 leading-relaxed border-l-2 border-brand-300 pl-3 italic whitespace-pre-wrap">
-                    "{req.reason}"
+	                    &quot;{req.reason}&quot;
                   </div>
                 </div>
 

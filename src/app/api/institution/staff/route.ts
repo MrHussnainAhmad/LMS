@@ -6,6 +6,7 @@ import { hashPassword as hash } from '@/lib/argon2-pool';
 import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStaffSchema } from '@/lib/validators/staff';
 import { logAudit } from '@/lib/audit';
+import { getClientIp } from '@/lib/client-ip';
 import { generateStaffEmail } from '@/lib/login-identifiers';
 
 // Lightweight staff options list (id + name only) for dropdowns like the class-teacher
@@ -17,7 +18,7 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
   const campusIdParam = url.searchParams.get('campusId');
   const campusId = campusIdParam ? Number(campusIdParam) : null;
 
-  const conditions = [eq(staff.institutionId, tenantId), eq(staff.isActive, true)];
+  const conditions = [eq(staff.isActive, true)];
   if (Number.isInteger(campusId)) {
     conditions.push(eq(staff.campusId, campusId as number));
   }
@@ -38,7 +39,7 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
     .from(staff)
     .leftJoin(campuses, eq(staff.campusId, campuses.id))
     .leftJoin(institutionCustomRoles, eq(staff.customRoleId, institutionCustomRoles.id))
-    .where(and(...conditions))
+    .where(and(eq(staff.institutionId, tenantId), ...conditions))
     .orderBy(staff.name);
 
   return NextResponse.json({ staff: rows });
@@ -94,6 +95,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
   // collision check
   let count = 0;
   while (true) {
+    // tenant-audit: allow-cross-tenant staff — email has a global unique constraint
     const [existing] = await db.select().from(staff).where(eq(staff.email, generatedEmail)).limit(1);
     if (!existing) break;
     count++;
@@ -132,7 +134,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
       actorRole: session.role,
       action: 'CREATE_STAFF',
       target: `Staff ${newStaff.id}`,
-      ip: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+      ip: getClientIp(req),
     });
 
     try {

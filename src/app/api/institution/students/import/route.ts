@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campuses, classes, institutions, sections, students } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
+import { getClientIp } from "@/lib/client-ip";
 import { generateStudentLoginRollNumber } from "@/lib/login-identifiers";
 import { allocateAdmissionSequences } from "@/lib/admission-sequences";
 import { getTenantContext, requireRole } from "@/lib/rbac";
@@ -250,7 +251,7 @@ export const POST = requireRole(["INSTITUTION"], async (req: NextRequest, { sess
           actorRole: session.role,
           action: "BULK_IMPORT_STUDENTS",
           target: `${inserted.length} students`,
-          ip: req.headers.get("x-forwarded-for") ?? "127.0.0.1",
+          ip: getClientIp(req),
         });
       } catch (auditError) {
         console.error("Bulk student import audit failed:", auditError);

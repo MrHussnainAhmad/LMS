@@ -217,7 +217,10 @@ async function isAnnouncementRecipient(announcement: AnnouncementRow, session: J
     const [recipient] = await db
       .select({ id: students.id })
       .from(students)
-      .where(and(...baseConditions))
+      .where(and(
+        eq(students.institutionId, announcement.institutionId),
+        ...baseConditions,
+      ))
       .limit(1);
 
     return Boolean(recipient);

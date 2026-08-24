@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { institutions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { requireRole, getTenantContext } from "@/lib/rbac";
+import { invalidateStudentEnrichCache } from "@/lib/redis";
 
 export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
@@ -64,6 +65,10 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
       await db.update(institutions)
         .set({ allowGraduatedStudentAccess: Boolean(allowGraduatedStudentAccess) })
         .where(eq(institutions.id, institutionId));
+      // This flag gates graduated students' access, and cached session
+      // enrichment (lib/auth.ts) carries a copy of it — clear it so the toggle
+      // takes effect on the next request rather than after the cache TTL.
+      await invalidateStudentEnrichCache(institutionId);
       return NextResponse.json({ success: true });
     }
 

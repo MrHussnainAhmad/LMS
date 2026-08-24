@@ -2,12 +2,33 @@ export const dynamic = 'force-dynamic';
 import { MetadataRoute } from 'next'
 import { db } from "@/db";
 import { platformPages, blogs } from "@/db/schema";
- 
+
+const privateRoutePrefixes = [
+  'admin',
+  'sa',
+  'employee',
+  'student',
+  'institution',
+  'staff',
+  'api',
+  'employee-login',
+  'institution-login',
+  'login/super-admin',
+];
+
+function isPublicRouteSlug(slug: string): boolean {
+  const normalizedSlug = slug.trim().replace(/^\/+|\/+$/g, '').toLowerCase();
+
+  return normalizedSlug.length > 0 && !privateRoutePrefixes.some(
+    (prefix) => normalizedSlug === prefix || normalizedSlug.startsWith(`${prefix}/`),
+  );
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const pages = await db.select({ slug: platformPages.slug, updatedAt: platformPages.updatedAt }).from(platformPages);
   const allBlogs = await db.select({ slug: blogs.slug, updatedAt: blogs.updatedAt }).from(blogs);
   
-  const dynamicRoutes = pages.map((page) => ({
+  const dynamicRoutes = pages.filter((page) => isPublicRouteSlug(page.slug)).map((page) => ({
     url: `https://nisaab360.app/${page.slug}`,
     lastModified: page.updatedAt || new Date(),
     changeFrequency: 'weekly' as const,

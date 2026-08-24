@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { redis } from './redis';
+import { getClientIp } from './client-ip';
 
 export type PlatformLoginKind = 'super-admin' | 'mini-admin' | 'employee';
 
@@ -11,7 +12,8 @@ export type RateLimitBucket =
   | 'import'
   | 'heartbeat'
   | 'unread'
-  | 'marks_write';
+  | 'marks_write'
+  | 'upload';
 
 const BUCKET_LIMITS: Record<RateLimitBucket, { limit: number; windowSeconds: number }> = {
   auth: { limit: 5, windowSeconds: 60 },
@@ -22,24 +24,30 @@ const BUCKET_LIMITS: Record<RateLimitBucket, { limit: number; windowSeconds: num
   heartbeat: { limit: 20, windowSeconds: 60 },
   unread: { limit: 60, windowSeconds: 60 },
   marks_write: { limit: 30, windowSeconds: 60 },
+  // A signature is an upload capability and each one costs Cloudinary quota.
+  // 20/min is far above any real flow (one signature per file picked by hand)
+  // and is keyed per account, not per IP.
+  upload: { limit: 20, windowSeconds: 60 },
 };
 
+/**
+ * One round trip, atomic. The previous GET → compare → MULTI(INCR[, EXPIRE])
+ * sequence had two defects: concurrent requests all read the same pre-limit value
+ * and all passed, and a skipped EXPIRE could leave the key with no TTL at all —
+ * a permanent lockout for that IP. `EXPIRE … NX` sets the window exactly once and
+ * the decision is made from INCR's own return value.
+ */
 async function checkRateLimit(key: string, limit: number, windowSeconds: number): Promise<boolean> {
   if (redis.status !== 'ready') return true;
 
   try {
-    const current = await redis.get(key);
-    if (current && parseInt(current, 10) >= limit) {
-      return false;
-    }
+    const result = await redis.multi().incr(key).expire(key, windowSeconds, 'NX').exec();
+    if (!result || !result[0]) return true; // Transaction aborted — fail open.
 
-    const multi = redis.multi();
-    multi.incr(key);
-    if (!current) {
-      multi.expire(key, windowSeconds);
-    }
-    await multi.exec();
-    return true;
+    const [incrErr, count] = result[0];
+    if (incrErr || typeof count !== 'number') return true;
+
+    return count <= limit;
   } catch (err) {
     console.error('Rate limit error:', err);
     return true; // Fail open
@@ -47,7 +55,7 @@ async function checkRateLimit(key: string, limit: number, windowSeconds: number)
 }
 
 function clientIp(req: NextRequest) {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+  return getClientIp(req);
 }
 
 export async function withRateLimit(

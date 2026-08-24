@@ -217,7 +217,7 @@ export default function BatchResultDetailsPage({ params }: { params: Promise<{ i
             <DialogTitle>Publish Results</DialogTitle>
           </DialogHeader>
           <div className="py-4 text-stone-600">
-            Are you sure you want to publish these results? You won't be able to edit them afterwards.
+	            Are you sure you want to publish these results? You won&apos;t be able to edit them afterwards.
           </div>
           <div className="flex justify-end gap-3 mt-4">
             <Button variant="outline" onClick={() => setIsPublishModalOpen(false)} disabled={isPublishing}>

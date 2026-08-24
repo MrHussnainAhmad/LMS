@@ -6,6 +6,7 @@ import { requireRole } from '@/lib/rbac';
 import { z } from 'zod';
 import { sendEmail, AccountCreatedEmail } from '@/lib/email';
 import { logAudit } from '@/lib/audit';
+import { getClientIp } from '@/lib/client-ip';
 
 const createEmployeeSchema = z.object({
   name: z.string().min(2),
@@ -37,7 +38,7 @@ export const POST = requireRole(['SUPER_ADMIN'], async (req: NextRequest, { sess
       actorRole: session.role,
       action: 'CREATE_EMPLOYEE',
       target: `Employee ${emp.id}`,
-      ip: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+      ip: getClientIp(req),
     });
 
     await sendEmail({

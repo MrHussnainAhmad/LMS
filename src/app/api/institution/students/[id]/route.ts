@@ -131,7 +131,10 @@ export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (re
         classRollNumber,
         phone: body.phone || null
       })
-      .where(eq(students.id, student.id))
+      .where(and(
+        eq(students.id, student.id),
+        eq(students.institutionId, tenantId),
+      ))
       .returning({ id: students.id });
 
     if (!updated) {

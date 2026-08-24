@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
 import { students, staff } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,20 +12,28 @@ export async function GET(req: NextRequest) {
     }
 
     if (session.role === "STUDENT") {
+      if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       const [studentData] = await db
         .select({ token: students.expoPushToken })
         .from(students)
-        .where(eq(students.id, session.userId))
+        .where(and(
+          eq(students.id, session.userId),
+          eq(students.institutionId, session.institutionId),
+        ))
         .limit(1);
 
       return NextResponse.json({ hasPushToken: Boolean(studentData?.token) });
     }
 
     if (session.role === "STAFF") {
+      if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       const [staffData] = await db
         .select({ token: staff.expoPushToken })
         .from(staff)
-        .where(eq(staff.id, session.userId))
+        .where(and(
+          eq(staff.id, session.userId),
+          eq(staff.institutionId, session.institutionId),
+        ))
         .limit(1);
 
       return NextResponse.json({ hasPushToken: Boolean(staffData?.token) });
@@ -53,20 +61,34 @@ export async function POST(req: NextRequest) {
     }
 
     if (session.role === "STUDENT") {
-      const studentData = await db.select({ token: students.expoPushToken }).from(students).where(eq(students.id, session.userId));
+      if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      const studentData = await db.select({ token: students.expoPushToken }).from(students).where(and(
+        eq(students.id, session.userId),
+        eq(students.institutionId, session.institutionId),
+      ));
       if (studentData[0]?.token !== token) {
         await db
           .update(students)
           .set({ expoPushToken: token })
-          .where(eq(students.id, session.userId));
+          .where(and(
+            eq(students.id, session.userId),
+            eq(students.institutionId, session.institutionId),
+          ));
       }
     } else if (session.role === "STAFF") {
-      const staffData = await db.select({ token: staff.expoPushToken }).from(staff).where(eq(staff.id, session.userId));
+      if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      const staffData = await db.select({ token: staff.expoPushToken }).from(staff).where(and(
+        eq(staff.id, session.userId),
+        eq(staff.institutionId, session.institutionId),
+      ));
       if (staffData[0]?.token !== token) {
         await db
           .update(staff)
           .set({ expoPushToken: token })
-          .where(eq(staff.id, session.userId));
+          .where(and(
+            eq(staff.id, session.userId),
+            eq(staff.institutionId, session.institutionId),
+          ));
       }
     } else {
       return NextResponse.json({ error: "Only students and staff can register push tokens" }, { status: 403 });

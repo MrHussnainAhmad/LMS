@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql, SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { batchExamResults, batchExamSubjects, batchExams, classes, gradingScales, sections, studentPromotions, students } from "@/db/schema";
+import { invalidateStudentEnrichCache } from "@/lib/redis";
 
 const numericRoll = (value: string) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const classRank = (classRow: { level: number; name: string }) => {
@@ -26,9 +27,12 @@ export async function autoPromotePublishedBatch(batchExamId: number) {
   if (!subjectRows.length || subjectRows.some((subject) => !subject.published)) return { promoted: false, reason: "awaiting_subjects" };
   const [scale] = await db.select().from(gradingScales).where(eq(gradingScales.institutionId, exam.institutionId)).limit(1);
   if (!scale) return { promoted: false, reason: "missing_grading_scale" };
-  const conditions = [eq(students.institutionId, exam.institutionId), eq(students.classId, exam.classId), eq(students.isActive, true), eq(students.academicStatus, "ACTIVE" as const)];
+  const conditions = [eq(students.classId, exam.classId), eq(students.isActive, true), eq(students.academicStatus, "ACTIVE" as const)];
   if (exam.sectionId) conditions.push(eq(students.sectionId, exam.sectionId));
-  const sourceStudents = await db.select().from(students).where(and(...conditions));
+  const sourceStudents = await db.select().from(students).where(and(
+    eq(students.institutionId, exam.institutionId),
+    ...conditions,
+  ));
   if (!sourceStudents.length) return { promoted: false, reason: "no_students" };
   const subjectIds = subjectRows.map((subject) => subject.id);
   const resultRows = await db.select({ studentId: batchExamResults.studentId, obtained: batchExamResults.marksObtained, total: batchExamSubjects.maxMarks }).from(batchExamResults).innerJoin(batchExamSubjects, eq(batchExamResults.batchExamSubjectId, batchExamSubjects.id)).where(inArray(batchExamResults.batchExamSubjectId, subjectIds));
@@ -63,7 +67,10 @@ export async function autoPromotePublishedBatch(batchExamId: number) {
     if (targetClass) {
       const destinationSections = await tx.select().from(sections).where(and(eq(sections.institutionId, exam.institutionId), eq(sections.classId, targetClass.id)));
       if (!destinationSections.length) throw new Error("Destination class must have a section before promotion");
-      const sourceSections = await tx.select().from(sections).where(eq(sections.classId, exam.classId));
+      const sourceSections = await tx.select().from(sections).where(and(
+        eq(sections.classId, exam.classId),
+        eq(sections.institutionId, exam.institutionId),
+      ));
       const destinationsByName = new Map(destinationSections.map((section) => [section.name.toLowerCase(), section])); const sourceById = new Map(sourceSections.map((section) => [section.id, section]));
 
       // Group students by destination section so the classId/sectionId/status move is a handful
@@ -140,5 +147,9 @@ export async function autoPromotePublishedBatch(batchExamId: number) {
 
     await tx.insert(studentPromotions).values([...passing.map((student) => ({ institutionId: exam.institutionId, studentId: student.id, fromClassId: exam.classId, toClassId: targetClass?.id || null, status: targetClass ? "PROMOTED" as const : "GRADUATED" as const, fromRollNumber: originalRolls.get(student.id), toRollNumber: assignedRolls.get(student.id) || null })), ...retained.map((student) => ({ institutionId: exam.institutionId, studentId: student.id, fromClassId: exam.classId, toClassId: exam.classId, status: "RETAINED" as const, fromRollNumber: originalRolls.get(student.id), toRollNumber: assignedRolls.get(student.id) || null }))]);
   });
+  // academicStatus just changed for these students, so the cached session
+  // enrichment (lib/auth.ts) must not keep answering with the old status — that
+  // is what gates graduated-student access.
+  await invalidateStudentEnrichCache(exam.institutionId, sourceStudents.map((student) => student.id));
   return { promoted: true, promotedCount: passing.length, retainedCount: retained.length, graduatedCount: targetClass ? 0 : passing.length };
 }

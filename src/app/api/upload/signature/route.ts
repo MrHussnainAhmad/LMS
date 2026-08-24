@@ -1,9 +1,34 @@
 import { NextResponse } from 'next/server';
 import cloudinary from '@/lib/cloudinary';
 import { requireRole } from '@/lib/rbac';
+import { withRateLimit } from '@/lib/rate-limit';
+import { bodyTooLargeResponse, readJsonBody } from '@/lib/http';
 
-export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'SUPER_ADMIN'], async (req) => {
+/**
+ * The signed `folder` was previously whatever the caller asked for. A signature is
+ * a capability: signing an arbitrary folder let any authenticated student mint
+ * upload credentials into any namespace (mixing user content into the folders used
+ * for institution logos, signatures and proofs), and the route had no rate limit at
+ * all, so it doubled as an unmetered way to burn the Cloudinary quota.
+ *
+ * These are the only two folders any client actually requests — every other caller
+ * sends no body and gets the default.
+ */
+const ALLOWED_UPLOAD_FOLDERS = new Set(['lms-uploads', 'vouchers']);
+const DEFAULT_UPLOAD_FOLDER = 'lms-uploads';
+
+/** Nothing legitimate sends more than a single short folder name. */
+const MAX_SIGNATURE_BODY_BYTES = 1024;
+
+export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'SUPER_ADMIN'], async (req, { session }) => {
   try {
+    // Keyed per account rather than per IP so a whole school behind one NAT
+    // address is not throttled as a single client.
+    const limited = await withRateLimit(req, 'upload', `${session.role}:${session.userId}`);
+    if (!limited.success) {
+      return NextResponse.json({ error: 'Too many upload requests. Please try again in a moment.' }, { status: 429 });
+    }
+
     const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME;
     const apiKey = process.env.CLOUDINARY_API_KEY;
     const apiSecret = process.env.CLOUDINARY_API_SECRET;
@@ -15,11 +40,18 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'SUPER_ADMIN
       );
     }
 
-    const body = await req.json().catch(() => ({}));
-    const folder = body.folder || 'lms-uploads';
+    // Most callers POST with no body at all, which is treated as "use the default".
+    const body = await readJsonBody<{ folder?: unknown }>(req, MAX_SIGNATURE_BODY_BYTES);
+    if (!body.ok && body.status === 413) return bodyTooLargeResponse();
 
-    const timestamp = Math.round(new Date().getTime() / 1000);
-    
+    const requestedFolder = body.ok && typeof body.data?.folder === 'string' ? body.data.folder : '';
+    if (requestedFolder && !ALLOWED_UPLOAD_FOLDERS.has(requestedFolder)) {
+      return NextResponse.json({ error: 'Unsupported upload folder' }, { status: 400 });
+    }
+    const folder = requestedFolder || DEFAULT_UPLOAD_FOLDER;
+
+    const timestamp = Math.round(Date.now() / 1000);
+
     // Cloudinary signature generation
     const signature = cloudinary.utils.api_sign_request(
       {
@@ -29,12 +61,15 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'SUPER_ADMIN
       apiSecret
     );
 
-    return NextResponse.json({
-      signature,
-      timestamp,
-      cloudName,
-      apiKey,
-    });
+    return NextResponse.json(
+      {
+        signature,
+        timestamp,
+        cloudName,
+        apiKey,
+      },
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   } catch (err) {
     console.error('Cloudinary Signature Error:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

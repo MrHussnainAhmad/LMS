@@ -6,10 +6,19 @@ import {
   students,
 } from "@/db/schema";
 import { createBulkNotificationsImmediately } from "@/lib/notifications";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 const KARACHI_TIME_ZONE = "Asia/Karachi";
-const INSERT_CHUNK_SIZE = 200;
+
+/**
+ * Rows per INSERT statement. 1 000 rows × 9 columns is ~9 000 bind parameters,
+ * comfortably under Postgres' 65 535 limit, and issues 5× fewer round trips than
+ * the previous 200 on the once-a-month passes that do insert a full roster.
+ */
+const INSERT_CHUNK_SIZE = 1_000;
+
+/** Bind-parameter budget for the automation-key existence probe below. */
+const KEY_LOOKUP_CHUNK_SIZE = 2_000;
 
 type MonthState = {
   year: number;
@@ -103,17 +112,37 @@ export async function processFeeVoucherSchedules(now = new Date()) {
       continue;
     }
 
-    const activeStudents = await db
+    // Only the active students that do not yet have a cycle for this billing
+    // month, resolved in one indexed anti-join.
+    //
+    // Previously this pulled the entire active roster into memory and re-offered
+    // every student to `INSERT ... ON CONFLICT DO NOTHING` — every hour, for the
+    // rest of the month. For 50 institutions × 2 000 students that is ~100 000
+    // no-op insert rows an hour, each one a unique-index probe plus WAL, on the
+    // same PgBouncer pool that serves live requests. Steady state is now a single
+    // query that returns zero rows.
+    //
+    // The anti-join uses fee_voucher_cycles_institution_student_month_unique
+    // (institution_id, student_id, billing_month) as a nested-loop probe, and the
+    // semantics are identical: a student whose cycle row was deleted reappears
+    // here and is recreated, so the self-healing design is preserved.
+    const studentsMissingCycle = await db
       .select({ id: students.id })
       .from(students)
+      .leftJoin(feeVoucherCycles, and(
+        eq(feeVoucherCycles.institutionId, institution.id),
+        eq(feeVoucherCycles.studentId, students.id),
+        eq(feeVoucherCycles.billingMonth, month.billingMonth),
+      ))
       .where(and(
         eq(students.institutionId, institution.id),
         eq(students.isActive, true),
         eq(students.academicStatus, "ACTIVE"),
         isNull(students.deletedAt),
+        isNull(feeVoucherCycles.id),
       ));
 
-    for (const studentChunk of chunkArray(activeStudents)) {
+    for (const studentChunk of chunkArray(studentsMissingCycle)) {
       const insertedCycles = await db
         .insert(feeVoucherCycles)
         .values(studentChunk.map((student) => ({
@@ -153,6 +182,21 @@ export async function processFeeVoucherSchedules(now = new Date()) {
 
       if (openingAnnouncement) {
         summary.announcementsCreated += 1;
+        // The full roster is only needed here, and this branch runs at most once
+        // per institution per month: the insert above is guarded by a unique
+        // automation key, so `openingAnnouncement` is undefined on every
+        // subsequent hourly pass. Fetching it lazily keeps the roster SELECT out
+        // of the steady-state path entirely.
+        const activeStudents = await db
+          .select({ id: students.id })
+          .from(students)
+          .where(and(
+            eq(students.institutionId, institution.id),
+            eq(students.isActive, true),
+            eq(students.academicStatus, "ACTIVE"),
+            isNull(students.deletedAt),
+          ));
+
         for (const studentChunk of chunkArray(activeStudents)) {
           await createBulkNotificationsImmediately(studentChunk.map((student) => ({
             institutionId: institution.id,
@@ -198,7 +242,37 @@ export async function processFeeVoucherSchedules(now = new Date()) {
         eq(feeVoucherCycles.status, "LATE"),
       ));
 
-    for (const studentChunk of chunkArray(lateCycles)) {
+    const lateAnnouncementKey = (studentId: number) =>
+      `fee-voucher:late:${institution.id}:${studentId}:${month.billingMonth}`;
+
+    // Which of those already have their announcement. The repair pass used to
+    // re-offer every late cycle to `ON CONFLICT DO NOTHING` on every hourly run
+    // for the rest of the month; reading the existing automation keys instead
+    // turns the steady state into zero insert statements, zero WAL and zero dead
+    // tuples. Self-healing is unchanged — a deleted announcement row is simply
+    // absent from this set, so it is recreated on the next pass.
+    //
+    // Chunked because a whole institution can be late at once, and probed through
+    // the unique index on announcements.automation_key.
+    const existingAnnouncementKeys = new Set<string>();
+    for (const keyChunk of chunkArray(lateCycles.map((cycle) => lateAnnouncementKey(cycle.studentId)), KEY_LOOKUP_CHUNK_SIZE)) {
+      const rows = await db
+        .select({ automationKey: announcements.automationKey })
+        .from(announcements)
+        .where(and(
+          eq(announcements.institutionId, institution.id),
+          inArray(announcements.automationKey, keyChunk),
+        ));
+      for (const row of rows) {
+        if (row.automationKey) existingAnnouncementKeys.add(row.automationKey);
+      }
+    }
+
+    const cyclesNeedingAnnouncement = lateCycles.filter(
+      (cycle) => !existingAnnouncementKeys.has(lateAnnouncementKey(cycle.studentId)),
+    );
+
+    for (const studentChunk of chunkArray(cyclesNeedingAnnouncement)) {
       const insertedAnnouncements = await db
         .insert(announcements)
         .values(studentChunk.map((student) => ({
