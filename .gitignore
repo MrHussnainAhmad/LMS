@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-locked-*/
 /out/
 
 # production
@@ -56,6 +57,19 @@ yarn-error.log*
 !/drizzle/0016_institution_level_features.sql
 !/drizzle/0017_batch_exam_promotion_type.sql
 !/drizzle/0027_software_version.sql
+!/drizzle/0028_institution_public_slug.sql
+!/drizzle/0029_institution_public_profiles.sql
+!/drizzle/0030_admissions_intake.sql
+!/drizzle/0031_admission_applicant_accounts.sql
+!/drizzle/0032_admission_review_pipeline.sql
+!/drizzle/0033_admission_fee_enrollment.sql
+!/drizzle/0034_admission_review_queue_indexes.sql
+!/drizzle/0035_admission_cycle_workflow_presets.sql
+!/drizzle/0036_public_website_content.sql
+!/drizzle/0037_fee_management.sql
+!/drizzle/0038_fee_register_performance.sql
+!/drizzle/0051_parent_identity.sql
+!/drizzle/0052_assessment_result_publishing.sql
 !/drizzle/0006_login_lookup_indexes.sql
 !/drizzle/0007_push_preferences_default_enabled.sql
 
@@ -74,13 +88,30 @@ yarn-error.log*
 /clear_*.ts
 /clear_*.mjs
 /scripts/wipe.ts
+/scripts/wipe-database.ts
+/scripts/wipe*.ts
 /scripts/clear-assignments.ts
 /scripts/create-super-admin.ts
+/scripts/create-sa.ts
 /scripts/apply-online-tests-schema.mjs
 /scripts/*.local.*
 /scripts/migrate*.ts
 /scripts/migrate*.mjs
+!/scripts/migrate-production.mjs
 /scripts/apply-*.ts
+# Never publish seed / fake-data / local flood helpers (wrong hands can spam DB)
+/scripts/seed*.ts
+/scripts/seed*.mjs
+/scripts/seed*.js
+/scripts/login-smoke-test.ts
+/scripts/login-candidate-integration.ts
+/scripts/run-login-candidate-docker-test.ts
+/scripts/verify-parent-assessment-workflows.mjs
+/seed-admin.ts
+/seed-data.ts
+/seed-sa.ts
+/seed*.ts
+/insert-sa.sql
 
 # local tooling and editor state
 /.agents/
@@ -116,12 +147,6 @@ instituion_settings.png
 
 # local backups and scratchpads
 /k6/
-/insert-sa.sql
-/scripts/create-sa.ts
-/scripts/seed-diary-data.ts
-/seed-admin.ts
-/seed-data.ts
-/seed-sa.ts
 /fix-log.md
 /SMOKE_TEST.md
 /CLOUDFLARE.md
