@@ -10,7 +10,8 @@ import { getClientIp } from '@/lib/client-ip';
 import { invalidateUserValidity } from '@/lib/user';
 
 export const POST = requireRole(['SUPER_ADMIN', 'EMPLOYEE'], async (req: NextRequest, { params, session }) => {
-  const institutionId = parseInt(params.id, 10);
+  const { id } = await params;
+  const institutionId = parseInt(id, 10);
   if (isNaN(institutionId)) {
     return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
   }

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { employees, institutionAdmins, institutions, refreshTokens, staff, students, superAdmins } from '@/db/schema';
+import { employees, institutionAdmins, institutions, parentAccounts, staff, students, superAdmins } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import crypto from 'crypto';
-import { clearAuthCookies, createAccessToken, setAuthCookies } from '@/lib/auth';
+import { clearAuthCookies, createAccessToken, revokeAllSessions, revokeRefreshToken, rotateRefreshToken, setAuthCookies } from '@/lib/auth';
 import type { JWTPayload, UserRole } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import { withRateLimit } from '@/lib/rate-limit';
@@ -99,6 +98,28 @@ async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPay
         createdAt: user.createdAt.toISOString(),
       } : null;
     }
+    case 'PARENT': {
+      const [user] = await db.select({
+        institutionId: parentAccounts.institutionId,
+        mustChangePassword: parentAccounts.mustChangePassword,
+        status: parentAccounts.status,
+        passwordHash: parentAccounts.passwordHash,
+        deletedAt: parentAccounts.deletedAt,
+        institutionStatus: institutions.status,
+        createdAt: parentAccounts.createdAt,
+      })
+        .from(parentAccounts)
+        .innerJoin(institutions, eq(parentAccounts.institutionId, institutions.id))
+        .where(eq(parentAccounts.id, userId))
+        .limit(1);
+      return user && user.deletedAt === null && user.status !== 'DISABLED' && user.passwordHash && user.institutionStatus === 'APPROVED' ? {
+        userId,
+        role,
+        institutionId: user.institutionId,
+        mustChangePassword: user.mustChangePassword,
+        createdAt: user.createdAt.toISOString(),
+      } : null;
+    }
     default:
       return null;
   }
@@ -125,41 +146,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No refresh token' }, { status: 401 });
   }
 
-  const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-  const [record] = await db.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, tokenHash)).limit(1);
-
-  if (!record) {
+  const rotation = await rotateRefreshToken(refreshToken);
+  if (rotation.status !== 'ROTATED') {
     await clearAuthCookies();
     return NextResponse.json({ error: 'Invalid or expired refresh token' }, { status: 401 });
   }
 
-  if (record.revokedAt) {
-    await clearAuthCookies();
-    return NextResponse.json({ error: 'Invalid or expired refresh token' }, { status: 401 });
-  }
-
-  if (record.expiresAt < new Date()) {
-    await db.update(refreshTokens).set({ revokedAt: new Date() }).where(eq(refreshTokens.id, record.id));
-    await clearAuthCookies();
-    return NextResponse.json({ error: 'Invalid or expired refresh token' }, { status: 401 });
-  }
-
-  const payload = await getCurrentPayload(record.userRole, record.userId);
+  const payload = await getCurrentPayload(rotation.userRole, rotation.userId);
   if (!payload) {
-    await db.delete(refreshTokens).where(eq(refreshTokens.id, record.id));
+    await revokeRefreshToken(rotation.refreshToken);
+    await revokeAllSessions(rotation.userRole, rotation.userId);
     await clearAuthCookies();
     return NextResponse.json({ error: 'Account is unavailable' }, { status: 401 });
   }
 
   const accessToken = await createAccessToken(payload);
-  await setAuthCookies(accessToken, refreshToken);
+  await setAuthCookies(accessToken, rotation.refreshToken);
 
   return NextResponse.json(
     {
       message: 'Token refreshed',
       // Native clients that posted the token get the rotated pair back in the
       // body; web clients rely on the cookies set above. Unchanged behaviour.
-      ...(bodyRefreshToken ? { accessToken, refreshToken } : {}),
+      ...(bodyRefreshToken ? { accessToken, refreshToken: rotation.refreshToken } : {}),
     },
     // This body can carry bearer tokens: never let an intermediary store it.
     { headers: { 'Cache-Control': 'no-store' } },

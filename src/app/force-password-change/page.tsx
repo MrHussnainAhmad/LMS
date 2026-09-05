@@ -22,7 +22,7 @@ export default function ForcePasswordChangePage() {
     const newPassword = formData.get("newPassword");
 
     try {
-      await api.post("/api/auth/change-password", {
+      const result = await api.post<{ role?: string }>("/api/auth/change-password", {
         currentPassword,
         newPassword,
       });
@@ -31,7 +31,7 @@ export default function ForcePasswordChangePage() {
       
       // Logout and redirect to login
       await api.post("/api/auth/logout", {});
-      window.location.replace("/login");
+      window.location.replace(result.role === "PARENT" ? "/parent-login" : "/login");
     } catch (err: unknown) {
       toast({
         title: "Error",

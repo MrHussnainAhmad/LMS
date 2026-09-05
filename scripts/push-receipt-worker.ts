@@ -1,7 +1,8 @@
 import { checkExpoPushReceipts, pruneResolvedPushTickets } from "@/lib/notifications";
-import { processFeeVoucherSchedules } from "@/lib/fee-voucher-schedule";
 import { pruneExpiredRefreshTokens } from "@/lib/token-maintenance";
 import { gracefulShutdown } from "@/lib/process-lifecycle";
+import { enqueueScheduledInstitutionBackups, processNextInstitutionBackup, pruneInstitutionBackups } from "@/lib/institution-backups";
+import { processEmailOutboxBatch } from "@/lib/email-outbox";
 
 const DEFAULT_INTERVAL_MS = 60_000;
 const MIN_INTERVAL_MS = 10_000;
@@ -13,9 +14,10 @@ const intervalMs = Number.isFinite(intervalFromEnvironment) && intervalFromEnvir
 let stopping = false;
 let timer: NodeJS.Timeout | undefined;
 let runInFlight: Promise<void> | undefined;
-let lastFeeVoucherScheduleHour: number | undefined;
 let lastTokenPruneHour: number | undefined;
 let lastTicketPruneHour: number | undefined;
+let lastInstitutionBackupScheduleHour: number | undefined;
+let lastInstitutionBackupPruneDay: string | undefined;
 
 /**
  * Run a maintenance task at most once per wall-clock hour.
@@ -42,14 +44,53 @@ async function runHourly(
 }
 
 async function runOnce() {
+  const currentHour = Math.floor(Date.now() / 3_600_000);
+  try {
+    const result = await processEmailOutboxBatch();
+    if (result.claimed > 0) console.info("Email outbox processed", result);
+  } catch (error) {
+    console.error("Email outbox processing failed", error);
+  }
+  if (lastInstitutionBackupScheduleHour !== currentHour) {
+    try {
+      await enqueueScheduledInstitutionBackups();
+      lastInstitutionBackupScheduleHour = currentHour;
+    } catch (error) {
+      console.error('Institution backup scheduling failed', error);
+    }
+  }
+
+  try {
+    const completed: number[] = [];
+    // Sequential processing keeps database pressure bounded while allowing a
+    // larger tenant fleet to finish its daily queue promptly.
+    for (let index = 0; index < 5; index += 1) {
+      const result = await processNextInstitutionBackup();
+      if (result.processed === 0) break;
+      if (result.backupId) completed.push(result.backupId);
+    }
+    if (completed.length > 0) console.info('Institution backups completed', { backupIds: completed });
+  } catch (error) {
+    console.error('Institution backup processing failed', error);
+  }
+
+  const currentDay = new Date().toISOString().slice(0, 10);
+  if (lastInstitutionBackupPruneDay !== currentDay) {
+    try {
+      const result = await pruneInstitutionBackups();
+      lastInstitutionBackupPruneDay = currentDay;
+      if (result.deleted > 0) console.info('Institution backup retention completed', result);
+    } catch (error) {
+      console.error('Institution backup retention failed', error);
+    }
+  }
+
   try {
     const result = await checkExpoPushReceipts();
     console.info("Push receipt worker completed", result);
   } catch (error) {
     console.error("Push receipt worker failed", error);
   }
-
-  const currentHour = Math.floor(Date.now() / 3_600_000);
 
   lastTokenPruneHour = await runHourly(
     "Refresh token prune",
@@ -65,16 +106,6 @@ async function runOnce() {
     pruneResolvedPushTickets,
   );
 
-  if (lastFeeVoucherScheduleHour === currentHour) return;
-
-  try {
-    const result = await processFeeVoucherSchedules();
-    lastFeeVoucherScheduleHour = currentHour;
-    console.info("Fee voucher schedule completed", result);
-  } catch (error) {
-    // Leave the hour unset so the next worker interval retries safely.
-    console.error("Fee voucher schedule failed", error);
-  }
 }
 
 async function scheduleNextRun() {

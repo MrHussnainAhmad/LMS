@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { createSubjectAction, createClassAction } from "@/app/actions/institution-actions";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { AddSectionForm } from "./AddSectionForm";
+import { displaySectionName } from "@/lib/class-section-label";
 
 export default async function InstitutionAcademicsPage() {
   const session = await getSession();
@@ -110,19 +111,20 @@ export default async function InstitutionAcademicsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
-            <form action={createSubject} className="space-y-4">
+            <form action={createSubject} className="space-y-4 pt-2">
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Subject Name</label>
+                <label className="mb-2 block text-sm font-medium text-stone-700">Subject Name or Names</label>
                 <input
                   type="text"
                   name="name"
                   required
                   className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  placeholder="e.g. Advanced Mathematics"
+                  placeholder="Mathematics, English, Computer Science"
                 />
+                <p className="mt-1.5 text-xs leading-5 text-stone-500">Separate multiple subjects with commas. Example: Mathematics, English, Computer Science.</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Subject Code (Optional)</label>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Subject Code (Optional, single subject only)</label>
                 <input
                   type="text"
                   name="code"
@@ -168,14 +170,15 @@ export default async function InstitutionAcademicsPage() {
                   )}
                   {allClasses.map((cls) => {
                     const clsSections = sectionsByClass.get(cls.id) || [];
+                    const visibleSections = clsSections.filter((entry) => displaySectionName(entry.section.name));
                     return (
                       <tr key={cls.id} className="hover:bg-stone-50/50 transition-colors">
                         <td className="px-6 py-4 font-semibold text-brand-950">{cls.name}{cls.isFinalClass && <span className="ml-2 rounded bg-amber-100 px-2 py-1 text-xs text-amber-800">Final class</span>}</td>
                         <td className="px-6 py-4">
                           <div className="flex flex-wrap gap-2">
-                            {clsSections.length === 0 ? <span className="text-stone-400 text-xs">None</span> : clsSections.map(s => (
+                            {visibleSections.map(s => (
                               <span key={s.section.id} className="px-2 py-1 bg-brand-100 text-brand-800 text-xs rounded-md font-medium">
-                                {s.section.name}
+                                {displaySectionName(s.section.name)}
                               </span>
                             ))}
                           </div>
@@ -199,9 +202,9 @@ export default async function InstitutionAcademicsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
-              <form action={createClass} className="space-y-4">
+              <form action={createClass} className="space-y-4 pt-2">
                 <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Class Name</label>
+                  <label className="mb-2 block text-sm font-medium text-stone-700">Class Name</label>
                   <input
                     type="text"
                     name="name"

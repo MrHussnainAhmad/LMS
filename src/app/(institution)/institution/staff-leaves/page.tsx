@@ -33,7 +33,7 @@ export default async function InstitutionStaffLeavesPage() {
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Staff Leave Requests</h1>
+        <h1 className="text-3xl font-display font-bold text-brand-950">Staff Leave Requests</h1>
         <p className="text-muted-foreground mt-2">
           Manage leave applications from teaching and non-teaching staff.
         </p>

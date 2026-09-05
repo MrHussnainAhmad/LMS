@@ -18,11 +18,15 @@ import { getSession } from "@/lib/auth";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import cloudinary from "@/lib/cloudinary";
+import type { JWTPayload } from "@/lib/auth-types";
+import { ownsUploadPublicId } from "@/lib/upload-ownership";
+import Papa from "papaparse";
+import { invalidateStudentMarksCaches } from "@/lib/redis";
 
 const STAFF_TEST_TYPES = new Set(["DAILY", "WEEKLY", "QUIZ"]);
 const INSTITUTION_EXAM_TYPES = new Set(["MONTHLY", "MID", "FINAL", "PROMOTION"]);
 const MAX_SUBMISSION_BYTES = 5 * 1024 * 1024;
-const ALLOWED_SUBMISSION_FORMATS = new Set(["pdf", "docx", "jpg", "jpeg", "png", "webp"]);
+const ALLOWED_SUBMISSION_FORMATS = new Set(["pdf", "docx", "txt", "jpg", "jpeg", "png", "webp"]);
 
 function parseLocalDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
@@ -171,7 +175,7 @@ export async function createStaffAssignmentAction(formData: FormData) {
   if (subjectId) await requireInstitutionSubjects(session.institutionId, [subjectId]);
 
   const referenceResource = referenceFileKey
-    ? await verifyCloudinarySubmission(referenceFileKey)
+    ? await verifyCloudinarySubmission(referenceFileKey, session)
     : null;
 
   await db.insert(assignments).values({
@@ -223,6 +227,7 @@ export async function createStaffAssessmentAction(formData: FormData) {
       title,
       maxMarks,
       date,
+      resultsPublishedAt: null,
     });
   }
 
@@ -264,6 +269,7 @@ export async function createInstitutionExamAction(formData: FormData) {
       maxMarks,
       date: examSchedule.dates[index],
       endDate: examSchedule.endDate,
+      resultsPublishedAt: new Date(),
     });
   }
 
@@ -329,6 +335,7 @@ export async function updateInstitutionExamAction(formData: FormData) {
       maxMarks,
       date: examSchedule.dates[index],
       endDate: examSchedule.endDate,
+      resultsPublishedAt: new Date(),
     };
 
     if (existing) {
@@ -397,18 +404,35 @@ export async function deleteInstitutionExamAction(formData: FormData) {
 }
 
 function parseMarksCsv(text: string) {
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  return lines.map((line, index) => {
-    const [rollNumber, obtainedRaw, totalRaw] = line.split(",").map((part) => part?.trim());
+  const parsed = Papa.parse<string[]>(text.replace(/^\uFEFF/, ""), { skipEmptyLines: true });
+  if (parsed.errors.length > 0) throw new Error(`CSV could not be read: ${parsed.errors[0].message}`);
+  const rows = parsed.data.map((row) => row.map((cell) => String(cell ?? "").trim()));
+  if (rows.length === 0) throw new Error("CSV file is empty");
+
+  const normalizedHeader = rows[0].map((cell) => cell.toLowerCase().replace(/[^a-z]/g, ""));
+  const hasHeader = normalizedHeader.includes("rollnumber") || normalizedHeader.includes("marksobtained");
+  const rollIndex = hasHeader ? normalizedHeader.indexOf("rollnumber") : 0;
+  const nameIndex = hasHeader ? normalizedHeader.indexOf("studentname") : -1;
+  const obtainedIndex = hasHeader ? normalizedHeader.indexOf("marksobtained") : 1;
+  const totalIndex = hasHeader ? normalizedHeader.indexOf("totalmarks") : 2;
+  if (rollIndex < 0 || obtainedIndex < 0 || totalIndex < 0) {
+    throw new Error("CSV headers must include Roll Number, Marks Obtained, and Total Marks");
+  }
+
+  return rows.slice(hasHeader ? 1 : 0).map((row, index) => {
+    const rollNumber = row[rollIndex];
+    const studentName = nameIndex >= 0 ? row[nameIndex] : "";
+    const obtainedRaw = row[obtainedIndex];
+    const totalRaw = row[totalIndex];
     if (!rollNumber || !obtainedRaw || !totalRaw) {
-      throw new Error(`CSV row ${index + 1} must contain rollnumber, obtained marks, total marks`);
+      throw new Error(`CSV row ${index + (hasHeader ? 2 : 1)} is incomplete`);
     }
     const marksObtained = Number(obtainedRaw);
     const totalMarks = Number(totalRaw);
     if (!Number.isFinite(marksObtained) || !Number.isFinite(totalMarks) || marksObtained < 0 || totalMarks <= 0 || marksObtained > totalMarks) {
-      throw new Error(`CSV row ${index + 1} has invalid marks`);
+      throw new Error(`CSV row ${index + (hasHeader ? 2 : 1)} has invalid marks`);
     }
-    return { rollNumber, marksObtained, totalMarks };
+    return { rollNumber, studentName: studentName || null, marksObtained, totalMarks };
   });
 }
 
@@ -439,12 +463,17 @@ async function requireMarkableTest(session: { userId: number; institutionId: num
 }
 
 async function saveMarksForRecords(
-  session: { institutionId: number },
+  session: { userId: number; institutionId: number },
   test: typeof tests.$inferSelect,
-  records: { rollNumber: string; marksObtained: number; totalMarks: number }[],
+  sectionId: number,
+  records: { rollNumber: string; studentName?: string | null; marksObtained: number; totalMarks: number }[],
   options: { overwrite?: boolean } = {}
 ) {
   if (records.length === 0) throw new Error("No marks provided");
+  const section = await requireStaffSection(session.userId, session.institutionId, sectionId, test.subjectId);
+  if (section.classId !== test.classId || (test.sectionId && test.sectionId !== sectionId)) {
+    throw new Error("This assessment does not belong to the selected section");
+  }
 
   const expectedTotal = Number(test.maxMarks);
   const badTotal = records.find((record) => record.totalMarks !== expectedTotal);
@@ -460,6 +489,8 @@ async function saveMarksForRecords(
     and(
       eq(students.institutionId, session.institutionId),
       eq(students.classId, test.classId),
+      eq(students.sectionId, sectionId),
+      sql`${students.deletedAt} IS NULL`,
       inArray(students.classRollNumber, rollNumbers)
     )
   );
@@ -469,6 +500,12 @@ async function saveMarksForRecords(
   }
 
   const studentByRoll = new Map(studentRows.map((student) => [student.classRollNumber, student]));
+  for (const record of records) {
+    const student = studentByRoll.get(record.rollNumber);
+    if (record.studentName && student && record.studentName.toLocaleLowerCase() !== student.name.trim().toLocaleLowerCase()) {
+      throw new Error(`Student name does not match roll number ${record.rollNumber}`);
+    }
+  }
   const studentIds = studentRows.map((student) => student.id);
   const existingMarks = await db.select({ studentId: marks.studentId })
     .from(marks)
@@ -511,8 +548,12 @@ async function saveMarksForRecords(
     await db.insert(marks).values(insertData);
   }
 
+  await invalidateStudentMarksCaches(session.institutionId, studentIds);
+
   revalidatePath("/staff/marks");
   revalidatePath("/student/marks");
+  revalidatePath("/parent/dashboard");
+  revalidatePath("/parent/results");
 }
 
 export async function uploadMarksCsvAction(formData: FormData) {
@@ -521,12 +562,13 @@ export async function uploadMarksCsvAction(formData: FormData) {
   const staffSession = { userId: session.userId, institutionId: session.institutionId };
 
   const testId = toNumber(formData.get("testId"), "Assessment");
+  const sectionId = toNumber(formData.get("sectionId"), "Section");
   const file = formData.get("csv");
   if (!(file instanceof File) || file.size === 0) throw new Error("CSV file is required");
 
   const test = await requireMarkableTest(staffSession, testId);
   const records = parseMarksCsv(await file.text());
-  await saveMarksForRecords(staffSession, test, records, { overwrite: formData.get("overwrite") === "on" });
+  await saveMarksForRecords(staffSession, test, sectionId, records, { overwrite: formData.get("overwrite") === "on" });
 }
 
 export async function enterMarksManuallyAction(formData: FormData) {
@@ -535,6 +577,7 @@ export async function enterMarksManuallyAction(formData: FormData) {
   const staffSession = { userId: session.userId, institutionId: session.institutionId };
 
   const testId = toNumber(formData.get("testId"), "Assessment");
+  const sectionId = toNumber(formData.get("sectionId"), "Section");
   const totalMarks = Number(formData.get("totalMarks"));
   const rollNumbers = formData.getAll("rollNumber").map((value) => String(value).trim());
   const obtainedMarks = formData.getAll("marksObtained").map((value) => String(value).trim());
@@ -551,7 +594,51 @@ export async function enterMarksManuallyAction(formData: FormData) {
   });
 
   const test = await requireMarkableTest(staffSession, testId);
-  await saveMarksForRecords(staffSession, test, records, { overwrite: true });
+  await saveMarksForRecords(staffSession, test, sectionId, records, { overwrite: true });
+}
+
+export async function publishStaffAssessmentResultsAction(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== "STAFF" || !session.institutionId) throw new Error("Unauthorized");
+
+  const testId = toNumber(formData.get("testId"), "Assessment");
+  const sectionId = toNumber(formData.get("sectionId"), "Section");
+  const test = await requireMarkableTest({ userId: session.userId, institutionId: session.institutionId }, testId);
+  if (test.createdByRole !== "STAFF" || test.staffId !== session.userId || test.sectionId !== sectionId) {
+    throw new Error("Only the teacher who created this class assessment can publish it");
+  }
+  await requireStaffSection(session.userId, session.institutionId, sectionId, test.subjectId);
+
+  const [rosterCount] = await db.select({ value: sql<number>`count(*)::int` }).from(students).where(and(
+    eq(students.institutionId, session.institutionId),
+    eq(students.sectionId, sectionId),
+    sql`${students.deletedAt} IS NULL`
+  ));
+  const resultRows = await db.select({ studentId: marks.studentId })
+    .from(marks)
+    .innerJoin(students, eq(students.id, marks.studentId))
+    .where(and(
+      eq(marks.institutionId, session.institutionId),
+      eq(marks.testId, testId),
+      eq(students.institutionId, session.institutionId),
+      eq(students.sectionId, sectionId),
+      sql`${students.deletedAt} IS NULL`
+    ));
+  if (!rosterCount?.value) throw new Error("This section has no active students");
+  if (resultRows.length !== Number(rosterCount.value)) {
+    throw new Error(`Enter results for all ${rosterCount.value} students before publishing`);
+  }
+
+  await db.update(tests).set({ resultsPublishedAt: new Date() }).where(and(
+    eq(tests.id, testId),
+    eq(tests.institutionId, session.institutionId),
+    eq(tests.staffId, session.userId)
+  ));
+  await invalidateStudentMarksCaches(session.institutionId, resultRows.map((row) => row.studentId));
+  revalidatePath("/staff/marks");
+  revalidatePath("/student/marks");
+  revalidatePath("/parent/dashboard");
+  revalidatePath("/parent/results");
 }
 
 export async function saveStudentSubmission(assignmentId: number, fileKey: string) {
@@ -565,7 +652,7 @@ export async function saveStudentSubmission(assignmentId: number, fileKey: strin
   if (!assignment) throw new Error("Assignment not found");
   if (assignment.classId !== student.classId) throw new Error("This assignment is not for your class");
   if (assignment.sectionId && assignment.sectionId !== student.sectionId) throw new Error("This assignment is not for your section");
-  const cloudinaryResource = await verifyCloudinarySubmission(fileKey);
+  const cloudinaryResource = await verifyCloudinarySubmission(fileKey, session);
   const fileUrl = typeof cloudinaryResource.secure_url === "string"
     ? cloudinaryResource.secure_url
     : null;
@@ -584,8 +671,8 @@ export async function saveStudentSubmission(assignmentId: number, fileKey: strin
   revalidatePath("/student/submissions");
 }
 
-export async function verifyCloudinarySubmission(fileKey: string) {
-  if (!fileKey || fileKey.includes("://") || !fileKey.startsWith("lms-uploads/")) {
+export async function verifyCloudinarySubmission(fileKey: string, session: JWTPayload) {
+  if (!fileKey || fileKey.includes("://") || !ownsUploadPublicId(session, fileKey)) {
     throw new Error("Invalid uploaded file reference");
   }
 

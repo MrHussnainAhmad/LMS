@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { Check, FilePenLine, X } from "lucide-react";
+import { displaySectionName, formatClassSection } from "@/lib/class-section-label";
 
 type RequestRow = {
   id: number;
@@ -36,7 +37,7 @@ function formatFields(fields: Record<string, string | number>, classes: { id: nu
   return Object.entries(fields).map(([key, value]) => {
     let displayValue: string | number = value;
     if (key === "classId") displayValue = classes.find((classRow) => classRow.id === value)?.name || value;
-    if (key === "sectionId") displayValue = sections.find((section) => section.id === value)?.name || value;
+    if (key === "sectionId") displayValue = displaySectionName(sections.find((section) => section.id === value)?.name) || "";
     return { label: FIELD_LABELS[key] || key, value: displayValue };
   });
 }
@@ -111,7 +112,7 @@ export function StudentRequestsClient({
                         <StatusBadge status={request.status} />
                       </div>
                       <p className="mt-1 text-sm text-stone-500">
-                        Roll {request.rollNumber} - {request.className} {request.sectionName} - {request.loginRollNumber}
+                        Roll {request.rollNumber} - {formatClassSection(request.className, request.sectionName)} - {request.loginRollNumber}
                       </p>
 
                       <div className="mt-4 grid gap-3 md:grid-cols-2">

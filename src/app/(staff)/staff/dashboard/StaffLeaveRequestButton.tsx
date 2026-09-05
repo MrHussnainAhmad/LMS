@@ -1,14 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, Loader2 } from "lucide-react";
+import { CalendarDays, ChevronRight, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -58,10 +56,10 @@ export function StaffLeaveRequestButton() {
       setSingleDate("");
       setStartDate("");
       setEndDate("");
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Error",
-        description: err.message,
+        description: err instanceof Error ? err.message : "Failed to submit leave request",
         variant: "destructive",
       });
     } finally {
@@ -71,11 +69,19 @@ export function StaffLeaveRequestButton() {
 
   return (
     <>
-      <button onClick={() => setOpen(true)} className="flex flex-col items-center justify-center p-4 rounded-lg bg-orange-50 hover:bg-orange-100 hover:text-orange-800 transition-colors text-orange-600 text-center gap-2 border border-transparent hover:border-orange-200 focus:outline-none">
-        <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center shadow-sm">
-          <CalendarDays className="h-5 w-5" />
-        </div>
-        <span className="text-sm font-medium">Request Leave</span>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="group flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-3 text-left transition-colors hover:border-brand-100 hover:bg-brand-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-brand-900">
+          <CalendarDays className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-brand-950">Request leave</span>
+          <span className="block truncate text-xs text-stone-500">Send a leave request for approval</span>
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-stone-400 transition-transform group-hover:translate-x-0.5 group-hover:text-brand-700" aria-hidden="true" />
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -90,7 +96,7 @@ export function StaffLeaveRequestButton() {
                 <DialogTitle className="text-3xl font-display font-bold leading-tight mb-3">
                   Request<br/>a Leave
                 </DialogTitle>
-                <DialogDescription className="text-indigo-100 text-sm leading-relaxed">
+                <DialogDescription className="text-left text-indigo-100 text-sm leading-relaxed">
                   Submit a leave application to the administration. We value your well-being.
                 </DialogDescription>
               </div>
@@ -103,7 +109,7 @@ export function StaffLeaveRequestButton() {
             
             {/* Right Side: Form */}
             <div className="md:col-span-3 p-6 sm:p-8 bg-white">
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-6 pt-1 text-left">
                 <div className="space-y-3">
                   <Label className="text-stone-700 font-semibold text-sm">How long do you need?</Label>
                   <RadioGroup

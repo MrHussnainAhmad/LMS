@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { displaySectionName } from "@/lib/class-section-label";
 
 const W = 380;
 const H = 240;
@@ -21,11 +22,31 @@ const FLIP_CSS = `
 .idc-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:12px;overflow:hidden;}
 .idc-back{transform:rotateY(180deg);}
 @media print{
+  @page{size:A4 portrait;margin:0;}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
-  .idc-scene{height:auto!important;cursor:default;}
-  .idc-inner{position:static;display:flex;flex-direction:column;gap:16px;transform:none!important;}
-  .idc-face{position:relative!important;transform:none!important;break-inside:avoid;width:${W}px;height:${H}px;}
-  .no-print{display:none!important;}
+  html,body{width:210mm!important;height:297mm!important;margin:0!important;padding:0!important;overflow:hidden!important;background:#fff!important;}
+  body *{visibility:hidden!important;}
+  #student-print-sheet,#student-print-sheet *{visibility:visible!important;}
+  #student-print-sheet{
+    position:fixed!important;
+    inset:0!important;
+    z-index:2147483647!important;
+    box-sizing:border-box!important;
+    width:210mm!important;
+    height:297mm!important;
+    margin:0!important;
+    padding:15mm!important;
+    display:flex!important;
+    align-items:flex-start!important;
+    justify-content:center!important;
+    overflow:hidden!important;
+    background:#fff!important;
+  }
+  #student-print-sheet .idc-card-stack{display:block!important;width:${W}px!important;height:${H * 2 + 24}px!important;}
+  #student-print-sheet .idc-scene{width:${W}px!important;height:${H * 2 + 24}px!important;cursor:default!important;perspective:none!important;}
+  #student-print-sheet .idc-inner{position:static!important;display:flex!important;width:${W}px!important;height:${H * 2 + 24}px!important;flex-direction:column!important;gap:24px!important;transform:none!important;transition:none!important;}
+  #student-print-sheet .idc-face{position:relative!important;inset:auto!important;display:flex!important;flex:0 0 ${H}px!important;width:${W}px!important;height:${H}px!important;transform:none!important;backface-visibility:visible!important;-webkit-backface-visibility:visible!important;break-inside:avoid!important;page-break-inside:avoid!important;}
+  #student-print-sheet .print-hide{display:none!important;}
 }
 `;
 
@@ -103,16 +124,15 @@ export function StudentIdCardClient({ student, institution }: Props) {
   const [flipped, setFlipped] = useState(false);
 
   return (
-    <div>
+    <div id="student-print-sheet">
       <style>{FLIP_CSS}</style>
 
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+      <div className="idc-card-stack" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
         <div
           className="idc-scene"
           style={{ width: W, height: H }}
           onClick={() => setFlipped((f) => !f)}
           title={flipped ? "Click to see front" : "Click to see back"}
-          id="student-print-card"
         >
           <div className={`idc-inner${flipped ? " idc-flipped" : ""}`}>
 
@@ -151,7 +171,9 @@ export function StudentIdCardClient({ student, institution }: Props) {
                   )}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 7, columnGap: 12 }}>
                     <Field label="Class" value={student.className} />
-                    <Field label="Section" value={student.sectionName} />
+                    {displaySectionName(student.sectionName) && (
+                      <Field label="Section" value={displaySectionName(student.sectionName)} />
+                    )}
                     <Field label="Roll No." value={student.classRollNumber} />
                     <Field label="Universal ID" value={student.loginRollNumber.split('@')[0]} />
                   </div>
@@ -222,13 +244,13 @@ export function StudentIdCardClient({ student, institution }: Props) {
         </div>
 
         {/* Flip hint */}
-        <div style={{ fontSize: 10, color: "#aaa", letterSpacing: "0.04em" }}>
+        <div className="print-hide" style={{ fontSize: 10, color: "#aaa", letterSpacing: "0.04em" }}>
           {flipped ? "Back" : "Front"} · click to flip
         </div>
 
         {/* Print button */}
         <button
-          className="no-print mt-2 inline-flex items-center gap-2 rounded-lg bg-brand-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
+          className="print-hide mt-2 inline-flex items-center gap-2 rounded-lg bg-brand-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
           onClick={() => window.print()}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

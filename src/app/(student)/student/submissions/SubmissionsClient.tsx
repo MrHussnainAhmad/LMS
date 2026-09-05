@@ -5,15 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Download, File, UploadCloud, X } from "lucide-react";
 import { useToast } from "@/components/ui/toaster";
-
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-const ALLOWED_UPLOAD_MIMES = new Set([
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
+import { CONTENT_FILE_ACCEPT, prepareContentUpload } from "@/lib/client-upload-file";
 
 type AssignmentItem = {
   id: number;
@@ -35,16 +27,9 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
 
   const selectedAssignment = assignments.find((assignment) => assignment.id === selectedAssignmentId);
 
-  const validateAndSetFile = (nextFile: File) => {
-    if (nextFile.size > MAX_UPLOAD_BYTES) {
-      toast({ title: "File too large", description: "Maximum file size is 5MB.", variant: "destructive" });
-      return;
-    }
-    if (!ALLOWED_UPLOAD_MIMES.has(nextFile.type)) {
-      toast({ title: "Unsupported file", description: "Upload PDF, DOCX, JPG, PNG, or WEBP files only.", variant: "destructive" });
-      return;
-    }
-    setFile(nextFile);
+  const validateAndSetFile = async (nextFile: File) => {
+    try { setFile(await prepareContentUpload(nextFile)); }
+    catch (error) { toast({ title: "Unsupported file", description: error instanceof Error ? error.message : "Unable to prepare file.", variant: "destructive" }); }
   };
 
   const handleUpload = async () => {
@@ -56,7 +41,7 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
       const sigRes = await fetch("/api/upload/signature", { method: "POST" });
       if (!sigRes.ok) throw new Error("Failed to get upload signature");
       const signaturePayload = await sigRes.json();
-      if (!signaturePayload.signature || !signaturePayload.timestamp || !signaturePayload.cloudName || !signaturePayload.apiKey) {
+      if (!signaturePayload.signature || !signaturePayload.timestamp || !signaturePayload.cloudName || !signaturePayload.apiKey || !signaturePayload.folder) {
         throw new Error(signaturePayload.error || "Upload service is not configured");
       }
       const { signature, timestamp, cloudName, apiKey } = signaturePayload;
@@ -66,7 +51,8 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
       uploadData.append("api_key", apiKey);
       uploadData.append("timestamp", timestamp.toString());
       uploadData.append("signature", signature);
-      uploadData.append("folder", "lms-uploads");
+      uploadData.append("folder", signaturePayload.folder);
+      uploadData.append("allowed_formats", signaturePayload.allowedFormats);
 
       const cloudinaryResponse = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -108,12 +94,12 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
   };
 
   return (
-    <div className="grid lg:grid-cols-[1fr_420px] gap-6">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
       <Card>
-        <CardHeader>
+        <CardHeader className="border-b border-border bg-stone-50/70">
           <CardTitle>Class Assignments</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 p-6 pt-7">
           {assignments.length === 0 ? (
             <p className="text-sm text-stone-500">No assignment has been created for your class yet.</p>
           ) : (
@@ -166,10 +152,10 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="border-b border-border bg-stone-50/70">
           <CardTitle>Upload Submission</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6 pt-7">
           {!selectedAssignment ? (
             <p className="text-sm text-stone-500">Select an assignment to upload.</p>
           ) : !file ? (
@@ -179,25 +165,25 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
               onDrop={(event) => {
                 event.preventDefault();
                 const droppedFile = event.dataTransfer.files[0];
-                if (droppedFile) validateAndSetFile(droppedFile);
+                if (droppedFile) void validateAndSetFile(droppedFile);
               }}
               onClick={() => document.getElementById("assignment-file-upload")?.click()}
             >
               <input
                 id="assignment-file-upload"
                 type="file"
-                accept=".pdf,.docx,image/jpeg,image/png,image/webp"
+                accept={CONTENT_FILE_ACCEPT}
                 className="hidden"
                 onChange={(event) => {
                   const selectedFile = event.target.files?.[0];
-                  if (selectedFile) validateAndSetFile(selectedFile);
+                  if (selectedFile) void validateAndSetFile(selectedFile);
                 }}
               />
               <div className="h-12 w-12 rounded-full bg-brand-50 flex items-center justify-center mb-4">
                 <UploadCloud className="h-6 w-6 text-brand-600" />
               </div>
               <h3 className="text-sm font-semibold text-brand-900">Click to upload or drag and drop</h3>
-              <p className="text-xs text-stone-500 mt-1">PDF, DOCX or image up to 5MB</p>
+              <p className="text-xs text-stone-500 mt-1">PDF, DOCX, TXT, or image up to 5 MB. Images are compressed first.</p>
             </div>
           ) : (
             <div className="space-y-4">

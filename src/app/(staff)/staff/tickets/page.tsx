@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 export default async function StaffTicketsPage() {
   const session = await getSession();
   if (!session || session.role !== "STAFF" || !session.institutionId) redirect("/login");
-  const { tickets, nextCursor } = await listCreatorTickets("STAFF", session.userId);
+  if (!session.institutionId) return null;
+  const { tickets, nextCursor } = await listCreatorTickets("STAFF", session.userId, session.institutionId);
   return <TicketsClient initialTickets={tickets} initialNextCursor={nextCursor} />;
 }

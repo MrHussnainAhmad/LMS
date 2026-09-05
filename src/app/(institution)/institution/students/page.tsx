@@ -5,13 +5,14 @@ import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { StudentsPageTabs } from "./StudentsPageTabs";
 
-export default async function StudentsPage({ searchParams }: { searchParams: { page?: string, limit?: string } }) {
+export default async function StudentsPage({ searchParams }: { searchParams: Promise<{ page?: string, limit?: string }> }) {
+  const resolvedSearchParams = await searchParams;
   const session = await getSession();
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) redirect("/login");
   
   const institutionId = session.institutionId || session.userId;
-  const page = parseInt(searchParams.page || "1") || 1;
-  const limit = parseInt(searchParams.limit || "50") || 50;
+  const page = parseInt(resolvedSearchParams.page || "1") || 1;
+  const limit = parseInt(resolvedSearchParams.limit || "50") || 50;
   const offset = (page - 1) * limit;
 
   // Requests tab data is fetched lazily on the client only when that tab is opened.
@@ -29,6 +30,7 @@ export default async function StudentsPage({ searchParams }: { searchParams: { p
       sectionId: students.sectionId,
       classRollNumber: students.classRollNumber,
       phone: students.phone,
+      guardianEmail: students.guardianEmail,
     })
       .from(students)
       .where(eq(students.institutionId, institutionId))

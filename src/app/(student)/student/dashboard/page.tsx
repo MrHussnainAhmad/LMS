@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { students, staffAssignments, subjects, staff, submissions, marks, tests } from "@/db/schema";
-import { eq, and, desc, count } from "drizzle-orm";
+import { eq, and, desc, count, isNotNull } from "drizzle-orm";
 import { getVisibleAnnouncements } from "@/lib/announcements";
 import { DashboardAnnouncements } from "@/components/announcements/DashboardAnnouncements";
 import { TodayTimetableCard, type TimetableEntry } from "@/components/timetable/ScheduleViews";
@@ -55,7 +55,7 @@ export default async function StudentDashboard() {
         <PromotionResultDialog />
         <div className="rounded-2xl border border-brand-200 bg-brand-50 p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Graduated Student Access</p>
-          <h1 className="mt-2 text-2xl lg:text-3xl font-display font-bold text-brand-950">Hi, {currentStudent.name}</h1>
+          <h1 className="mt-2 font-display text-3xl font-bold text-brand-950">Hi, {currentStudent.name}</h1>
           <p className="mt-2 text-sm lg:text-base text-brand-900">
             You are graduated, all you can access is Transcript, Attendance Record and Profile.
           </p>
@@ -142,7 +142,7 @@ export default async function StudentDashboard() {
           .from(marks)
           .innerJoin(tests, eq(marks.testId, tests.id))
           .leftJoin(subjects, eq(tests.subjectId, subjects.id))
-          .where(and(eq(marks.studentId, studentId), eq(marks.institutionId, institutionId)))
+          .where(and(eq(marks.studentId, studentId), eq(marks.institutionId, institutionId), isNotNull(tests.resultsPublishedAt)))
           .orderBy(desc(marks.createdAt))
           .limit(1),
       ]);
@@ -176,7 +176,7 @@ export default async function StudentDashboard() {
     <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
       <PromotionResultDialog />
       <div>
-        <h1 className="text-2xl lg:text-3xl font-display font-bold text-brand-950">Hi, {currentStudent.name}</h1>
+        <h1 className="font-display text-3xl font-bold text-brand-950">Hi, {currentStudent.name}</h1>
         <p className="text-stone-500 mt-1 text-sm lg:text-base">Here is your academic overview.</p>
       </div>
 

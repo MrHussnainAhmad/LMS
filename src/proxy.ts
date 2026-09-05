@@ -4,10 +4,12 @@ import { getSessionEdge } from './lib/auth-edge';
 import { applyCorsHeaders, corsPreflight } from './lib/cors';
 import { SESSION_HEADER, SESSION_SIG_HEADER, signSessionPayload, stripSessionHeaders } from './lib/session-header';
 import { DEFAULT_MAX_BODY_BYTES, bodyTooLargeResponse, exceedsDeclaredBodyLimit } from './lib/http';
+import { parseInstitutionHostname } from './lib/institution-domain';
+import { getPublicSiteBaseDomain } from './lib/public-site-domain';
 
 const WEB_SESSION_MAX_AGE = 5 * 24 * 60 * 60;
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // Global body ceiling, enforced at the edge before any handler, Server Action
   // or `req.json()` allocates. `requireRole` repeats this check for defence in
   // depth, but ~18 mutating routes authenticate via `getSession()` instead and
@@ -42,7 +44,7 @@ export async function middleware(request: NextRequest) {
 
   let rewritePath: string | null = null;
   const isStaticOrApi = path.match(/\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf)$/i) || path.startsWith('/api');
-  const isAuthPath = path === '/login' || path === '/institution-login' || path === '/employee-login' || path === '/login/super-admin' || path === '/force-password-change';
+  const isAuthPath = path === '/login' || path === '/institution-login' || path === '/employee-login' || path === '/parent-login' || path === '/login/super-admin' || path === '/force-password-change';
 
   if (!isStaticOrApi) {
     if (hostname === 'blog.nisaab360.app' || hostname.startsWith('blog.localhost')) {
@@ -51,12 +53,21 @@ export async function middleware(request: NextRequest) {
       if (!isAuthPath && !path.startsWith('/student')) rewritePath = `/student${path === '/' ? '' : path}`;
     } else if (hostname === 'staff.nisaab360.app' || hostname.startsWith('staff.localhost')) {
       if (!isAuthPath && !path.startsWith('/staff')) rewritePath = `/staff${path === '/' ? '' : path}`;
+    } else if (hostname === 'parent.nisaab360.app' || hostname.startsWith('parent.localhost')) {
+      if (!isAuthPath && !path.startsWith('/parent')) rewritePath = `/parent${path === '/' ? '' : path}`;
     } else if (hostname === 'institution.nisaab360.app' || hostname.startsWith('institution.localhost')) {
       if (!isAuthPath && !path.startsWith('/institution')) rewritePath = `/institution${path === '/' ? '' : path}`;
     } else if (hostname === 'employee.nisaab360.app' || hostname.startsWith('employee.localhost')) {
       if (!isAuthPath && !path.startsWith('/employee')) rewritePath = `/employee${path === '/' ? '' : path}`;
     } else if (hostname === 'sa.nisaab360.app' || hostname === 'superadmin.nisaab360.app' || hostname.startsWith('sa.localhost')) {
       if (!isAuthPath && !path.startsWith('/sa')) rewritePath = `/sa${path === '/' ? '' : path}`;
+    } else {
+      const parsedHostname = parseInstitutionHostname(request.headers.get('host') || '', await getPublicSiteBaseDomain());
+      if (parsedHostname.kind === 'institution') {
+        rewritePath = path.startsWith('/sites')
+          ? '/sites/__invalid__'
+          : `/sites/${parsedHostname.slug}${path === '/' ? '' : path}`;
+      }
     }
   }
 
@@ -67,6 +78,9 @@ export async function middleware(request: NextRequest) {
   if (
     session &&
     !session.mustChangePassword &&
+    // Keep parent login reachable even with a stale/invalid parent session.
+    // The parent layout redirects invalid accounts here; redirecting it back to
+    // the dashboard creates an endless /parent-login <-> /parent/dashboard loop.
     (virtualPath === '/' ||
       virtualPath === '/login' ||
       virtualPath === '/institution-login' ||
@@ -152,6 +166,12 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  if (virtualPath === '/parent' || virtualPath.startsWith('/parent/')) {
+    if (!session || session.role !== 'PARENT') {
+      return NextResponse.redirect(new URL('/parent-login', request.url));
+    }
+  }
+
   if (session) {
     const serialized = JSON.stringify(session);
     requestHeaders.set(SESSION_HEADER, serialized);
@@ -185,6 +205,7 @@ function getDashboardPath(session: { role: string; studentAcademicStatus?: strin
       case 'INSTITUTION_ADMIN': return '/institution/dashboard';
       case 'STAFF': return '/staff/dashboard';
       case 'STUDENT': return '/student/dashboard';
+      case 'PARENT': return '/parent/dashboard';
       default: return '/login';
     }
   }
@@ -196,6 +217,7 @@ function getDashboardPath(session: { role: string; studentAcademicStatus?: strin
     case 'INSTITUTION_ADMIN': return `${protocol}institution.${baseHost}/dashboard`;
     case 'STAFF': return `${protocol}staff.${baseHost}/dashboard`;
     case 'STUDENT': return `${protocol}student.${baseHost}/dashboard`;
+    case 'PARENT': return `${protocol}parent.${baseHost}/dashboard`;
     default: return '/login';
   }
 }

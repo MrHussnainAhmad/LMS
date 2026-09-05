@@ -8,6 +8,7 @@ import { ArrowLeft, CreditCard, User } from "lucide-react";
 import Link from "next/link";
 import { PrintButton } from "./PrintButton";
 import { StudentDetailHistory } from "./StudentDetailHistory";
+import { formatClassSection } from "@/lib/class-section-label";
 
 export default async function StudentProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -28,6 +29,7 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
     profilePictureUrl: students.profilePictureUrl,
     emergencyContact: students.emergencyContact,
     parentalWhatsapp: students.parentalWhatsapp,
+    guardianEmail: students.guardianEmail,
     yearOfJoining: students.yearOfJoining,
     className: classes.name,
     sectionName: sections.name,
@@ -68,6 +70,7 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
         </div>
       </div>
 
+      <div className="print-document space-y-6">
       {promotionHistory.length > 0 && (
         <Card>
           <CardHeader>
@@ -111,7 +114,7 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
               <div>
                 <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Class</p>
-                <p className="mt-1 text-stone-800">{student.className} - {student.sectionName}</p>
+                <p className="mt-1 text-stone-800">{formatClassSection(student.className, student.sectionName)}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Class Roll No.</p>
@@ -133,11 +136,16 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
                 <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Parental Whatsapp</p>
                 <p className="mt-1 text-stone-800">{student.parentalWhatsapp || "N/A"}</p>
               </div>
+              <div>
+                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Guardian Email</p>
+                <p className="mt-1 text-stone-800">{student.guardianEmail || "Not linked"}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         <StudentDetailHistory studentId={studentId} />
+      </div>
       </div>
     </div>
   );

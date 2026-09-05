@@ -163,7 +163,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       return NextResponse.json({ error: "Invalid class section" }, { status: 400 });
     }
 
-    const referenceResource = referenceFileKey ? await verifyCloudinarySubmission(referenceFileKey) : null;
+    const referenceResource = referenceFileKey ? await verifyCloudinarySubmission(referenceFileKey, session) : null;
 
     const [insertedAssignment] = await db.insert(assignments).values({
       institutionId: session.institutionId,

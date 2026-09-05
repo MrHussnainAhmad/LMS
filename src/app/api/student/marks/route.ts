@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { marks, tests, subjects, onlineTests } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { windowRange } from "@/lib/month-window";
-import { eq, and, desc, gte, lte, lt, or } from "drizzle-orm";
+import { eq, and, desc, gte, isNotNull, lte, lt, or } from "drizzle-orm";
 import { getCachedOrFetch, redis } from "@/lib/redis";
 
 const DEFAULT_WINDOW_MONTHS_BACK = 1; // current month + 1 prior = 2 months total
@@ -42,6 +42,7 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
             and(
               eq(marks.studentId, session.userId),
               eq(marks.institutionId, session.institutionId!),
+              isNotNull(tests.resultsPublishedAt),
               gte(tests.date, from),
               lte(tests.date, to),
             )
@@ -95,6 +96,7 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
       .leftJoin(onlineTests, eq(tests.id, onlineTests.testId))
       .where(and(
         eq(marks.studentId, session.userId), eq(marks.institutionId, session.institutionId!),
+        isNotNull(tests.resultsPublishedAt),
         ...(from ? [gte(tests.date, from)] : []), ...(to ? [lte(tests.date, to)] : []),
         ...(cursorValue ? [or(lt(tests.date, cursorValue.date), and(eq(tests.date, cursorValue.date), lt(marks.id, cursorValue.id)))] : []),
       ))

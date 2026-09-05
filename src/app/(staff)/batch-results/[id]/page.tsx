@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, Download, CheckCircle2, AlertTriangle, Edit2, Save, X } from "lucide-react";
 import Link from "next/link";
 import Papa from "papaparse";
+import { formatClassSection } from "@/lib/class-section-label";
 
 export default function BatchResultDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -114,8 +115,8 @@ export default function BatchResultDetailsPage({ params }: { params: Promise<{ i
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-display font-bold text-brand-950">{subject.subjectName} Results</h1>
-          <p className="text-stone-500 text-sm">{subject.examTitle} • {subject.className} {subject.sectionName ? `(${subject.sectionName})` : ''}</p>
+          <h1 className="font-display text-3xl font-bold text-brand-950">{subject.subjectName} Results</h1>
+          <p className="text-stone-500 text-sm">{subject.examTitle} • {formatClassSection(subject.className, subject.sectionName)}</p>
         </div>
       </div>
 
@@ -213,7 +214,7 @@ export default function BatchResultDetailsPage({ params }: { params: Promise<{ i
 
       <Dialog open={isPublishModalOpen} onOpenChange={setIsPublishModalOpen}>
         <DialogContent>
-          <DialogHeader>
+          <DialogHeader className="text-left">
             <DialogTitle>Publish Results</DialogTitle>
           </DialogHeader>
           <div className="py-4 text-stone-600">

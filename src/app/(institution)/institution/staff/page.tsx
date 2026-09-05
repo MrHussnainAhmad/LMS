@@ -1,39 +1,38 @@
 import { db } from "@/db";
-import { staff, campuses, institutionCustomRoles } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { UserSquare2, Plus } from "lucide-react";
+import { campuses, institutionCustomRoles, staff } from "@/db/schema";
+import { and, desc, eq, isNull } from "drizzle-orm";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { UserSquare2 } from "lucide-react";
+import { BarChart3 } from "lucide-react";
+import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { createStaffAction } from "@/app/actions/institution-actions";
-import { SubmitButton } from "@/components/ui/submit-button";
+import { AddStaffDialog } from "./AddStaffDialog";
 import { DeleteStaffButton } from "./DeleteStaffButton";
 import { StaffPageTabs } from "./StaffPageTabs";
+import { StaffRoleFilter } from "./StaffRoleFilter";
 
 const STAFF_LIST_LIMIT = 200;
 
-export default async function InstitutionStaffPage() {
+export default async function InstitutionStaffPage({ searchParams }: { searchParams: Promise<{ role?: string }> }) {
   const session = await getSession();
-  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) {
-    redirect("/login");
-  }
-
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) redirect("/login");
   const institutionId = session.institutionId || session.userId;
+  const requestedRole = String((await searchParams).role || "all");
+  const roleId = Number(requestedRole);
+  const roleCondition = requestedRole === "unassigned"
+    ? isNull(staff.customRoleId)
+    : Number.isInteger(roleId) && roleId > 0
+      ? eq(staff.customRoleId, roleId)
+      : undefined;
 
-  // Staff Requests tab data is fetched lazily on the client only when that tab is opened.
   const [allStaff, allCampuses, allRoles] = await Promise.all([
-    db.select({
-      id: staff.id,
-      name: staff.name,
-      email: staff.email,
-      isActive: staff.isActive,
-      campus: campuses.name,
-      role: institutionCustomRoles.name,
-    })
+    db.select({ id: staff.id, name: staff.name, email: staff.email, isActive: staff.isActive, campus: campuses.name, role: institutionCustomRoles.name })
       .from(staff)
       .leftJoin(campuses, eq(staff.campusId, campuses.id))
       .leftJoin(institutionCustomRoles, eq(staff.customRoleId, institutionCustomRoles.id))
-      .where(eq(staff.institutionId, institutionId))
+      .where(and(eq(staff.institutionId, institutionId), roleCondition))
       .orderBy(desc(staff.createdAt))
       .limit(STAFF_LIST_LIMIT),
     db.select().from(campuses).where(eq(campuses.institutionId, institutionId)),
@@ -42,164 +41,50 @@ export default async function InstitutionStaffPage() {
 
   async function createStaff(formData: FormData) {
     "use server";
-    await createStaffAction(formData);
+    return createStaffAction(formData);
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-brand-950">Staff Management</h1>
-          <p className="text-stone-500 mt-1">Manage teachers, administrators, and support staff.</p>
-        </div>
+    <div className="animate-fade-in space-y-8">
+      <div>
+        <h1 className="font-display text-3xl font-bold text-brand-950">Staff Management</h1>
+        <p className="mt-1 text-stone-500">Manage teachers, administrators, and support staff.</p>
       </div>
 
       <StaffPageTabs
         campuses={allCampuses}
         directory={
-          <>
-          <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader className="border-b border-border bg-stone-50/50">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <UserSquare2 className="h-5 w-5 text-brand-600" />
-                Staff Directory
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-stone-500 uppercase bg-stone-50 border-b border-border">
-                    <tr>
-                      <th className="px-6 py-4 font-medium">Name</th>
-                      <th className="px-6 py-4 font-medium">Email Address</th>
-                      <th className="px-6 py-4 font-medium">Campus</th>
-                      <th className="px-6 py-4 font-medium">Role</th>
-                      <th className="px-6 py-4 font-medium">Status</th>
-                      <th className="px-6 py-4 font-medium text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {allStaff.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-4 sm:py-8 text-center text-stone-500">
-                          No staff registered yet.
-                        </td>
-                      </tr>
-                    )}
-                    {allStaff.map((row) => (
-                      <tr key={row.id} className="hover:bg-stone-50/50 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-brand-100 text-brand-800 flex items-center justify-center font-bold text-xs">
-                              {row.name.substring(0, 2).toUpperCase()}
-                            </div>
-                            <p className="font-semibold text-brand-950">{row.name}</p>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-stone-600">{row.email}</td>
-                        <td className="px-6 py-4 text-stone-500">{row.campus || "Main"}</td>
-                        <td className="px-6 py-4 text-stone-500">{row.role || "Unassigned"}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                            row.isActive ? 'bg-success/20 text-emerald-700' : 'bg-danger/20 text-red-700'
-                          }`}>
-                            {row.isActive ? 'Active' : 'Disabled'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <DeleteStaffButton staffId={row.id} staffName={row.name} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {allStaff.length === STAFF_LIST_LIMIT && (
-                <p className="px-6 py-3 text-xs text-stone-500 border-t border-border bg-stone-50/50">
-                  Showing the first {STAFF_LIST_LIMIT} staff members. Refine roles/campuses in Settings to narrow this down.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><StaffRoleFilter roles={allRoles} value={requestedRole === "unassigned" || allRoles.some((role) => String(role.id) === requestedRole) ? requestedRole : "all"} /><AddStaffDialog campuses={allCampuses} roles={allRoles} createStaff={createStaff} /></div>
+            <Card>
+              <CardHeader className="border-b border-border bg-stone-50/50">
+                <CardTitle className="flex items-center gap-2 text-lg"><UserSquare2 className="h-5 w-5 text-brand-600" />Staff Directory</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="border-b border-border bg-stone-50 text-xs uppercase text-stone-500">
+                      <tr><th className="px-6 py-4 font-medium">Name</th><th className="px-6 py-4 font-medium">Email Address</th><th className="px-6 py-4 font-medium">Campus</th><th className="px-6 py-4 font-medium">Role</th><th className="px-6 py-4 font-medium">Status</th><th className="px-6 py-4 text-right font-medium">Actions</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {allStaff.length === 0 && <tr><td colSpan={6} className="px-6 py-8 text-center text-stone-500">No staff registered yet.</td></tr>}
+                      {allStaff.map((row) => (
+                        <tr key={row.id} className="transition-colors hover:bg-stone-50/50">
+                          <td className="px-6 py-4"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-800">{row.name.substring(0, 2).toUpperCase()}</div><p className="font-semibold text-brand-950">{row.name}</p></div></td>
+                          <td className="px-6 py-4 text-stone-600">{row.email}</td>
+                          <td className="px-6 py-4 text-stone-500">{row.campus || "Main"}</td>
+                          <td className="px-6 py-4 text-stone-500">{row.role || "Unassigned"}</td>
+                          <td className="px-6 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${row.isActive ? "bg-success/20 text-emerald-700" : "bg-danger/20 text-red-700"}`}>{row.isActive ? "Active" : "Disabled"}</span></td>
+                          <td className="px-6 py-4"><div className="flex items-center justify-end gap-2"><Link href={`/institution/staff/${row.id}/performance`} className="inline-flex items-center rounded-md border border-stone-300 px-3 py-2 text-xs font-semibold text-brand-800 hover:border-brand-500 hover:bg-brand-50"><BarChart3 className="mr-1.5 h-3.5 w-3.5" />Performance</Link><DeleteStaffButton staffId={row.id} staffName={row.name} /></div></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {allStaff.length === STAFF_LIST_LIMIT && <p className="border-t border-border bg-stone-50/50 px-6 py-3 text-xs text-stone-500">Showing the first {STAFF_LIST_LIMIT} staff members. Refine roles/campuses in Settings to narrow this down.</p>}
+              </CardContent>
+            </Card>
           </div>
-
-          <div>
-          <Card>
-            <CardHeader className="border-b border-border bg-stone-50/50">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Plus className="h-5 w-5 text-brand-600" />
-                Add New Staff
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <form action={createStaff} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    name="name"
-                    required
-                    className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    placeholder="Jane Smith"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Phone Number</label>
-                  <input
-                    type="text"
-                    name="phone"
-                    required
-                    className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    placeholder="+1234567890"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Assign Campus</label>
-                  <select
-                    name="campusId"
-                    className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
-                  >
-                    <option value="">Main (No specific campus)</option>
-                    {allCampuses.map(campus => (
-                      <option key={campus.id} value={campus.id}>{campus.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Staff Role</label>
-                  <select
-                    name="customRoleId"
-                    required
-                    disabled={allRoles.length === 0}
-                    className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white disabled:bg-stone-100"
-                  >
-                    <option value="">{allRoles.length === 0 ? "Create a role in Settings first" : "Select role..."}</option>
-                    {allRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
-                  </select>
-                  <p className="mt-1 text-xs text-stone-500">Choose the staff member’s job role, such as Teacher or Clerk.</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Initial Password</label>
-                  <input
-                    type="password"
-                    name="password"
-                    required
-                    className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                  <p className="text-xs text-stone-500 mt-1">An email will be auto-generated for them.</p>
-                </div>
-                <SubmitButton
-                  className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors"
-                  disabled={allRoles.length === 0}
-                >
-                  Create Staff Account
-                </SubmitButton>
-              </form>
-            </CardContent>
-          </Card>
-          </div>
-          </>
         }
       />
     </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api-client";
+import { displaySectionName, formatClassSection } from "@/lib/class-section-label";
 
 type PickerStudent = { id: number; name: string; classRollNumber: string; className: string; sectionName: string };
 type CardStudent = PickerStudent & {
@@ -39,10 +40,13 @@ const FLIP_CSS = `
 .idc-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:12px;overflow:hidden;}
 .idc-back{transform:rotateY(180deg);}
 @media print{
+  @page{size:A4 portrait;margin:10mm;}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
-  .idc-scene{height:auto!important;cursor:default;}
-  .idc-inner{position:static;display:flex;flex-direction:column;gap:16px;transform:none!important;}
+  .idc-card{width:${W}px!important;height:${H * 2 + 16}px!important;gap:0!important;break-inside:avoid!important;page-break-inside:avoid!important;}
+  .idc-scene{width:${W}px!important;height:${H * 2 + 16}px!important;cursor:default;}
+  .idc-inner{position:static!important;display:flex!important;width:${W}px!important;height:${H * 2 + 16}px!important;flex-direction:column!important;gap:16px!important;transform:none!important;}
   .idc-face{position:relative!important;transform:none!important;break-inside:avoid;width:${W}px;height:${H}px;}
+  .idc-hint{display:none!important;}
 }
 `;
 
@@ -101,7 +105,7 @@ export function IdCard({ student, institution }: { student: CardStudent; institu
   const [flipped, setFlipped] = useState(false);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+    <div className="idc-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
       {/* Scene wrapper */}
       <div
         className="idc-scene"
@@ -152,7 +156,9 @@ export function IdCard({ student, institution }: { student: CardStudent; institu
                   )}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 7, columnGap: 12 }}>
                     <Field label="Class" value={student.className} />
-                    <Field label="Section" value={student.sectionName} />
+                    {displaySectionName(student.sectionName) && (
+                      <Field label="Section" value={displaySectionName(student.sectionName)} />
+                    )}
                     <Field label="Roll No." value={student.classRollNumber} />
                     <Field label="Universal ID" value={student.loginRollNumber.split('@')[0]} />
                   </div>
@@ -229,7 +235,7 @@ export function IdCard({ student, institution }: { student: CardStudent; institu
         </div>
       </div>
       {/* Flip hint */}
-      <div style={{ fontSize: 10, color: "#aaa", letterSpacing: "0.04em" }}>
+      <div className="idc-hint" style={{ fontSize: 10, color: "#aaa", letterSpacing: "0.04em" }}>
         {flipped ? "Back" : "Front"} · click to flip
       </div>
     </div>
@@ -245,12 +251,11 @@ export function IdCardsClient({ initialStudentId }: { initialStudentId?: number 
   const [selected, setSelected] = useState<number[]>(initialStudentId ? [initialStudentId] : []);
   const [selectedDetails, setSelectedDetails] = useState<Map<number, PickerStudent>>(new Map());
   const [cardData, setCardData] = useState<CardData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(initialStudentId));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!initialStudentId) return;
-    setLoading(true);
     api.get<CardData>(`/api/institution/students/id-cards?studentIds=${initialStudentId}`)
       .then((data) => {
         setCardData(data);
@@ -305,21 +310,32 @@ export function IdCardsClient({ initialStudentId }: { initialStudentId?: number 
       <style>{`
         ${FLIP_CSS}
         @media print {
-          body { visibility: hidden !important; background: white !important; }
+          html, body { width: 100% !important; min-height: 0 !important; overflow: visible !important; background: white !important; }
+          body * { visibility: hidden !important; }
           #print-cards {
             visibility: visible !important;
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
+            height: auto !important;
             margin: 0 !important;
-            padding: 20px !important;
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 32px !important;
+            padding: 0 !important;
+            display: grid !important;
+            grid-template-columns: ${W}px !important;
+            justify-content: center !important;
+            align-items: start !important;
+            gap: 10mm !important;
+            overflow: visible !important;
           }
           #print-cards * {
             visibility: visible !important;
+          }
+          #print-cards > div {
+            width: ${W}px !important;
+            height: ${H * 2 + 16}px !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
           }
         }
       `}</style>
@@ -380,7 +396,7 @@ export function IdCardsClient({ initialStudentId }: { initialStudentId?: number 
               <tr key={s.id} className="border-t hover:bg-stone-50 cursor-pointer" onClick={() => toggle(s)}>
                 <td className="p-3"><input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggle(s)} onClick={(e) => e.stopPropagation()} /></td>
                 <td className="p-3 font-medium">{s.name}</td>
-                <td className="p-3">{s.className} — {s.sectionName}</td>
+                <td className="p-3">{formatClassSection(s.className, s.sectionName, " — ")}</td>
                 <td className="p-3">{s.classRollNumber}</td>
               </tr>
             ))}

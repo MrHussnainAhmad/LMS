@@ -88,8 +88,10 @@ export const GET = requireRole(["INSTITUTION"], async (req: NextRequest, { sessi
     zip.addFile("sections.csv", Buffer.from(toCsv(allSections), "utf8"));
 
     const zipBuffer = zip.toBuffer();
+    const zipBytes = new Uint8Array(zipBuffer.length);
+    zipBytes.set(zipBuffer);
 
-    return new NextResponse(zipBuffer, {
+    return new NextResponse(zipBytes, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",

@@ -47,9 +47,9 @@ export function AddSectionForm({ classes }: { classes: { id: number; name: strin
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          <form action={handleCreateSection} className="space-y-4">
+          <form action={handleCreateSection} className="space-y-4 pt-2">
             <div>
-              <label className="block text-sm font-medium text-stone-700 mb-1">Select Class</label>
+              <label className="mb-2 block text-sm font-medium text-stone-700">Select Class</label>
               <select name="classId" required className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-surface">
                 {classes.map((cls) => (
                   <option key={cls.id} value={cls.id}>{cls.name}</option>

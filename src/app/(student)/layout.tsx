@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { StudentShell } from "./StudentShell";
 import { getShellBrandForSession } from "@/lib/shell-brand";
+import { isInstitutionCourseStreamingConfigured } from "@/lib/course-streaming";
 
 export default async function StudentLayout({
   children,
@@ -10,13 +11,20 @@ export default async function StudentLayout({
 }) {
   const session = await getSession();
   if (!session || session.role !== "STUDENT") redirect("/login");
-  const brand = await getShellBrandForSession(session);
+  const institutionId = session.institutionId;
+  const [brand, coursesEnabled] = await Promise.all([
+    getShellBrandForSession(session),
+    institutionId
+      ? isInstitutionCourseStreamingConfigured(institutionId)
+      : Promise.resolve(false),
+  ]);
   return (
     <StudentShell
       isGraduated={session.studentAcademicStatus === "GRADUATED"}
       userId={session.userId}
-      institutionId={session.institutionId}
+      institutionId={institutionId}
       initialBrand={brand}
+      coursesEnabled={coursesEnabled}
     >
       {children}
     </StudentShell>

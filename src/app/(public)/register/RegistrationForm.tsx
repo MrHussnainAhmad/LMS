@@ -47,6 +47,14 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (step < STEPS.length - 1) {
+      if (step === 0 && !formData.pricingPlan) {
+        toast({
+          title: "Pricing Plan Required",
+          description: "Select a pricing plan before continuing.",
+          variant: "destructive",
+        });
+        return;
+      }
       nextStep();
       return;
     }
@@ -62,12 +70,7 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
 
     setIsLoading(true);
     try {
-      const { pricingPlan, ...registrationDetails } = formData;
-      const submission = {
-        ...registrationDetails,
-        ...(pricingPlan ? { pricingPlan } : {}),
-      };
-      await api.post("/api/institution/register", submission);
+      await api.post("/api/institution/register", formData);
       setIsSuccess(true);
     } catch (err: unknown) {
       toast({
@@ -135,14 +138,15 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
               <Input name="registrationNumber" value={formData.registrationNumber} onChange={updateForm} required />
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">Interested Pricing Plan</label>
+              <label className="text-sm font-medium">Pricing Plan <span className="text-red-600" aria-hidden="true">*</span></label>
               <Select
                 onValueChange={(val) =>
                   setFormData((previous) => ({ ...previous, pricingPlan: val as PricingPlanId }))
                 }
                 value={formData.pricingPlan}
+                required
               >
-                <SelectTrigger><SelectValue placeholder="Select a plan (optional)" /></SelectTrigger>
+                <SelectTrigger aria-label="Pricing plan"><SelectValue placeholder="Select a pricing plan" /></SelectTrigger>
                 <SelectContent>
                   {pricingPlans.map((plan) => (
                     <SelectItem value={plan.id} key={plan.id}>

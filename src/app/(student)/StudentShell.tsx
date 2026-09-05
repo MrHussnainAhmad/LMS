@@ -20,6 +20,7 @@ import {
 const ACTIVE_SIDEBAR_ITEMS = [
   { label: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard },
   { label: "Daily Diary", href: "/student/diary", icon: BookOpen },
+  { label: "Courses", href: "/student/courses", icon: BookOpen },
   { label: "Announcements", href: "/student/announcements", icon: Megaphone },
   { label: "Timetable", href: "/student/timetable", icon: CalendarDays },
   { label: "Exam Timetable", href: "/student/exams", icon: CalendarCheck },
@@ -28,7 +29,7 @@ const ACTIVE_SIDEBAR_ITEMS = [
   { label: "Marks", href: "/student/marks", icon: FileText },
   { label: "Transcripts", href: "/student/transcripts", icon: FileText },
   { label: "Submissions", href: "/student/submissions", icon: UploadCloud },
-  { label: "Fee Vouchers", href: "/student/vouchers", icon: Receipt },
+  { label: "Fees", href: "/student/fees", icon: Receipt },
   { label: "ID Card", href: "/student/id-card", icon: CreditCard },
   { label: "Support Tickets", href: "/student/tickets", icon: Ticket },
 ];
@@ -45,14 +46,20 @@ export function StudentShell({
   userId,
   institutionId,
   initialBrand,
+  coursesEnabled,
 }: {
   children: React.ReactNode;
   isGraduated: boolean;
   userId?: number;
   institutionId?: number | null;
   initialBrand?: import("@/components/layout/BrandMark").ShellBrand;
+  coursesEnabled: boolean;
 }) {
-  const sidebarItems = isGraduated ? GRADUATED_SIDEBAR_ITEMS : ACTIVE_SIDEBAR_ITEMS;
+  const sidebarItems = isGraduated
+    ? GRADUATED_SIDEBAR_ITEMS
+    : coursesEnabled
+      ? ACTIVE_SIDEBAR_ITEMS
+      : ACTIVE_SIDEBAR_ITEMS.filter((item) => item.href !== "/student/courses");
 
   return (
     <AppShell

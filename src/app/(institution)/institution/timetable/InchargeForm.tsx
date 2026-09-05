@@ -32,12 +32,12 @@ export function InchargeForm({
       } catch (err: unknown) {
         toast({ title: "Error", description: getErrorMessage(err), variant: "destructive" });
       }
-    }} className="space-y-4">
+    }} className="space-y-4 pt-2">
       <input type="hidden" name="sectionId" value={sectionId || ""} />
       <input type="hidden" name="classId" value={classId || ""} />
 
       <div>
-        <label className="block text-sm font-medium text-stone-700 mb-1">Select Class Incharge</label>
+        <label className="mb-2 block text-sm font-medium text-stone-700">Select Class Incharge</label>
         <select 
           key={currentInchargeId || "unassigned"}
           name="classTeacherId"

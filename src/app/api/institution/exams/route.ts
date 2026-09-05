@@ -205,6 +205,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
         maxMarks,
         date: examSchedule.dates[index],
         endDate: examSchedule.endDate,
+        resultsPublishedAt: new Date(),
       });
     }
 
@@ -261,6 +262,7 @@ export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (re
         maxMarks,
         date: examSchedule.dates[index],
         endDate: examSchedule.endDate,
+        resultsPublishedAt: new Date(),
       };
 
       if (existing) {

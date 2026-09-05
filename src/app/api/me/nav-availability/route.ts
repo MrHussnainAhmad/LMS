@@ -5,7 +5,7 @@ import { getLightSessionFromRequest } from "@/lib/auth";
  * Navigation availability — role/JWT metadata only.
  *
  * Previously ran multi-join business probes (open tests, exams, pending leaves,
- * fee voucher flags, transcripts) on every authenticated shell mount. That
+ * fee flags, transcripts) on every authenticated shell mount. That
  * violated on-demand fetching: login + idle must not load section data.
  *
  * Web shell no longer calls this endpoint. Kept as a JWT-derived no-DB response
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       activeStudent,
       studentTests: activeStudent,
       examTimetable: activeStudent,
-      feeVouchers: activeStudent,
+      fees: activeStudent,
       transcripts: true,
     });
   }

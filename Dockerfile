@@ -38,6 +38,17 @@ RUN ./node_modules/.bin/esbuild scripts/push-receipt-worker.ts \
 ENV NODE_ENV production
 CMD ["node", "dist/push-receipt-worker.cjs"]
 
+# Database migrations do not need a compiled Next.js application. Keeping this
+# as a dedicated target makes the deployment gate small and lets migration-only
+# changes ship without rebuilding the web bundle.
+FROM base AS migrator
+WORKDIR /app
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node drizzle ./drizzle
+COPY --chown=node:node scripts/migrate-production.mjs ./scripts/migrate-production.mjs
+USER node
+CMD ["node", "scripts/migrate-production.mjs", "--apply"]
+
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
@@ -62,6 +73,8 @@ RUN mkdir -p public/downloads && chown -R nextjs:nodejs public
 # Copy schema and config for migrations
 COPY --from=builder /app/src/db ./src/db
 COPY --from=builder /app/drizzle.config.ts ./
+COPY --from=builder /app/drizzle ./drizzle
+COPY --from=builder /app/scripts/migrate-production.mjs ./scripts/migrate-production.mjs
 
 # Set the correct permission for prerender cache
 RUN mkdir .next

@@ -9,6 +9,7 @@ import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { BookOpen, CheckCircle2, KeyRound, Send, UserRound } from "lucide-react";
 import { ProfilePictureUploader } from "@/components/ProfilePictureUploader";
+import { displaySectionName } from "@/lib/class-section-label";
 
 type ProfileRequest = {
   id: number;
@@ -178,7 +179,7 @@ export function StudentProfileClient({
                 Student Profile
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
+            <CardContent className="p-6 pt-7">
               <div className="grid gap-4 md:grid-cols-2">
                 <ReadOnlyField label="First Name" value={student.firstName} />
                 <ReadOnlyField label="Last Name" value={student.lastName || "-"} />
@@ -189,7 +190,9 @@ export function StudentProfileClient({
                 <ReadOnlyField label="Login ID" value={student.loginRollNumber} />
                 <ReadOnlyField label="Academic Status" value={student.academicStatus === "GRADUATED" ? "Graduated" : "Active"} />
                 <ReadOnlyField label="Class" value={student.className} />
-                <ReadOnlyField label="Section" value={student.sectionName} />
+                {displaySectionName(student.sectionName) && (
+                  <ReadOnlyField label="Section" value={displaySectionName(student.sectionName)} />
+                )}
                 <ReadOnlyField label="Father Name" value={student.fatherName || "Not added"} />
               </div>
             </CardContent>
@@ -203,8 +206,8 @@ export function StudentProfileClient({
                   Request Profile Correction
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-6">
-                <form onSubmit={handleRequest} className="space-y-4">
+              <CardContent className="p-6 pt-7">
+                <form onSubmit={handleRequest} className="space-y-5 text-left">
                   <div className="grid gap-4 md:grid-cols-2">
                     <Field label="First Name">
                       <Input name="firstName" placeholder={student.firstName} />
@@ -231,8 +234,8 @@ export function StudentProfileClient({
                     <Field label="Section">
                       <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
                         <option value="">No section change</option>
-                        {filteredSections.map((section) => (
-                          <option key={section.id} value={section.id}>{section.name}</option>
+                        {filteredSections.filter((section) => displaySectionName(section.name)).map((section) => (
+                          <option key={section.id} value={section.id}>{displaySectionName(section.name)}</option>
                         ))}
                       </select>
                     </Field>
@@ -297,8 +300,8 @@ export function StudentProfileClient({
                 Contact Information
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
-              <form onSubmit={handleContactInfo} className="space-y-4">
+            <CardContent className="p-6 pt-7">
+              <form onSubmit={handleContactInfo} className="space-y-5 text-left">
                 <Field label="Father Name">
                   <Input name="fatherName" defaultValue={student.fatherName || ""} required />
                 </Field>
@@ -325,8 +328,8 @@ export function StudentProfileClient({
                 Update Password
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
-              <form onSubmit={handlePassword} className="space-y-4">
+            <CardContent className="p-6 pt-7">
+              <form onSubmit={handlePassword} className="space-y-5 text-left">
                 <Field label="Current Password">
                   <Input name="currentPassword" type="password" required />
                 </Field>
@@ -349,14 +352,14 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-border bg-stone-50/60 px-4 py-3">
       <p className="text-xs font-medium uppercase tracking-wider text-stone-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-brand-950">{value}</p>
+      <p className="mt-2 break-words text-sm font-semibold text-brand-950">{value}</p>
     </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block space-y-1.5">
+    <label className="block space-y-2 text-left">
       <span className="text-sm font-medium text-stone-700">{label}</span>
       {children}
     </label>

@@ -46,7 +46,7 @@ export function AppShell({
   }, [initialBrand, userId, institutionId, userRole]);
 
   return (
-    <div className="app-shell flex h-[100svh] overflow-hidden text-foreground">
+    <div className="app-shell flex h-dvh min-h-screen overflow-hidden text-foreground">
       {isSidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-brand-950/55 lg:hidden"
@@ -57,7 +57,7 @@ export function AppShell({
 
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 transform border-r border-brand-800 bg-brand-950 transition-[width,transform] duration-200 ease-out lg:static lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 transform border-r border-brand-800 bg-brand-950 transition-[width,transform] duration-200 ease-out lg:translate-x-0",
           isSidebarCollapsed ? "lg:w-20" : "lg:w-64",
           "w-[min(17rem,88vw)]",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -73,7 +73,7 @@ export function AppShell({
         />
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className={cn("flex min-w-0 flex-1 flex-col overflow-hidden transition-[margin] duration-200", isSidebarCollapsed ? "lg:ml-20" : "lg:ml-64")}>
         <Topbar
           onMenuClick={() => setIsSidebarOpen(true)}
           role={userRole}
@@ -82,7 +82,7 @@ export function AppShell({
         />
 
         <main className="flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-9">
-          <div className="app-content min-h-full">{children}</div>
+          <div className="app-content h-full min-h-full">{children}</div>
         </main>
       </div>
     </div>

@@ -19,7 +19,8 @@ const FILTERS = [
 ] as const;
 type TicketFilter = typeof FILTERS[number]["value"];
 
-export default async function InstitutionHelpdeskPage({ searchParams }: { searchParams: { filter?: string } }) {
+export default async function InstitutionHelpdeskPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
+  const resolvedSearchParams = await searchParams;
   const session = await getSession();
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) {
     redirect("/login");
@@ -27,8 +28,8 @@ export default async function InstitutionHelpdeskPage({ searchParams }: { search
 
   const institutionId = session.role === "INSTITUTION" ? session.userId : session.institutionId!;
 
-  const filter: TicketFilter = FILTERS.some((f) => f.value === searchParams.filter)
-    ? (searchParams.filter as TicketFilter)
+  const filter: TicketFilter = FILTERS.some((f) => f.value === resolvedSearchParams.filter)
+    ? (resolvedSearchParams.filter as TicketFilter)
     : "open";
 
   const filterCondition = filter === "resolved"

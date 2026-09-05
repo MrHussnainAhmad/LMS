@@ -34,7 +34,7 @@ export default function DiaryMonitorClient({ classes }: { classes: any[] }) {
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-stone-900 flex items-center">
+        <h1 className="flex items-center text-3xl font-display font-bold text-brand-950">
           <BookOpen className="w-6 h-6 mr-3 text-brand-600" />
           Class Daily Diary Monitor
         </h1>

@@ -83,7 +83,11 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
     const { redis } = await import("@/lib/redis");
     await redis.del(`cache:timetable:student:${institutionId}:${sectionId}`).catch(() => {});
     if (staffId) {
-      await redis.del(`cache:timetable:staff:${institutionId}:${staffId}`).catch(() => {});
+    await Promise.all([
+      redis.del(`cache:timetable:staff:${institutionId}:${staffId}`),
+      redis.del(`cache:timetable:staff:v2:${institutionId}:${staffId}`),
+      redis.del(`cache:staff:dashboard:v2:${institutionId}:${staffId}`),
+    ]).catch(() => {});
     }
 
     return NextResponse.json({ id: inserted.id });
@@ -108,7 +112,11 @@ export const DELETE = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (r
     const { redis } = await import("@/lib/redis");
     await redis.del(`cache:timetable:student:${institutionId}:${assignment.sectionId}`).catch(() => {});
     if (assignment.staffId) {
-      await redis.del(`cache:timetable:staff:${institutionId}:${assignment.staffId}`).catch(() => {});
+      await Promise.all([
+        redis.del(`cache:timetable:staff:${institutionId}:${assignment.staffId}`),
+        redis.del(`cache:timetable:staff:v2:${institutionId}:${assignment.staffId}`),
+        redis.del(`cache:staff:dashboard:v2:${institutionId}:${assignment.staffId}`),
+      ]).catch(() => {});
     }
   }
 

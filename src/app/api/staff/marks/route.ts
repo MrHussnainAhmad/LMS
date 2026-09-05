@@ -139,6 +139,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       title: title.trim(),
       maxMarks: parsedMaxMarks,
       date,
+      resultsPublishedAt: null,
     }));
 
     await db.insert(tests).values(newTests);

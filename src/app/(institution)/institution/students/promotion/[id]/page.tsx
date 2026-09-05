@@ -14,6 +14,7 @@ import { db } from "@/db";
 import { batchExamResults, batchExamSubjects, batchExams, classes, sections, students, subjects } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { PromotionReviewActions, type PromotionReviewCsvRow } from "./PromotionReviewActions";
+import { formatClassSection } from "@/lib/class-section-label";
 
 function fileSlug(value: string) {
   return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "promotion-review";
@@ -90,16 +91,23 @@ export default async function PromotionReviewPage({ params }: { params: Promise<
     status: allSubjectsPublished ? "Ready for institution publish" : "Awaiting teachers",
   }));
 
-  const csvRows = reviewRows.map(({ maxTotal, ...row }) => row);
+  const csvRows = reviewRows.map((row) => ({
+    roll: row.roll,
+    student: row.student,
+    total: row.total,
+    percentage: row.percentage,
+    status: row.status,
+    subjects: row.subjects,
+  }));
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6 print:p-0">
+    <div className="print-document mx-auto max-w-7xl space-y-6 p-6 print:p-0">
       <div className="flex flex-col gap-4 border-b pb-5 print:border-b-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm uppercase tracking-wide text-stone-500">Promotion Review Sheet</p>
-          <h1 className="mt-1 text-3xl font-bold">{batch.title}</h1>
+          <h1 className="mt-1 font-display text-3xl font-bold text-brand-950">{batch.title}</h1>
           <p className="mt-2 text-sm text-stone-500">
-            Class {batch.className}{batch.sectionName ? `, ${batch.sectionName}` : ""}
+            Class {formatClassSection(batch.className, batch.sectionName, ", ")}
           </p>
         </div>
         <PromotionReviewActions fileName={fileSlug(batch.title)} subjects={subjectNames} rows={csvRows} />

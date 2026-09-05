@@ -12,8 +12,9 @@ import Link from "next/link";
 
 const PAGE_SIZE = 50;
 
-export default async function SAInstitutionsPage({ searchParams }: { searchParams: { page?: string } }) {
-  const page = Math.max(parseInt(searchParams.page || "1", 10) || 1, 1);
+export default async function SAInstitutionsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const resolvedSearchParams = await searchParams;
+  const page = Math.max(parseInt(resolvedSearchParams.page || "1", 10) || 1, 1);
   const offset = (page - 1) * PAGE_SIZE;
 
   const [allInstitutions, totalCountRows] = await Promise.all([

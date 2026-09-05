@@ -1,5 +1,6 @@
 import { DashboardAnnouncements } from "@/components/announcements/DashboardAnnouncements";
 import { MobileAppVersionUpdater } from "@/components/sa/MobileAppVersionUpdater";
+import { PublicSiteDomainUpdater } from "@/components/sa/PublicSiteDomainUpdater";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { db } from "@/db";
@@ -57,11 +58,12 @@ export default async function SuperAdminDashboard() {
         .limit(5)
     ),
     getCachedOrFetch("cache:sa:system-settings", 300, async () =>
-      db.select({ mobileAppVersion: systemSettings.mobileAppVersion }).from(systemSettings).limit(1)
+      db.select({ mobileAppVersion: systemSettings.mobileAppVersion, publicSiteBaseDomain: systemSettings.publicSiteBaseDomain }).from(systemSettings).limit(1)
     ),
   ]);
 
   const currentAppVersion = settingsData[0]?.mobileAppVersion || "1.0.0";
+  const publicSiteBaseDomain = settingsData[0]?.publicSiteBaseDomain || process.env.PUBLIC_SITE_BASE_DOMAIN || 'nisaab360.app';
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -71,6 +73,7 @@ export default async function SuperAdminDashboard() {
       </div>
 
       <MobileAppVersionUpdater currentVersion={currentAppVersion} />
+      <PublicSiteDomainUpdater currentDomain={publicSiteBaseDomain} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard title="Total Institutions" value={overview.totalInsts.toString()} icon={Building2} />

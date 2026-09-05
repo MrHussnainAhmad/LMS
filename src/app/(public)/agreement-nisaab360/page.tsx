@@ -53,7 +53,7 @@ export default async function AgreementPage({
         </div>
 
         {/* Document Container */}
-        <div className="border border-border bg-surface p-5 sm:p-10 lg:p-12 print:border-none print:bg-white print:p-0">
+        <div className="print-document border border-border bg-surface p-5 sm:p-10 lg:p-12 print:border-none print:bg-white print:p-0">
           <div className="text-center mb-10">
             <h1 className="text-2xl font-bold font-serif mb-2">SERVICE AGREEMENT</h1>
             <p className="text-stone-600 font-serif">Between Nisaab360 and {isFilled ? instName : "Institution"}</p>

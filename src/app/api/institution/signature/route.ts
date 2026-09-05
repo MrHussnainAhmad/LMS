@@ -4,6 +4,7 @@ import { institutions } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { eq } from "drizzle-orm";
 import cloudinary from "@/lib/cloudinary";
+import { ownsUploadPublicId } from "@/lib/upload-ownership";
 
 const MAX_SIGNATURE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_SIGNATURE_FORMATS = new Set(["jpg", "jpeg", "png", "webp"]);
@@ -12,7 +13,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { ses
   const body = await req.json();
   const publicId = typeof body.publicId === "string" ? body.publicId.trim() : "";
 
-  if (!publicId || !publicId.startsWith("lms-uploads/")) {
+  if (!publicId || !ownsUploadPublicId(session, publicId)) {
     return NextResponse.json({ error: "Uploaded signature is required" }, { status: 400 });
   }
 

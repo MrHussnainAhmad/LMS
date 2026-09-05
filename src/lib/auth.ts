@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 import { cache } from 'react';
 import { db } from '@/db';
 import { institutions, refreshTokens, students } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { UserRole, JWTPayload } from './auth-types';
 import { verifyAccessToken, getSessionEdge } from './auth-edge';
@@ -19,6 +19,15 @@ export type { UserRole, JWTPayload };
 const REFRESH_TOKEN_EXPIRY_DAYS = 30;
 const WEB_SESSION_EXPIRY_DAYS = 5;
 const ACCESS_TOKEN_EXPIRY = `${WEB_SESSION_EXPIRY_DAYS}d`;
+const REFRESH_TOKEN_PATTERN = /^[a-f0-9]{80}$/i;
+
+function createRefreshTokenMaterial() {
+  const refreshToken = crypto.randomBytes(40).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
+  return { refreshToken, tokenHash, expiresAt };
+}
 
 async function getCookieScope() {
   const requestHeaders = await headers();
@@ -38,10 +47,7 @@ export async function createAccessToken(payload: JWTPayload) {
 
 export async function createTokens(payload: JWTPayload) {
   const accessToken = await createAccessToken(payload);
-  const refreshToken = crypto.randomBytes(40).toString('hex');
-  const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
+  const { refreshToken, tokenHash, expiresAt } = createRefreshTokenMaterial();
 
   await db.insert(refreshTokens).values({
     userRole: payload.role,
@@ -51,6 +57,82 @@ export async function createTokens(payload: JWTPayload) {
   });
 
   return { accessToken, refreshToken };
+}
+
+type RefreshRotationResult =
+  | { status: 'ROTATED'; refreshToken: string; userRole: UserRole; userId: number }
+  | { status: 'INVALID' | 'EXPIRED' | 'REUSED' };
+
+/**
+ * Atomically consumes one refresh token and creates its replacement.
+ *
+ * The row lock makes a token single-use even when two requests reach different
+ * app replicas. If an already-replaced token appears again, every still-active
+ * refresh token for that account is revoked: the old token may have been copied.
+ */
+export async function rotateRefreshToken(presentedToken: string): Promise<RefreshRotationResult> {
+  if (!REFRESH_TOKEN_PATTERN.test(presentedToken)) return { status: 'INVALID' };
+  const presentedHash = crypto.createHash('sha256').update(presentedToken).digest('hex');
+
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`
+      SELECT ${refreshTokens.id}
+      FROM ${refreshTokens}
+      WHERE ${refreshTokens.tokenHash} = ${presentedHash}
+      FOR UPDATE
+    `);
+    const [record] = await tx
+      .select()
+      .from(refreshTokens)
+      .where(eq(refreshTokens.tokenHash, presentedHash))
+      .limit(1);
+    if (!record) return { status: 'INVALID' } as const;
+
+    const now = new Date();
+    if (record.revokedAt) {
+      if (!record.replacedByHash) return { status: 'INVALID' } as const;
+      await tx
+        .update(refreshTokens)
+        .set({ reuseDetectedAt: record.reuseDetectedAt ?? now })
+        .where(eq(refreshTokens.id, record.id));
+      await tx
+        .update(refreshTokens)
+        .set({ revokedAt: now })
+        .where(and(
+          eq(refreshTokens.userRole, record.userRole),
+          eq(refreshTokens.userId, record.userId),
+          isNull(refreshTokens.revokedAt),
+        ));
+      return { status: 'REUSED' } as const;
+    }
+
+    if (record.expiresAt <= now) {
+      await tx
+        .update(refreshTokens)
+        .set({ revokedAt: now })
+        .where(eq(refreshTokens.id, record.id));
+      return { status: 'EXPIRED' } as const;
+    }
+
+    const next = createRefreshTokenMaterial();
+    await tx.insert(refreshTokens).values({
+      userRole: record.userRole,
+      userId: record.userId,
+      tokenHash: next.tokenHash,
+      expiresAt: next.expiresAt,
+    });
+    await tx
+      .update(refreshTokens)
+      .set({ revokedAt: now, replacedByHash: next.tokenHash })
+      .where(eq(refreshTokens.id, record.id));
+
+    return {
+      status: 'ROTATED',
+      refreshToken: next.refreshToken,
+      userRole: record.userRole,
+      userId: record.userId,
+    } as const;
+  });
 }
 
 export async function setAuthCookies(accessToken: string, refreshToken: string) {
@@ -229,12 +311,23 @@ export async function getLightSessionFromRequest(req: NextRequest): Promise<JWTP
 }
 
 export async function revokeAllSessions(role: UserRole, userId: number) {
-  await db.delete(refreshTokens).where(and(eq(refreshTokens.userRole, role), eq(refreshTokens.userId, userId)));
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(
+      eq(refreshTokens.userRole, role),
+      eq(refreshTokens.userId, userId),
+      isNull(refreshTokens.revokedAt),
+    ));
 }
 
 export async function revokeRefreshToken(refreshToken: string) {
+  if (!REFRESH_TOKEN_PATTERN.test(refreshToken)) return;
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-  await db.delete(refreshTokens).where(eq(refreshTokens.tokenHash, tokenHash));
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(refreshTokens.tokenHash, tokenHash), isNull(refreshTokens.revokedAt)));
 }
 
 export function timingSafeEqual(a: string, b: string) {

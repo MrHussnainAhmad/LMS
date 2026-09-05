@@ -33,9 +33,9 @@ const MAX_BATCHES = 20;
  * index grow without bound. Every `/api/auth/refresh` call probes that index, and
  * every nightly backup copies the whole table.
  *
- * Revoked tokens need no special handling: `revokeRefreshToken` and
- * `revokeAllSessions` delete their rows outright, so the only rows left to clean
- * up are ones that simply aged out.
+ * Revoked and replaced rows are intentionally retained until this cutoff so a
+ * replayed token can be recognised as reuse instead of looking like an unknown
+ * token. The same bounded deletion clears both expired and historical rows.
  */
 export async function pruneExpiredRefreshTokens(): Promise<{ deleted: number; backlogRemaining: boolean }> {
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);

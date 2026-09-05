@@ -16,6 +16,7 @@ export type SupportTicketDto = {
 export async function listCreatorTickets(
   role: Extract<UserRole, "STUDENT" | "STAFF">,
   userId: number,
+  institutionId: number,
   limit = DEFAULT_PAGE_SIZE,
 ): Promise<{ tickets: SupportTicketDto[]; nextCursor: string | null }> {
   const rows = await db
@@ -27,7 +28,11 @@ export async function listCreatorTickets(
       createdAt: tickets.createdAt,
     })
     .from(tickets)
-    .where(and(eq(tickets.creatorId, userId), eq(tickets.creatorRole, role)))
+    .where(and(
+      eq(tickets.institutionId, institutionId),
+      eq(tickets.creatorId, userId),
+      eq(tickets.creatorRole, role),
+    ))
     .orderBy(desc(tickets.createdAt), desc(tickets.id))
     .limit(limit + 1);
 

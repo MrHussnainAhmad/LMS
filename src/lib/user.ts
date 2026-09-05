@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { students, staff, institutions, employees, superAdmins, institutionAdmins } from "@/db/schema";
+import { students, staff, institutions, employees, superAdmins, institutionAdmins, parentAccounts } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { redis } from "./redis";
 import type { JWTPayload, UserRole } from "./auth-types";
@@ -32,6 +32,14 @@ export async function getUserCreatedAt(session: JWTPayload): Promise<Date> {
       const [u] = await db.select({ createdAt: staff.createdAt }).from(staff).where(and(
         eq(staff.id, session.userId),
         eq(staff.institutionId, session.institutionId),
+      )).limit(1);
+      return u?.createdAt || defaultDate;
+    }
+    case "PARENT": {
+      if (!session.institutionId) return defaultDate;
+      const [u] = await db.select({ createdAt: parentAccounts.createdAt }).from(parentAccounts).where(and(
+        eq(parentAccounts.id, session.userId),
+        eq(parentAccounts.institutionId, session.institutionId),
       )).limit(1);
       return u?.createdAt || defaultDate;
     }
@@ -132,6 +140,19 @@ async function verifyUserExistsInDatabase(role: UserRole, userId: number): Promi
         .where(and(eq(students.id, userId), eq(students.isActive, true)))
         .limit(1);
       return !!u && (u.academicStatus !== 'GRADUATED' || u.graduatedAccessAllowed);
+    }
+    case 'PARENT': {
+      const [u] = await db.select({
+        status: parentAccounts.status,
+        passwordHash: parentAccounts.passwordHash,
+        deletedAt: parentAccounts.deletedAt,
+        institutionStatus: institutions.status,
+      })
+        .from(parentAccounts)
+        .innerJoin(institutions, eq(parentAccounts.institutionId, institutions.id))
+        .where(eq(parentAccounts.id, userId))
+        .limit(1);
+      return !!u && u.deletedAt === null && u.status !== 'DISABLED' && !!u.passwordHash && u.institutionStatus === 'APPROVED';
     }
     default:
       return false;

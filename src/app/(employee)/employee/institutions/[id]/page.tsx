@@ -8,6 +8,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { getPricingPlan } from "@/lib/pricing";
+import { InstitutionPublicSiteControl } from "@/components/InstitutionPublicSiteControl";
 
 export default async function EmployeeInstitutionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
@@ -29,6 +30,8 @@ export default async function EmployeeInstitutionDetailPage({ params }: { params
     contactEmail: institutions.contactEmail,
     contactPhone: institutions.contactPhone,
     registrationNumber: institutions.registrationNumber,
+    publicSlug: institutions.publicSlug,
+    publicSiteEnabled: institutions.publicSiteEnabled,
     createdAt: institutions.createdAt,
   }).from(institutions).where(eq(institutions.id, institutionId)).limit(1);
   if (!institution) {
@@ -91,6 +94,14 @@ export default async function EmployeeInstitutionDetailPage({ params }: { params
         <StatCard title="Classes" value={classesCount.value.toString()} icon={BookOpen} />
         <StatCard title="Sections" value={sectionsCount.value.toString()} icon={Layers} />
       </div>
+
+      <InstitutionPublicSiteControl
+        institutionId={institution.id}
+        institutionStatus={institution.status}
+        initialSlug={institution.publicSlug}
+        initialEnabled={institution.publicSiteEnabled}
+        baseDomain={process.env.PUBLIC_SITE_BASE_DOMAIN || 'nisaab360.app'}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <Card>

@@ -1,12 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Search, BookOpen, CalendarDays } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2, BookOpen, CalendarDays } from "lucide-react";
+
+type DiaryEntry = {
+  id: number;
+  subjectId: number;
+  subjectName: string | null;
+  staffName: string | null;
+  content: string;
+};
 
 export default function StudentDiaryPage() {
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [entries, setEntries] = useState<any[]>([]);
+  const [entries, setEntries] = useState<DiaryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(true);
 
@@ -34,14 +41,14 @@ export default function StudentDiaryPage() {
   };
 
   return (
-    <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-8">
+    <div className="mx-auto max-w-4xl space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900 flex items-center">
+          <h1 className="flex items-center font-display text-3xl font-bold text-brand-950">
             <BookOpen className="w-6 h-6 mr-3 text-brand-600" />
             My Daily Diary
           </h1>
-          <p className="text-stone-500 mt-1">Check your daily homework and classwork updates.</p>
+          <p className="mt-1 text-stone-500">Check your daily homework and classwork updates.</p>
         </div>
         
         <div className="flex items-center space-x-3 bg-white p-2 rounded-xl border border-stone-200 shadow-sm">

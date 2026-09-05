@@ -152,6 +152,28 @@ export async function invalidateStudentDashboardCache(institutionId: number, stu
   }
 }
 
+/** Invalidate bounded marks responses and dashboards after results change or publish. */
+export async function invalidateStudentMarksCaches(institutionId: number, studentIds: number[]) {
+  if (redis.status !== 'ready' || studentIds.length === 0) return;
+  try {
+    const uniqueStudentIds = Array.from(new Set(studentIds));
+    for (let offset = 0; offset < uniqueStudentIds.length; offset += 100) {
+      const pipeline = redis.pipeline();
+      for (const studentId of uniqueStudentIds.slice(offset, offset + 100)) {
+        pipeline.incr(`cache:student:marks:version:${studentId}`);
+        pipeline.unlink(
+          `cache:student:marks:${studentId}:default`,
+          `cache:student:dashboard:${studentId}:${institutionId}`,
+          ...Array.from({ length: 7 }, (_, day) => `cache:student:dashboard:web:${studentId}:${institutionId}:${day}`),
+        );
+      }
+      await pipeline.exec();
+    }
+  } catch (err) {
+    console.warn(`Marks cache invalidation error for institution ${institutionId}:`, err);
+  }
+}
+
 export function studentEnrichCacheKey(institutionId: number, studentId: number) {
   return `cache:student:enrich:${institutionId}:${studentId}`;
 }

@@ -19,14 +19,15 @@ const STATUS_FILTERS = [
 ] as const;
 type StatusFilter = typeof STATUS_FILTERS[number]["value"];
 
-export default async function EmployeeVerificationQueuePage({ searchParams }: { searchParams: { status?: string } }) {
+export default async function EmployeeVerificationQueuePage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
+  const resolvedSearchParams = await searchParams;
   const session = await getSession();
   if (!session || session.role !== "EMPLOYEE") {
     redirect("/login");
   }
 
-  const status: StatusFilter = STATUS_FILTERS.some((f) => f.value === searchParams.status)
-    ? (searchParams.status as StatusFilter)
+  const status: StatusFilter = STATUS_FILTERS.some((f) => f.value === resolvedSearchParams.status)
+    ? (resolvedSearchParams.status as StatusFilter)
     : "PENDING";
 
   // Default to PENDING applications only — the queue employees actually need to

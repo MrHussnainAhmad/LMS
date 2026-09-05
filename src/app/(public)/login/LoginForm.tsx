@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toaster";
 import { api } from "@/lib/api-client";
 
-type LoginMode = "STUDENT_STAFF" | "INSTITUTION" | "EMPLOYEE";
+type LoginMode = "STUDENT_STAFF" | "INSTITUTION" | "EMPLOYEE" | "PARENT";
 type LoginIdentity = "STUDENT" | "STAFF";
 
 type IdentityOption = {
@@ -62,6 +62,10 @@ const modeCopy = {
         <Link href="/employee-login" className="font-medium text-brand-900 hover:underline">
           Employee login
         </Link>
+        <span className="text-stone-300">|</span>
+        <Link href="/parent-login" className="font-medium text-brand-900 hover:underline">
+          Parent login
+        </Link>
       </>
     ),
   },
@@ -94,6 +98,17 @@ const modeCopy = {
       </Link>
     ),
   },
+  PARENT: {
+    eyebrow: "Parent Login",
+    title: "Follow every child from one account",
+    description: "Use the institution username, guardian email, and password from your parent credentials email.",
+    icon: Users,
+    identifierLabel: "Guardian Email",
+    identifierPlaceholder: "Enter your guardian email",
+    footer: (
+      <Link href="/login" className="font-medium text-brand-900 hover:underline">Student or staff login</Link>
+    ),
+  },
 };
 
 export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
@@ -110,21 +125,29 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
   const PortalIcon = selectedOption?.icon ?? copy.icon;
   const identifierLabel = selectedOption?.identifierLabel ?? copy.identifierLabel;
   const identifierPlaceholder = selectedOption?.identifierPlaceholder ?? copy.identifierPlaceholder;
-  const roleHint = selectedOption?.id ?? (mode === "INSTITUTION" ? "INSTITUTION" : "EMPLOYEE");
+  const roleHint = selectedOption?.id ?? (mode === "INSTITUTION" ? "INSTITUTION" : mode === "PARENT" ? "PARENT" : "EMPLOYEE");
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
-    const emailOrUsername = formData.get("emailOrUsername");
+    const rawIdentifier = formData.get("emailOrUsername");
     const password = formData.get("password");
+    const rawInstitutionUsername = formData.get("institutionUsername");
+    const emailOrUsername = mode === "PARENT"
+      ? String(rawIdentifier || "").trim().toLowerCase()
+      : rawIdentifier;
+    const institutionUsername = mode === "PARENT"
+      ? String(rawInstitutionUsername || "").trim().toLowerCase()
+      : rawInstitutionUsername;
 
     try {
       const res = await api.post<{ role: string; mustChangePassword: boolean }>("/api/auth/login", {
         emailOrUsername,
         password,
         roleHint,
+        ...(mode === "PARENT" ? { institutionUsername } : {}),
       });
 
       toast({ title: "Success", description: "Logged in successfully", variant: "success" });
@@ -229,17 +252,36 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
             <div className="mb-6">
               <p className="text-sm font-medium text-stone-500">Continue as</p>
               <h3 className="mt-1 text-2xl font-display font-semibold text-brand-950">
-                {selectedOption?.title ?? (mode === "INSTITUTION" ? "Institution" : "Employee")}
+                {selectedOption?.title ?? (mode === "INSTITUTION" ? "Institution" : mode === "PARENT" ? "Parent" : "Employee")}
               </h3>
             </div>
 
             <div className="space-y-4">
+              {mode === "PARENT" && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-stone-700">Institution Username</label>
+                  <Input
+                    name="institutionUsername"
+                    placeholder="e.g. ncs"
+                    autoComplete="organization"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    maxLength={30}
+                    required
+                  />
+                  <p className="text-xs leading-5 text-stone-500">This is the institution username shown in your parent credentials email.</p>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-stone-700">{identifierLabel}</label>
                 <Input
                   name="emailOrUsername"
+                  type={mode === "PARENT" ? "email" : "text"}
                   placeholder={identifierPlaceholder}
                   autoComplete={selectedIdentity === "STUDENT" && mode === "STUDENT_STAFF" ? "username" : "email"}
+                  autoCapitalize={mode === "PARENT" ? "none" : undefined}
+                  spellCheck={mode === "PARENT" ? false : undefined}
+                  maxLength={255}
                   required
                 />
               </div>
@@ -251,6 +293,7 @@ export function LoginForm({ mode = "STUDENT_STAFF" }: LoginFormProps) {
                   type="password"
                   placeholder="Enter your password"
                   autoComplete="current-password"
+                  maxLength={1024}
                   required
                 />
               </div>

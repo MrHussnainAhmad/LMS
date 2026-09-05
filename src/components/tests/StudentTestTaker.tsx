@@ -115,7 +115,9 @@ export function StudentTestTaker({
         const body = await response.json().catch(() => ({}));
         if (!response.ok || body.reason === "timeout") failTest("timeout");
       }).catch(() => {});
-    }, 10_000);
+    // Liveness is ephemeral and stored in Valkey. Thirty seconds keeps failure
+    // detection responsive while cutting heartbeat traffic by two thirds.
+    }, 30_000);
     return () => window.clearInterval(heartbeat);
   }, [failed, failTest, onlineTestId, started, isReviewing]);
 

@@ -1,7 +1,7 @@
 import { BookOpen, CheckCircle2, Shield, Users } from "lucide-react";
 
 const features = [
-  { title: "Administration", icon: Shield, description: "Streamline admissions, fee collection, and record keeping with automated workflows.", benefits: ["One-click fee vouchers", "Automated roll number generation", "Campus management"] },
+  { title: "Administration", icon: Shield, description: "Streamline admissions, fee collection, and record keeping with automated workflows.", benefits: ["Verified fee challans", "Automated roll number generation", "Campus management"] },
   { title: "Academics", icon: BookOpen, description: "Empower teachers with smart grading, attendance tracking, and dynamic timetables.", benefits: ["Auto-grading for MCQs", "Real-time attendance logs", "Syllabus tracking"] },
   { title: "Communication", icon: Users, description: "Keep parents, students, and staff aligned with instant announcements and app notifications.", benefits: ["Push notifications", "Targeted announcements", "Parent portal"] },
 ];

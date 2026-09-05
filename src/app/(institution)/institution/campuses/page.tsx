@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { campuses } from "@/db/schema";
-import { eq, desc, isNull } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { MapPin, Plus } from "lucide-react";
 import { getSession } from "@/lib/auth";
@@ -94,9 +94,9 @@ export default async function InstitutionCampusesPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
-              <form action={createCampus} className="space-y-4">
+              <form action={createCampus} className="space-y-4 pt-2">
                 <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Campus Name</label>
+                  <label className="mb-2 block text-sm font-medium text-stone-700">Campus Name</label>
                   <input
                     type="text"
                     name="name"

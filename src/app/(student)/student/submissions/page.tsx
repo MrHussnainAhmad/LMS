@@ -36,7 +36,7 @@ export default async function StudentSubmissionsPage() {
   return (
     <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
       <div>
-        <h1 className="text-2xl lg:text-3xl font-display font-bold text-brand-950">Submissions</h1>
+        <h1 className="font-display text-3xl font-bold text-brand-950">Submissions</h1>
         <p className="text-stone-500 mt-1 text-sm lg:text-base">Upload files only for assignments created for your class.</p>
       </div>
 

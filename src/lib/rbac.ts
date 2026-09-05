@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest, getLightSessionFromRequest, UserRole, JWTPayload } from './auth';
 import { DEFAULT_MAX_BODY_BYTES, bodyTooLargeResponse, exceedsDeclaredBodyLimit } from './http';
+import { withRateLimit } from './rate-limit';
 
 type RouteHandler = (
   req: NextRequest,
@@ -73,6 +74,16 @@ export function requireRole(
 
       const guard = enforceSessionGuards(req, session, allowedRoles, options);
       if (guard) return guard;
+
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+        const limited = await withRateLimit(req, 'api', `${session.role}:${session.userId}`);
+        if (!limited.success) {
+          return NextResponse.json(
+            { error: 'Too many requests. Please wait and try again.' },
+            { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } },
+          );
+        }
+      }
 
       const enhancedContext = { ...context, session };
       return await handler(req, enhancedContext as any);

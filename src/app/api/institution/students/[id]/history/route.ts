@@ -6,8 +6,9 @@ import {
   batchExamResults,
   batchExams,
   batchExamSubjects,
-  feeVoucherCycles,
-  feeVouchers,
+  feeInvoices,
+  feePayments,
+  feePaymentSubmissions,
   marks,
   students,
   submissions,
@@ -17,14 +18,14 @@ import { requireRole, getTenantContext } from "@/lib/rbac";
 import { singleMonthRange } from "@/lib/month-window";
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 
-type HistorySection = "attendance" | "marks" | "submissions" | "batchExams" | "vouchers" | "analytics";
+type HistorySection = "attendance" | "marks" | "submissions" | "batchExams" | "fees" | "analytics";
 
 const VALID_SECTIONS = new Set<HistorySection>([
   "attendance",
   "marks",
   "submissions",
   "batchExams",
-  "vouchers",
+  "fees",
   "analytics",
 ]);
 
@@ -160,52 +161,71 @@ async function loadBatchExams(studentId: number, institutionId: number, from: st
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-async function loadVouchers(studentId: number, institutionId: number, from: string, to: string) {
-  const billingMonth = from.slice(0, 7);
-  const [rows, cycleRows] = await Promise.all([
+async function loadFees(studentId: number, institutionId: number, billingMonth: string) {
+  const [invoice] = await db
+    .select()
+    .from(feeInvoices)
+    .where(and(
+      eq(feeInvoices.studentId, studentId),
+      eq(feeInvoices.institutionId, institutionId),
+      eq(feeInvoices.billingMonth, billingMonth),
+    ))
+    .limit(1);
+
+  if (!invoice) return { feeAccount: null };
+
+  const [payments, paymentSubmissions] = await Promise.all([
     db
       .select({
-        id: feeVouchers.id,
-        title: feeVouchers.title,
-        imageUrl: feeVouchers.imageUrl,
-        billingMonth: feeVouchers.billingMonth,
-        lateFeeAmount: feeVouchers.lateFeeAmount,
-        createdAt: feeVouchers.createdAt,
+        id: feePayments.id,
+        receiptNumber: feePayments.receiptNumber,
+        amount: feePayments.amount,
+        method: feePayments.method,
+        reference: feePayments.reference,
+        receivedAt: feePayments.receivedAt,
       })
-      .from(feeVouchers)
+      .from(feePayments)
       .where(and(
-        eq(feeVouchers.studentId, studentId),
-        eq(feeVouchers.institutionId, institutionId),
-        gte(feeVouchers.createdAt, new Date(`${from}T00:00:00`)),
-        lte(feeVouchers.createdAt, new Date(`${to}T23:59:59.999`))
+        eq(feePayments.institutionId, institutionId),
+        eq(feePayments.studentId, studentId),
+        eq(feePayments.invoiceId, invoice.id),
       ))
-      .orderBy(desc(feeVouchers.createdAt)),
+      .orderBy(desc(feePayments.receivedAt)),
     db
       .select({
-        status: feeVoucherCycles.status,
-        lateFeeAmount: feeVoucherCycles.lateFeeAmount,
-        submittedAt: feeVoucherCycles.submittedAt,
+        id: feePaymentSubmissions.id,
+        amount: feePaymentSubmissions.amount,
+        sourceBankName: feePaymentSubmissions.sourceBankName,
+        transactionId: feePaymentSubmissions.transactionId,
+        status: feePaymentSubmissions.status,
+        reviewerNote: feePaymentSubmissions.reviewerNote,
+        submittedAt: feePaymentSubmissions.submittedAt,
       })
-      .from(feeVoucherCycles)
+      .from(feePaymentSubmissions)
       .where(and(
-        eq(feeVoucherCycles.studentId, studentId),
-        eq(feeVoucherCycles.institutionId, institutionId),
-        eq(feeVoucherCycles.billingMonth, billingMonth),
+        eq(feePaymentSubmissions.institutionId, institutionId),
+        eq(feePaymentSubmissions.studentId, studentId),
+        eq(feePaymentSubmissions.invoiceId, invoice.id),
       ))
-      .limit(1),
+      .orderBy(desc(feePaymentSubmissions.submittedAt)),
   ]);
 
   return {
-    vouchers: rows.map((row) => ({
-      ...row,
-      createdAt: row.createdAt.toISOString(),
-    })),
-    voucherCycle: cycleRows[0]
-      ? {
-          ...cycleRows[0],
-          submittedAt: cycleRows[0].submittedAt?.toISOString() ?? null,
-        }
-      : null,
+    feeAccount: {
+      invoice: {
+        ...invoice,
+        createdAt: invoice.createdAt.toISOString(),
+        updatedAt: invoice.updatedAt.toISOString(),
+      },
+      payments: payments.map((payment) => ({
+        ...payment,
+        receivedAt: payment.receivedAt.toISOString(),
+      })),
+      submissions: paymentSubmissions.map((submission) => ({
+        ...submission,
+        submittedAt: submission.submittedAt.toISOString(),
+      })),
+    },
   };
 }
 
@@ -248,8 +268,8 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req:
     return NextResponse.json({ batchExams: await loadBatchExams(studentId, institutionId, from, to) });
   }
 
-  if (section === "vouchers") {
-    return NextResponse.json(await loadVouchers(studentId, institutionId, from, to));
+  if (section === "fees") {
+    return NextResponse.json(await loadFees(studentId, institutionId, month));
   }
 
   // analytics: combine the datasets the chart needs

@@ -3,15 +3,7 @@
 import { useState } from "react";
 import { File, LoaderCircle, UploadCloud, X } from "lucide-react";
 import { useToast } from "@/components/ui/toaster";
-
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-const ALLOWED_UPLOAD_MIMES = new Set([
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
+import { CONTENT_FILE_ACCEPT, prepareContentUpload } from "@/lib/client-upload-file";
 
 export function ReferenceFileInput() {
   const [uploaded, setUploaded] = useState<{ name: string; key: string } | null>(null);
@@ -19,29 +11,22 @@ export function ReferenceFileInput() {
   const { toast } = useToast();
 
   const upload = async (file: globalThis.File) => {
-    if (file.size > MAX_UPLOAD_BYTES) {
-      toast({ title: "File too large", description: "Maximum file size is 5MB.", variant: "destructive" });
-      return;
-    }
-    if (!ALLOWED_UPLOAD_MIMES.has(file.type)) {
-      toast({ title: "Unsupported file", description: "Upload PDF, DOCX, JPG, PNG, or WEBP files only.", variant: "destructive" });
-      return;
-    }
-
     setUploading(true);
     try {
+      const preparedFile = await prepareContentUpload(file);
       const sigRes = await fetch("/api/upload/signature", { method: "POST" });
       const signaturePayload = await sigRes.json();
-      if (!sigRes.ok || !signaturePayload.signature) {
+      if (!sigRes.ok || !signaturePayload.signature || !signaturePayload.folder) {
         throw new Error(signaturePayload.error || "Failed to prepare upload");
       }
 
       const uploadData = new FormData();
-      uploadData.append("file", file);
+      uploadData.append("file", preparedFile);
       uploadData.append("api_key", signaturePayload.apiKey);
       uploadData.append("timestamp", String(signaturePayload.timestamp));
       uploadData.append("signature", signaturePayload.signature);
-      uploadData.append("folder", "lms-uploads");
+      uploadData.append("folder", signaturePayload.folder);
+      uploadData.append("allowed_formats", signaturePayload.allowedFormats);
 
       const response = await fetch(`https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/auto/upload`, {
         method: "POST",
@@ -64,7 +49,7 @@ export function ReferenceFileInput() {
 
   return (
     <div>
-      <label className="block text-sm font-medium text-stone-700 mb-1">Reference File <span className="font-normal text-stone-500">(optional)</span></label>
+      <label className="mb-2 block text-sm font-medium text-stone-700">Reference File <span className="font-normal text-stone-500">(optional)</span></label>
       <input type="hidden" name="referenceFileKey" value={uploaded?.key || ""} />
       <input type="hidden" name="referenceFileName" value={uploaded?.name || ""} />
       {uploaded ? (
@@ -83,7 +68,7 @@ export function ReferenceFileInput() {
           {uploading ? "Uploading..." : "Choose reference file"}
           <input
             type="file"
-            accept=".pdf,.docx,image/jpeg,image/png,image/webp"
+            accept={CONTENT_FILE_ACCEPT}
             className="hidden"
             disabled={uploading}
             onChange={(event) => {
@@ -94,7 +79,7 @@ export function ReferenceFileInput() {
           />
         </label>
       )}
-      <p className="mt-1 text-xs text-stone-500">PDF, DOCX, JPG, PNG, or WEBP up to 5MB.</p>
+      <p className="mt-1 text-xs text-stone-500">PDF, DOCX, TXT, JPG, PNG, or WebP up to 5 MB. Images are compressed first.</p>
     </div>
   );
 }

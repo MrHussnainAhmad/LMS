@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { LucideIcon, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
@@ -12,7 +13,7 @@ export interface SidebarItem {
   href: string;
   icon: LucideIcon;
   /** @deprecated Nav no longer hides links via business-data probes. Kept optional for call-site compat. */
-  availabilityKey?: "activeStudent" | "studentTests" | "examTimetable" | "feeVouchers";
+  availabilityKey?: "activeStudent" | "studentTests" | "examTimetable" | "fees";
   /** @deprecated Leave badges are loaded on the Leaves page, not on shell mount. */
   notificationKey?: "staffLeaves" | "institutionLeaves";
   hasNotification?: boolean;
@@ -29,6 +30,34 @@ interface SidebarProps {
 
 export function Sidebar({ items, role, brand, onClose, isCollapsed = false, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
+  const [admissionAttentionCount, setAdmissionAttentionCount] = useState(0);
+
+  useEffect(() => {
+    if (role !== "INSTITUTION" && role !== "INSTITUTION_ADMIN") return;
+    let controller: AbortController | null = null;
+    const load = async () => {
+      controller?.abort();
+      controller = new AbortController();
+      try {
+        const response = await fetch("/api/institution/admissions/attention-count", { cache: "no-store", signal: controller.signal });
+        if (!response.ok) return;
+        const data = await response.json() as { count?: number };
+        setAdmissionAttentionCount(Math.max(0, data.count || 0));
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) console.error("Admission badge check failed:", error);
+      }
+    };
+    void load();
+    const interval = window.setInterval(load, 60_000);
+    window.addEventListener("focus", load);
+    window.addEventListener("admissions:updated", load);
+    return () => {
+      controller?.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", load);
+      window.removeEventListener("admissions:updated", load);
+    };
+  }, [role]);
 
   return (
     <div className="flex h-full flex-col bg-brand-950 text-white">
@@ -60,6 +89,7 @@ export function Sidebar({ items, role, brand, onClose, isCollapsed = false, onTo
       <nav className={cn("flex-1 space-y-1 overflow-y-auto overscroll-contain", isCollapsed ? "p-3" : "px-3 py-4")}>
         {items.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const itemAttentionCount = item.href === "/institution/admissions" ? admissionAttentionCount : 0;
           return (
             <Link
               key={item.href}
@@ -77,7 +107,7 @@ export function Sidebar({ items, role, brand, onClose, isCollapsed = false, onTo
             >
               <div className="relative">
                 <item.icon className={cn("h-[18px] w-[18px] stroke-[1.7px]", isActive ? "text-brand-950" : "text-white/42 group-hover:text-white")} />
-                {item.hasNotification && (
+                {(item.hasNotification || itemAttentionCount > 0) && (
                   <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                     <span className="relative inline-flex h-2.5 w-2.5 rounded-full border-2 border-brand-950 bg-red-500"></span>
@@ -85,6 +115,7 @@ export function Sidebar({ items, role, brand, onClose, isCollapsed = false, onTo
                 )}
               </div>
               <span className={cn(isCollapsed && "lg:hidden")}>{item.label}</span>
+              {itemAttentionCount > 0 && <span className={cn("ml-auto min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold leading-4 text-white", isCollapsed && "lg:hidden")}>{itemAttentionCount > 99 ? "99+" : itemAttentionCount}</span>}
             </Link>
           );
         })}

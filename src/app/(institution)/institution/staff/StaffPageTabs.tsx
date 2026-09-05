@@ -21,7 +21,7 @@ export function StaffPageTabs({
         <TabsTrigger value="requests">Staff Requests</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="directory" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <TabsContent value="directory">
         {directory}
       </TabsContent>
 

@@ -7,19 +7,25 @@ import { z } from 'zod';
  */
 const MAX_IDENTIFIER = 255;
 const MAX_PASSWORD = 1024;
+const SCRIPT_LIKE_INPUT = /<\s*\/?\s*script\b|javascript\s*:|data\s*:\s*text\/html|on[a-z]+\s*=|[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/i;
+const safeLoginField = (maximum: number) => z.string().min(1).max(maximum).refine((value) => !SCRIPT_LIKE_INPUT.test(value), 'Invalid characters in login field');
 
 export const loginSchema = z.object({
-  emailOrUsername: z.string().min(1).max(MAX_IDENTIFIER),
-  password: z.string().min(1).max(MAX_PASSWORD),
-  roleHint: z.enum(['SUPER_ADMIN', 'EMPLOYEE', 'INSTITUTION', 'STAFF', 'STUDENT']).optional(),
-  securityAnswer: z.string().max(MAX_IDENTIFIER).optional(),
+  emailOrUsername: safeLoginField(MAX_IDENTIFIER),
+  password: safeLoginField(MAX_PASSWORD),
+  roleHint: z.enum(['SUPER_ADMIN', 'EMPLOYEE', 'INSTITUTION', 'STAFF', 'STUDENT', 'PARENT']).optional(),
+  institutionUsername: safeLoginField(30).optional(),
+  securityAnswer: safeLoginField(MAX_IDENTIFIER).optional(),
   returnTokens: z.boolean().optional(),
 }).strict();
 
 export const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1).max(MAX_PASSWORD),
-  newPassword: z.string().min(8).max(MAX_PASSWORD).refine(val => val !== '1234567890', {
+  currentPassword: safeLoginField(MAX_PASSWORD),
+  newPassword: safeLoginField(MAX_PASSWORD).refine(val => val.length >= 8, 'Password must contain at least 8 characters').refine(val => val !== '1234567890', {
     message: "Password cannot be the default '1234567890'",
   }),
   returnTokens: z.boolean().optional(),
-}).strict();
+}).strict().refine((value) => value.currentPassword !== value.newPassword, {
+  message: 'New password must be different from the current password',
+  path: ['newPassword'],
+});

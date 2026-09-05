@@ -2,11 +2,12 @@
 
 import { AppShell } from "@/components/layout/AppShell";
 import type { ShellBrand } from "@/components/layout/BrandMark";
-import { LayoutDashboard, Building2, Users, Activity, ShieldAlert, FileText, Star, Newspaper, Download } from "lucide-react";
+import { LayoutDashboard, Building2, Users, Activity, ShieldAlert, FileText, Star, Newspaper, Download, Archive } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
   { label: "Dashboard", href: "/sa/dashboard", icon: LayoutDashboard },
   { label: "School Requests", href: "/sa/institutions", icon: Building2 },
+  { label: "Institution Backups", href: "/sa/backups", icon: Archive },
   { label: "Featured Logos", href: "/sa/featured-institutions", icon: Star },
   { label: "Platform Support", href: "/sa/tickets", icon: Activity },
   { label: "Employees", href: "/sa/employees", icon: Users },

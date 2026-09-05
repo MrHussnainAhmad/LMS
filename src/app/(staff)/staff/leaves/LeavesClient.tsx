@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, XCircle, Loader2, Calendar, MessageSquare, Phone } from "lucide-react";
 import { useToast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { formatClassSection } from "@/lib/class-section-label";
 
 type LeaveRequest = {
   id: number;
   studentName: string;
+  className: string;
   sectionName: string;
   reason: string;
   startDate: string;
@@ -45,10 +47,10 @@ export function LeavesClient({ initialRequests }: { initialRequests: LeaveReques
         title: "Success",
         description: `Leave request ${action.toLowerCase()} successfully.`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "Failed to update leave request",
         variant: "destructive",
       });
     } finally {
@@ -77,7 +79,7 @@ export function LeavesClient({ initialRequests }: { initialRequests: LeaveReques
                     </div>
                     <div>
                       <h3 className="font-display font-semibold text-foreground text-lg leading-none">{req.studentName}</h3>
-                      <p className="text-sm text-stone-500 mt-1">Class {req.sectionName}</p>
+                      <p className="text-sm text-stone-500 mt-1">Class {formatClassSection(req.className, req.sectionName)}</p>
                     </div>
                   </div>
                   <div className="text-right text-sm text-stone-500 font-medium whitespace-nowrap">
@@ -95,7 +97,7 @@ export function LeavesClient({ initialRequests }: { initialRequests: LeaveReques
                     <p className="font-medium text-foreground">{format(new Date(req.endDate), "MMM d, yyyy")}</p>
                   </div>
                   {req.parentPhone && (
-                    <div className="col-span-2 pt-2 border-t border-stone-200/50 mt-1">
+                    <div className="mt-1 border-t border-stone-200/50 pt-2 sm:col-span-2">
                       <p className="text-stone-500 text-xs uppercase tracking-wider mb-1 font-semibold">Parent Contact</p>
                       <p className="font-medium text-foreground">{req.parentPhone}</p>
                     </div>

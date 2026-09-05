@@ -580,6 +580,7 @@ export default async function LandingPage() {
             <p>Access</p>
             <Link href="/login">Student &amp; staff</Link>
             <Link href="/institution-login">Institution</Link>
+            <Link href="/parent-login">Parent</Link>
             <Link href="/employee-login">Employee</Link>
             <Link href="/register">Register</Link>
           </nav>

@@ -9,6 +9,7 @@ import { SectionSelector } from "./SectionSelector";
 import { AssignmentForm } from "./AssignmentForm";
 import { InchargeForm } from "./InchargeForm";
 import { WeeklyTimetable, type TimetableEntry } from "@/components/timetable/ScheduleViews";
+import { formatClassSection } from "@/lib/class-section-label";
 
 type TimetableRow = {
   assignment: typeof staffAssignments.$inferSelect;
@@ -56,7 +57,7 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
     if (namedSections.length === 0) {
       return [{
         value: `class:${classRow.id}`,
-        label: `${classRow.name} (whole class)`,
+        label: classRow.name,
         classId: classRow.id,
         sectionId: wholeClassSection?.section.id || null,
         classTeacherId: wholeClassSection?.section.classTeacherId || null,
@@ -65,7 +66,7 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
 
     return namedSections.map((row) => ({
       value: `section:${row.section.id}`,
-      label: `${classRow.name} - ${row.section.name}`,
+      label: formatClassSection(classRow.name, row.section.name),
       classId: classRow.id,
       sectionId: row.section.id,
       classTeacherId: row.section.classTeacherId,

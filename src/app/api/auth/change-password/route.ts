@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { employees, staff, students } from '@/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { employees, parentAccounts, staff, students } from '@/db/schema';
+import { and, eq, sql } from 'drizzle-orm';
 import { hashPassword as hash, verifyPassword as verify } from '@/lib/argon2-pool';
 import { requireRole } from '@/lib/rbac';
 import { changePasswordSchema } from '@/lib/validators/auth';
 import { logAudit } from '@/lib/audit';
 import { getClientIp } from '@/lib/client-ip';
-import { createTokens, setAuthCookies } from '@/lib/auth';
+import { clearAuthCookies, createTokens, revokeAllSessions, setAuthCookies } from '@/lib/auth';
 import { invalidateUserValidity, resolveUserCreatedAt } from '@/lib/user';
 import { AUTH_MAX_BODY_BYTES, readJsonBody } from '@/lib/http';
 
@@ -32,6 +32,14 @@ async function getPasswordHashForSession(role: string, userId: number, instituti
     )).limit(1);
     return user;
   }
+  if (role === 'PARENT') {
+    if (!institutionId) return undefined;
+    const [user] = await db.select({ passwordHash: parentAccounts.passwordHash }).from(parentAccounts).where(and(
+      eq(parentAccounts.id, userId),
+      eq(parentAccounts.institutionId, institutionId),
+    )).limit(1);
+    return user?.passwordHash ? { passwordHash: user.passwordHash } : undefined;
+  }
 }
 
 async function updatePasswordForSession(role: string, userId: number, passwordHash: string, institutionId?: number) {
@@ -53,10 +61,23 @@ async function updatePasswordForSession(role: string, userId: number, passwordHa
     await db.update(students)
       .set({ passwordHash, mustChangePassword: false })
       .where(and(eq(students.id, userId), eq(students.institutionId, institutionId)));
+    return;
+  }
+  if (role === 'PARENT') {
+    if (!institutionId) return;
+    await db.update(parentAccounts)
+      .set({
+        passwordHash,
+        mustChangePassword: false,
+        status: 'ACTIVE',
+        sessionVersion: sql`${parentAccounts.sessionVersion} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(parentAccounts.id, userId), eq(parentAccounts.institutionId, institutionId)));
   }
 }
 
-export const POST = requireRole(['EMPLOYEE', 'STAFF', 'STUDENT'], async (req: NextRequest, { session }) => {
+export const POST = requireRole(['EMPLOYEE', 'STAFF', 'STUDENT', 'PARENT'], async (req: NextRequest, { session }) => {
   // Bounded read: two short passwords. Previously an un-caught `req.json()`,
   // which both buffered an unbounded body and turned malformed JSON into a 500.
   const bodyResult = await readJsonBody(req, AUTH_MAX_BODY_BYTES);
@@ -83,6 +104,7 @@ export const POST = requireRole(['EMPLOYEE', 'STAFF', 'STUDENT'], async (req: Ne
   const passwordHash = await hash(newPassword);
   await updatePasswordForSession(session.role, session.userId, passwordHash, session.institutionId);
   await invalidateUserValidity(session.role, session.userId);
+  await revokeAllSessions(session.role, session.userId);
 
   await logAudit({
     institutionId: session.institutionId,
@@ -113,5 +135,6 @@ export const POST = requireRole(['EMPLOYEE', 'STAFF', 'STUDENT'], async (req: Ne
     });
   }
 
-  return NextResponse.json({ message: 'Password changed successfully. Please login again to refresh session.' });
+  await clearAuthCookies();
+  return NextResponse.json({ message: 'Password changed successfully. Please login again to refresh session.', role: session.role });
 }, { allowPasswordChangeRequired: true });

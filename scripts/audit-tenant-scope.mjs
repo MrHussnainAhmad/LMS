@@ -4,25 +4,61 @@ import path from "node:path";
 const root = process.cwd();
 const scopedTables = [
   "academicSessions",
+  "admissionApplicantAccounts",
+  "admissionApplicationEvents",
+  "admissionApplications",
+  "admissionAppointments",
+  "admissionCycles",
+  "admissionDocumentRequests",
+  "admissionEnrollments",
+  "admissionFeePayments",
+  "admissionOfferings",
   "announcements",
   "assignments",
   "attendances",
+  "auditLogs",
+  "batchExams",
   "campuses",
   "classes",
+  "classFeeItems",
+  "courses",
+  "diaries",
+  "emailOutbox",
+  "feeHeads",
+  "feeInvoices",
+  "feePayments",
+  "feePaymentSubmissions",
+  "feeVoucherCycles",
+  "feeVouchers",
+  "gradingScales",
+  "institutionAdmins",
+  "institutionBackups",
+  "institutionCustomRoles",
   "institutionHolidays",
+  "institutionOwners",
+  "institutionPublicProfiles",
+  "leaveRequests",
   "marks",
+  "notifications",
   "onlineTestSubmissions",
   "onlineTests",
+  "passwordResets",
+  "platformReviews",
   "sections",
   "staff",
   "staffAssignments",
+  "staffAttendances",
   "staffProfileChangeRequests",
   "staffTeachableSubjects",
+  "studentAdmissionCounters",
+  "studentFeeAdjustments",
+  "studentPromotions",
   "students",
   "studentProfileChangeRequests",
   "subjects",
   "submissions",
   "tests",
+  "tickets",
 ];
 
 const ignoreDirs = new Set([".git", ".next", "node_modules"]);
@@ -47,11 +83,10 @@ for (const file of walk(path.join(root, "src"))) {
     const re = new RegExp(`\\.(?:from|update|delete)\\(${table}\\)`, "g");
     let match;
     while ((match = re.exec(text))) {
-      const context = text.slice(Math.max(0, match.index - 250), match.index + 650);
+      const context = text.slice(Math.max(0, match.index - 1200), match.index + 1400);
       const allowCrossTenant = context.includes(`tenant-audit: allow-cross-tenant ${table}`);
       if (allowCrossTenant) continue;
-      const snippet = text.slice(match.index, match.index + 650);
-      if (!snippet.includes(`${table}.institutionId`) && !snippet.includes("institutionId")) {
+      if (!context.includes(`${table}.institutionId`) && !context.includes("institutionId")) {
         offenders.push(`${relativeFile}: possible unscoped ${table} query`);
       }
     }

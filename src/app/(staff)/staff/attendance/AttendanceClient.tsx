@@ -114,7 +114,7 @@ export function AttendanceClient({
     <div className="space-y-6 animate-fade-in pb-24 lg:pb-0">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-display font-bold text-brand-950">Mark Attendance</h1>
+          <h1 className="font-display text-3xl font-bold text-brand-950">Mark Attendance</h1>
           <p className="text-stone-500 mt-1 text-sm lg:text-base">Select attendance status for each student</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">

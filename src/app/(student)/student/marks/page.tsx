@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { marks, subjects, tests, onlineTests } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { windowRange } from "@/lib/month-window";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, lte } from "drizzle-orm";
 import { FileText, Trophy } from "lucide-react";
 import { redirect } from "next/navigation";
 
@@ -26,6 +26,7 @@ export default async function StudentMarksPage() {
     .where(and(
       eq(marks.studentId, session.userId),
       eq(marks.institutionId, session.institutionId),
+      isNotNull(tests.resultsPublishedAt),
       gte(tests.date, from),
       lte(tests.date, to),
     ))

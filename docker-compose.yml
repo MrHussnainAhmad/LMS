@@ -74,6 +74,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - backend
+      # Docker Desktop does not publish host ports from an internal-only
+      # network. The host binding remains loopback-only (127.0.0.1:5433), while
+      # this attachment makes the direct migration connection reachable.
+      - appnet
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}"]
       interval: 10s
@@ -131,6 +135,22 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
+    command: ["node", "scripts/migrate-production.mjs", "--apply"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
   app:
     init: true
     # Option 1: build locally on the ARM Oracle VM
@@ -142,6 +162,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      DEPLOYMENT_ENV: production
       # Bound the V8 heap per replica. Left unset, V8 sizes the old space from total
       # system memory (~4 GB on this box), so two replicas plus Postgres can exhaust
       # RAM — and the kernel's OOM killer then usually picks the largest process,
@@ -160,14 +181,25 @@ services:
       DB_POOL_MAX: ${DB_POOL_MAX:-15}
       # Shared auth secret
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      # Dedicated at-rest encryption key for Bunny/Mux credentials. JWT_SECRET
+      # remains the compatibility fallback when this optional value is empty.
+      STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:-}
       # Required for the authenticated/manual push-receipt endpoint.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
       # Add your other Next.js env vars here
-      NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
-      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:?NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME must be set}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:?CLOUDINARY_API_KEY must be set}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:?CLOUDINARY_API_SECRET must be set}
+      B2_REGION: ${B2_REGION:?B2_REGION must be set}
+      B2_APPLICATION_KEY_ID: ${B2_APPLICATION_KEY_ID:?B2_APPLICATION_KEY_ID must be set}
+      B2_APPLICATION_KEY: ${B2_APPLICATION_KEY:?B2_APPLICATION_KEY must be set}
+      B2_BUCKET_NAME: ${B2_BUCKET_NAME:?B2_BUCKET_NAME must be set}
       NEXT_PUBLIC_APP_DOMAIN: ${NEXT_PUBLIC_APP_DOMAIN:-nisaab360.app}
+      PUBLIC_SITE_BASE_DOMAIN: ${PUBLIC_SITE_BASE_DOMAIN:-nisaab360.app}
       APP_DOMAIN: ${APP_DOMAIN:-nisaab360.app}
+      GMAIL_USER: ${GMAIL_USER:?GMAIL_USER must be set}
+      GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:?GMAIL_APP_PASSWORD must be set}
+      API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-https://nisaab360.app}
       # NEXTAUTH_URL: https://${DOMAIN}
       # NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
     depends_on:
@@ -175,13 +207,15 @@ services:
         condition: service_started
       valkey:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - appnet
       - backend
     volumes:
       - app_downloads:/app/public/downloads
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -195,6 +229,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      DEPLOYMENT_ENV: production
       # Same heap ceiling as app; see the comment there.
       NODE_OPTIONS: --max-old-space-size=1024
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
@@ -204,27 +239,38 @@ services:
       DB_POOL_MAX: ${DB_POOL_MAX:-15}
       # Shared auth secret
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:-}
       # Required for the authenticated/manual push-receipt endpoint.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
-      NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
-      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:?NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME must be set}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:?CLOUDINARY_API_KEY must be set}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:?CLOUDINARY_API_SECRET must be set}
+      B2_REGION: ${B2_REGION:?B2_REGION must be set}
+      B2_APPLICATION_KEY_ID: ${B2_APPLICATION_KEY_ID:?B2_APPLICATION_KEY_ID must be set}
+      B2_APPLICATION_KEY: ${B2_APPLICATION_KEY:?B2_APPLICATION_KEY must be set}
+      B2_BUCKET_NAME: ${B2_BUCKET_NAME:?B2_BUCKET_NAME must be set}
       # Keep the second web replica aligned with app. Override these with
       # localhost when running the compose stack locally.
       NEXT_PUBLIC_APP_DOMAIN: ${NEXT_PUBLIC_APP_DOMAIN:-nisaab360.app}
+      PUBLIC_SITE_BASE_DOMAIN: ${PUBLIC_SITE_BASE_DOMAIN:-nisaab360.app}
       APP_DOMAIN: ${APP_DOMAIN:-nisaab360.app}
+      GMAIL_USER: ${GMAIL_USER:?GMAIL_USER must be set}
+      GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:?GMAIL_APP_PASSWORD must be set}
+      API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-https://nisaab360.app}
     depends_on:
       pgbouncer:
         condition: service_started
       valkey:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - appnet
       - backend
     volumes:
       - app_downloads:/app/public/downloads
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -246,6 +292,7 @@ services:
       # point is a compiled bundle (see the push-receipt-worker stage in Dockerfile).
       NODE_OPTIONS: --max-old-space-size=384 --enable-source-maps
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
+      DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
       # Without this, every cache invalidation the worker triggers (fee-voucher
       # announcements and notifications invalidate student dashboard/announcement
       # keys) silently connected to 127.0.0.1:6379 inside the worker container,
@@ -255,7 +302,14 @@ services:
       # Receipt processing is intentionally low-concurrency and must not add a
       # second five-connection application pool behind PgBouncer.
       DB_POOL_MAX: 1
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       PUSH_RECEIPT_INTERVAL_MS: ${PUSH_RECEIPT_INTERVAL_MS:-60000}
+      B2_REGION: ${B2_REGION:?B2_REGION must be set}
+      B2_APPLICATION_KEY_ID: ${B2_APPLICATION_KEY_ID:?B2_APPLICATION_KEY_ID must be set}
+      B2_APPLICATION_KEY: ${B2_APPLICATION_KEY:?B2_APPLICATION_KEY must be set}
+      B2_BUCKET_NAME: ${B2_BUCKET_NAME:?B2_BUCKET_NAME must be set}
+      GMAIL_USER: ${GMAIL_USER:?GMAIL_USER must be set}
+      GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:?GMAIL_APP_PASSWORD must be set}
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -282,39 +336,15 @@ services:
     networks:
       - appnet
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:2019/config/"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
 
-  # BROKEN: this service cannot start, which is why no nightly backup is being made
-  # (bugs.md: "backup is not being made ... midnight everyday").
-  #
-  # Root cause: `build: ./backup` points at a directory that does not exist in this
-  # repository. It is not git-ignored either (checked .gitignore) — it was simply
-  # never committed, so `docker compose up` fails to build this one service and the
-  # rest of the stack comes up without it. Nothing logs a backup failure because no
-  # backup container ever runs.
-  #
-  # To restore backups, either:
-  #   1. Recreate ./backup (a Dockerfile wrapping a postgres-backup-to-S3 image), or
-  #   2. Replace the build with a pinned upstream image. The env var names below
-  #      (POSTGRES_DATABASE, SCHEDULE, BACKUP_KEEP_DAYS, S3_ENDPOINT/S3_PREFIX/...)
-  #      match eeshugerman/postgres-backup-s3, so that is almost certainly what
-  #      ./backup was built FROM:
-  #        image: eeshugerman/postgres-backup-s3:16
-  # Deliberately not changed here: pulling a third-party image into production is
-  # the deployer's call, and the two spellings must be verified against whatever the
-  # VPS is actually running.
-  #
-  # Two further things to check once it builds, because both fail silently:
-  #   - B2_REGION unset makes S3_ENDPOINT "https://s3..backblazeb2.com", so every
-  #     upload fails while pg_dump still reports success.
-  #   - BACKUP_KEEP_WEEKS/MONTHS are prodrigestivill/postgres-backup-local options
-  #     and are ignored by the S3 image; only BACKUP_KEEP_DAYS takes effect.
-  #   - There is no healthcheck and no alerting on this service, so verify a restore
-  #     (not just the presence of an object in the bucket) after fixing it.
+  # Verified custom-format PostgreSQL backups are retained locally and uploaded
+  # to a private Backblaze B2 bucket. The container also verifies each dump's
+  # catalog and the uploaded object before updating its health marker.
   postgres-backup:
     build: ./backup
     init: true
@@ -326,23 +356,30 @@ services:
       POSTGRES_DATABASE: ${POSTGRES_DB:-app}
       POSTGRES_USER: ${POSTGRES_USER:-app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      # Run backup daily at midnight
-      SCHEDULE: "@daily"
-      BACKUP_KEEP_DAYS: 7
-      BACKUP_KEEP_WEEKS: 4
-      BACKUP_KEEP_MONTHS: 6
+      # Run a verified backup on startup and daily at midnight UTC.
+      SCHEDULE: "0 0 * * *"
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+      BACKUP_ON_STARTUP: ${BACKUP_ON_STARTUP:-true}
       # S3 Upload (Backblaze B2)
-      S3_ENDPOINT: "https://s3.${B2_REGION}.backblazeb2.com"
-      S3_ACCESS_KEY_ID: ${B2_APPLICATION_KEY_ID}
-      S3_SECRET_ACCESS_KEY: ${B2_APPLICATION_KEY}
-      S3_BUCKET: ${B2_BUCKET_NAME}
-      S3_PREFIX: "postgres-backups"
+      S3_ENDPOINT: "https://s3.${B2_REGION:?B2_REGION must be set}.backblazeb2.com"
+      S3_ACCESS_KEY_ID: ${B2_APPLICATION_KEY_ID:?B2_APPLICATION_KEY_ID must be set}
+      S3_SECRET_ACCESS_KEY: ${B2_APPLICATION_KEY:?B2_APPLICATION_KEY must be set}
+      S3_BUCKET: ${B2_BUCKET_NAME:?B2_BUCKET_NAME must be set}
+      # Keep full-database retention isolated from per-institution retention.
+      S3_PREFIX: "postgres-backups/disaster-recovery"
       S3_REGION: ${B2_REGION}
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - backend
+      - appnet
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /backups/last-success && test $$(($$(date +%s) - $$(cat /backups/last-success))) -lt 129600"]
+      interval: 1h
+      timeout: 5s
+      retries: 2
+      start_period: 10m
 
 volumes:
   postgres_data:

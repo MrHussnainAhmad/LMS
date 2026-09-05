@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
+import { displaySectionName } from "@/lib/class-section-label";
 import { useRouter } from "next/navigation";
 
 type StudentRow = {
@@ -23,6 +24,7 @@ type StudentRow = {
   sectionId: number;
   classRollNumber: string;
   phone: string | null;
+  guardianEmail: string | null;
 };
 
 type CreateStudentResponse = {
@@ -210,6 +212,7 @@ export function StudentsClient({
           sectionId,
           classRollNumber: String(data.classRollNumber || ""),
           phone: data.phone ? String(data.phone) : null,
+          guardianEmail: data.guardianEmail ? String(data.guardianEmail).trim().toLowerCase() : null,
         },
         ...current,
       ]);
@@ -295,6 +298,7 @@ export function StudentsClient({
               sectionId: Number(data.sectionId) || student.sectionId,
               classRollNumber: String(data.classRollNumber || student.classRollNumber),
               phone: data.phone !== undefined ? (data.phone ? String(data.phone) : null) : student.phone,
+              guardianEmail: data.guardianEmail !== undefined ? (data.guardianEmail ? String(data.guardianEmail).trim().toLowerCase() : null) : student.guardianEmail,
             }
           : student
       )));
@@ -365,7 +369,7 @@ export function StudentsClient({
             disabled={!filterClassId}
           >
             <option value="">All Sections</option>
-            {mainFilteredSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {mainFilteredSections.filter((s) => displaySectionName(s.name)).map(s => <option key={s.id} value={s.id}>{displaySectionName(s.name)}</option>)}
           </select>
         </div>
       </Card>
@@ -608,9 +612,9 @@ export function StudentsClient({
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-stone-700">Section</label>
                 <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
-                  <option value="">No section / Whole class</option>
+                  <option value=""></option>
                   {createFilteredSections.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                    <option key={s.id} value={s.id}>{displaySectionName(s.name)}</option>
                   ))}
                 </select>
               </div>
@@ -626,6 +630,11 @@ export function StudentsClient({
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-stone-700">Phone</label>
                 <Input name="phone" placeholder="Optional" />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-sm font-medium text-stone-700">Guardian email</label>
+                <Input type="email" name="guardianEmail" placeholder="parent@example.com" />
+                <p className="text-xs text-stone-500">This becomes the parent account email. Reusing it links siblings to one parent.</p>
               </div>
             </div>
 
@@ -664,7 +673,7 @@ export function StudentsClient({
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Section</label>
                   <select name="sectionId" defaultValue={editStudent.sectionId} className="w-full h-10 rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
-                    {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    {sections.map(s => <option key={s.id} value={s.id}>{displaySectionName(s.name)}</option>)}
                   </select>
                 </div>
               </div>
@@ -677,6 +686,11 @@ export function StudentsClient({
               <div className="space-y-1">
                 <label className="text-sm font-medium">Phone</label>
                 <Input name="phone" defaultValue={editStudent.phone || ''} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Guardian email</label>
+                <Input type="email" name="guardianEmail" defaultValue={editStudent.guardianEmail || ''} placeholder="parent@example.com" />
+                <p className="text-xs leading-relaxed text-stone-500">Only the institution can change this. The same email automatically groups siblings under one parent account.</p>
               </div>
               
               <div className="pt-4 flex justify-end">

@@ -1,7 +1,7 @@
 import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { accountLockouts, superAdmins, employees, institutions, staff, students, institutionAdmins } from '@/db/schema';
-import { and, eq, sql } from 'drizzle-orm';
+import { accountLockouts, superAdmins, employees, institutions, staff, students, institutionAdmins, parentAccounts } from '@/db/schema';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { verifyPassword as verify } from '@/lib/argon2-pool';
 import { createTokens, setAuthCookies, UserRole } from '@/lib/auth';
 import { JWTPayload } from '@/lib/auth-types';
@@ -43,6 +43,7 @@ type InstitutionLogin = { id: number; contactEmail: string; adminPasswordHash: s
 type InstitutionAdminLogin = { id: number; email?: string; passwordHash: string; institutionId: number };
 type StaffLogin = { id: number; email?: string; passwordHash: string; isActive: boolean; institutionId: number; campusId: number | null; mustChangePassword: boolean };
 type StudentLogin = { id: number; loginRollNumber?: string; passwordHash: string; isActive: boolean; institutionId: number; mustChangePassword: boolean; academicStatus: 'ACTIVE' | 'GRADUATED'; graduatedAccessAllowed: boolean };
+type ParentLogin = { id: number; email: string; passwordHash: string | null; institutionId: number; mustChangePassword: boolean; status: 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED'; institutionStatus: string };
 
 async function findUnhintedLoginCandidate(loginIdentifier: string): Promise<LoginCandidate | null> {
   const result = await db.execute(sql`
@@ -223,8 +224,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
-    const { emailOrUsername, password, roleHint, securityAnswer, returnTokens } = parsed.data;
+    const { emailOrUsername, password, roleHint, securityAnswer, returnTokens, institutionUsername } = parsed.data;
     const loginIdentifier = emailOrUsername.trim().toLowerCase();
+    const normalizedInstitutionUsername = institutionUsername?.trim().toLowerCase();
     const ip = getClientIp(req);
     const lookupRoles = getLoginLookupRoles(roleHint);
 
@@ -232,6 +234,9 @@ export async function POST(req: NextRequest) {
     // "this identifier is a Super Admin" oracle.
     if (roleHint === 'SUPER_ADMIN' && !securityAnswer) {
       return NextResponse.json({ error: 'Security answer required for Super Admin' }, { status: 400 });
+    }
+    if (roleHint === 'PARENT' && !normalizedInstitutionUsername) {
+      return NextResponse.json({ error: 'Institution username is required' }, { status: 400 });
     }
     // Rate-limit before any DB / hash work so brute-force storms don't waste CPU.
     const earlyPlatformKind: PlatformLoginKind | null =
@@ -254,7 +259,9 @@ export async function POST(req: NextRequest) {
     let campusId: number | undefined;
     let mustChangePassword = false;
 
-    const cacheKey = `auth:role:${loginIdentifier}`;
+    const cacheKey = roleHint === 'PARENT'
+      ? `auth:role:${normalizedInstitutionUsername}:${loginIdentifier}`
+      : `auth:role:${loginIdentifier}`;
     const cachedRole = await redis.get(cacheKey).catch(() => null);
     
     const hasUsableCachedRole = Boolean(cachedRole && lookupRoles.includes(cachedRole as UserRole));
@@ -270,6 +277,7 @@ export async function POST(req: NextRequest) {
     let instAdmin: InstitutionAdminLogin | undefined;
     let stf: StaffLogin | undefined;
     let stu: StudentLogin | undefined;
+    let parent: ParentLogin | undefined;
     
     if (!roleHint && !hasUsableCachedRole) {
       const candidate = await findUnhintedLoginCandidate(loginIdentifier);
@@ -400,6 +408,31 @@ export async function POST(req: NextRequest) {
           stu = rows[0];
           break;
         }
+      } else if (lookupRole === 'PARENT' && normalizedInstitutionUsername) {
+        const rows = await db.select({
+          id: parentAccounts.id,
+          email: parentAccounts.email,
+          passwordHash: parentAccounts.passwordHash,
+          institutionId: parentAccounts.institutionId,
+          mustChangePassword: parentAccounts.mustChangePassword,
+          status: parentAccounts.status,
+          institutionStatus: institutions.status,
+        })
+          .from(parentAccounts)
+          .innerJoin(institutions, eq(parentAccounts.institutionId, institutions.id))
+          .where(and(
+            sql`lower(btrim(${parentAccounts.email})) = ${loginIdentifier}`,
+            isNull(parentAccounts.deletedAt),
+            or(
+              sql`lower(btrim(${institutions.username})) = ${normalizedInstitutionUsername}`,
+              sql`lower(btrim(${institutions.publicSlug})) = ${normalizedInstitutionUsername}`,
+            ),
+          ))
+          .limit(1);
+        if (rows.length > 0) {
+          parent = rows[0];
+          break;
+        }
       }
     }
 
@@ -505,6 +538,22 @@ export async function POST(req: NextRequest) {
       role = 'STUDENT';
       institutionId = stu.institutionId;
       mustChangePassword = stu.mustChangePassword;
+    } else if (parent) {
+      if (!parent.passwordHash || parent.status === 'DISABLED') {
+        return NextResponse.json(INVALID_CREDENTIALS, { status: 401 });
+      }
+      await assertNotLocked('PARENT', parent.id);
+      const isValid = await verify(parent.passwordHash, password);
+      if (!isValid) {
+        return await rejectFailedLogin('PARENT', parent.id, parent.institutionId, ip);
+      }
+      if (parent.institutionStatus !== 'APPROVED') {
+        return NextResponse.json({ error: 'Institution account is unavailable' }, { status: 403 });
+      }
+      user = parent;
+      role = 'PARENT';
+      institutionId = parent.institutionId;
+      mustChangePassword = parent.mustChangePassword;
     }
 
     if (!user || !role) {

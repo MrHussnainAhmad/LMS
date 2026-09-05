@@ -4,7 +4,7 @@
     # configuration to Caddy's admin API and take over TLS termination and routing
     # for every domain. That turns a single compromised app container into full
     # control of the edge. The only consumer is this container's own healthcheck
-    # (wget http://localhost:2019/config/), which is unaffected.
+    # (wget http://127.0.0.1:2019/config/), which is unaffected.
     admin localhost:2019
 
     # Client-IP resolution, single source of truth.
@@ -57,6 +57,8 @@
         X-Content-Type-Options nosniff
         X-Frame-Options DENY
         Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        X-Permitted-Cross-Domain-Policies none
         # Every portal and the API are HTTPS-only; this stops a first-request
         # downgrade from exposing session cookies. Browsers ignore it on the
         # plain-HTTP names above, as the spec requires.
@@ -79,7 +81,7 @@
         header_up X-Forwarded-For {client_ip}
         header_up X-Real-IP {client_ip}
 
-        health_uri /api/health
+        health_uri /api/ready
         health_interval 10s
         health_timeout 3s
         health_fails 2
@@ -106,6 +108,8 @@ https://localhost, https://*.localhost {
         X-Content-Type-Options nosniff
         X-Frame-Options DENY
         Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        X-Permitted-Cross-Domain-Policies none
         -Server
     }
 
@@ -116,7 +120,7 @@ https://localhost, https://*.localhost {
         lb_policy least_conn
         header_up X-Forwarded-For {client_ip}
         header_up X-Real-IP {client_ip}
-        health_uri /api/health
+        health_uri /api/ready
         health_interval 10s
         health_timeout 3s
         health_fails 2

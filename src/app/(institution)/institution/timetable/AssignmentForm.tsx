@@ -34,7 +34,7 @@ export function AssignmentForm({
       } catch (err: unknown) {
         toast({ title: "Error", description: getErrorMessage(err), variant: "destructive" });
       }
-    }} className="space-y-4">
+    }} className="space-y-4 pt-2">
       <input type="hidden" name="sectionId" value={sectionId || ""} />
       <input type="hidden" name="classId" value={classId || ""} />
 
@@ -53,7 +53,7 @@ export function AssignmentForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-stone-700 mb-1">Day of Week</label>
+        <label className="mb-2 block text-sm font-medium text-stone-700">Day of Week</label>
         <select name="dayOfWeek" required className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-surface">
           <option value="1">Monday</option>
           <option value="2">Tuesday</option>

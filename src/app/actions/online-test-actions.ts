@@ -20,7 +20,13 @@ import { revalidatePath } from "next/cache";
 type JsonAnswer = Record<string, string | number>;
 type OnlineViolationReason = "tab_switch" | "timeout" | "disconnect";
 
-const HEARTBEAT_STALE_MS = 35_000;
+// The browser reports every 30s. Allow three missed intervals plus scheduling
+// jitter before treating an attempt as disconnected.
+const HEARTBEAT_STALE_MS = 100_000;
+
+function onlineTestHeartbeatKey(institutionId: number, onlineTestId: number, studentId: number) {
+  return `test:heartbeat:${institutionId}:${onlineTestId}:${studentId}`;
+}
 
 function asNumber(value: FormDataEntryValue | null, label: string) {
   const parsed = Number(value);
@@ -114,6 +120,7 @@ export async function createOnlineTestAction(formData: FormData) {
     title,
     maxMarks: totalMarks,
     date: today,
+    resultsPublishedAt: new Date(),
   }).returning();
 
   const [onlineTest] = await db.insert(onlineTests).values({
@@ -285,9 +292,13 @@ async function markOnlineTestFailed(
 export async function expireStaleOnlineSubmissions(institutionId: number) {
   const cutoff = new Date(Date.now() - HEARTBEAT_STALE_MS);
   const rows = await db.select({
-    submission: onlineTestSubmissions,
-    onlineTest: onlineTests,
-    test: tests,
+    submissionId: onlineTestSubmissions.id,
+    studentId: onlineTestSubmissions.studentId,
+    startedAt: onlineTestSubmissions.startedAt,
+    onlineTestId: onlineTests.id,
+    durationMinutes: onlineTests.durationMinutes,
+    testId: tests.id,
+    maxMarks: tests.maxMarks,
   })
     .from(onlineTestSubmissions)
     .innerJoin(onlineTests, eq(onlineTestSubmissions.onlineTestId, onlineTests.id))
@@ -301,12 +312,38 @@ export async function expireStaleOnlineSubmissions(institutionId: number) {
   if (rows.length === 0) return;
 
   const now = new Date();
-  const timedOutIds: number[] = [];
-  const disconnectedIds: number[] = [];
-  for (const item of rows) {
-    const expired = getAttemptExpiresAt(item.submission.startedAt, item.onlineTest.durationMinutes) <= now;
-    (expired ? timedOutIds : disconnectedIds).push(item.submission.id);
+  const timedOutRows = rows.filter((item) => (
+    getAttemptExpiresAt(item.startedAt, item.durationMinutes) <= now
+  ));
+  const livenessCandidates = rows.filter((item) => (
+    getAttemptExpiresAt(item.startedAt, item.durationMinutes) > now
+  ));
+
+  // Heartbeats live in Valkey to avoid one PostgreSQL WAL write per student
+  // every few seconds. The DB timestamp only selects possible stale rows; Valkey
+  // is authoritative for disconnection. If Valkey is unavailable we fail open
+  // and defer disconnection instead of incorrectly failing active students.
+  const disconnectedRows: typeof rows = [];
+  const { redis } = await import('@/lib/redis');
+  if (livenessCandidates.length > 0 && redis.status === 'ready') {
+    try {
+      for (let start = 0; start < livenessCandidates.length; start += 500) {
+        const candidates = livenessCandidates.slice(start, start + 500);
+        const keys = candidates.map((item) => onlineTestHeartbeatKey(
+          institutionId,
+          item.onlineTestId,
+          item.studentId,
+        ));
+        const liveness = await redis.mget(...keys);
+        disconnectedRows.push(...candidates.filter((_, index) => !liveness[index]));
+      }
+    } catch (error) {
+      console.warn('Online-test heartbeat lookup failed; deferring disconnect cleanup:', error);
+    }
   }
+
+  const timedOutIds = timedOutRows.map((item) => item.submissionId);
+  const disconnectedIds = disconnectedRows.map((item) => item.submissionId);
 
   // Batch the status updates instead of one round trip per stale submission.
   const statusGroups: { ids: number[]; status: "FAILED" | "ABANDONED"; reason: OnlineViolationReason }[] = [
@@ -330,12 +367,15 @@ export async function expireStaleOnlineSubmissions(institutionId: number) {
     ));
   }
 
-  const markValues = rows.map((item) => ({
+  const failedRows = [...timedOutRows, ...disconnectedRows];
+  if (failedRows.length === 0) return;
+
+  const markValues = failedRows.map((item) => ({
     institutionId,
-    testId: item.test.id,
-    studentId: item.submission.studentId,
+    testId: item.testId,
+    studentId: item.studentId,
     marksObtained: 0,
-    totalMarks: Number(item.test.maxMarks),
+    totalMarks: Number(item.maxMarks),
   }));
   await db.insert(marks).values(markValues).onConflictDoUpdate({
     target: [marks.testId, marks.studentId],
@@ -391,10 +431,10 @@ export async function heartbeatOnlineTestAction(onlineTestId: number, providedSe
 
   // Use Valkey for ephemeral liveness instead of DB WAL churn
   const { redis } = await import('@/lib/redis');
-  const key = `test:heartbeat:${session.institutionId}:${onlineTestId}:${session.userId}`;
+  const key = onlineTestHeartbeatKey(session.institutionId, onlineTestId, session.userId);
   
   if (redis.status === 'ready') {
-    await redis.setex(key, 35, '1'); // 35s TTL for 10s heartbeat interval
+    await redis.setex(key, Math.ceil(HEARTBEAT_STALE_MS / 1000), '1');
   }
 
   return { ok: true };

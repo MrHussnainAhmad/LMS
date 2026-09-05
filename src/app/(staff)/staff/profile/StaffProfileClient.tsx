@@ -9,6 +9,8 @@ import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { BriefcaseBusiness, CalendarClock, KeyRound, Mail, Send, UserRound } from "lucide-react";
 import { ProfilePictureUploader } from "@/components/ProfilePictureUploader";
+import { CourseStreamingSettings } from "@/components/CourseStreamingSettings";
+import { formatClassSection } from "@/lib/class-section-label";
 
 type StaffProfile = {
   id: number;
@@ -139,6 +141,11 @@ export function StaffProfileClient({
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader className="border-b border-border bg-stone-50/70"><CardTitle className="text-lg">Course streaming</CardTitle></CardHeader>
+        <CardContent className="p-6 pt-7"><CourseStreamingSettings /></CardContent>
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">
           <Card>
@@ -148,7 +155,7 @@ export function StaffProfileClient({
                 Staff Profile
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
+            <CardContent className="p-6 pt-7">
               <div className="grid gap-4 md:grid-cols-2">
                 <ReadOnlyField label="First Name" value={staff.firstName} />
                 <ReadOnlyField label="Last Name" value={staff.lastName || "-"} />
@@ -177,7 +184,7 @@ export function StaffProfileClient({
                     <div key={assignment.id} className="grid gap-2 p-5 sm:grid-cols-[1fr_auto] sm:items-center">
                       <div>
                         <p className="font-semibold text-brand-950">{assignment.subject || "Subject"}</p>
-                        <p className="text-sm text-stone-500">{assignment.className} - {assignment.sectionName}</p>
+                        <p className="text-sm text-stone-500">{formatClassSection(assignment.className, assignment.sectionName)}</p>
                       </div>
                       <p className="flex items-center gap-2 text-sm text-stone-600">
                         <CalendarClock className="h-4 w-4 text-stone-400" />
@@ -197,8 +204,8 @@ export function StaffProfileClient({
                 Request Profile Correction
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
-              <form onSubmit={handleRequest} className="space-y-4">
+            <CardContent className="p-6 pt-7">
+              <form onSubmit={handleRequest} className="space-y-5 text-left">
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label="First Name">
                     <Input name="firstName" placeholder={staff.firstName} />
@@ -279,8 +286,8 @@ export function StaffProfileClient({
               Update Password
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
-            <form onSubmit={handlePassword} className="space-y-4">
+          <CardContent className="p-6 pt-7">
+            <form onSubmit={handlePassword} className="space-y-5 text-left">
               <Field label="Current Password">
                 <Input name="currentPassword" type="password" required />
               </Field>
@@ -302,14 +309,14 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-border bg-stone-50/60 px-4 py-3">
       <p className="text-xs font-medium uppercase tracking-wider text-stone-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-brand-950">{value}</p>
+      <p className="mt-2 break-words text-sm font-semibold text-brand-950">{value}</p>
     </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block space-y-1.5">
+    <label className="block space-y-2 text-left">
       <span className="text-sm font-medium text-stone-700">{label}</span>
       {children}
     </label>

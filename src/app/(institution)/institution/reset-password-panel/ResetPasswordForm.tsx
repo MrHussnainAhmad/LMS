@@ -41,8 +41,8 @@ export function ResetPasswordForm() {
         name: data.name,
         phone: data.phone
       });
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to reset password");
     } finally {
       setIsLoading(false);
     }
@@ -72,15 +72,15 @@ Administration`;
         <CardHeader>
           <CardTitle>Find User</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6 pt-7">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-stone-700 mb-1">User Type</label>
+              <label className="mb-2 block text-sm font-medium text-stone-700">User Type</label>
               <select
                 className="w-full rounded-md border border-border px-3 py-2 text-sm bg-transparent"
                 value={userType}
                 onChange={(e) => {
-                  setUserType(e.target.value as any);
+                  setUserType(e.target.value as "STUDENT" | "STAFF");
                   setIdentifier("");
                   setError("");
                   setSuccessData(null);
@@ -91,7 +91,7 @@ Administration`;
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-stone-700 mb-1">
+              <label className="mb-2 block text-sm font-medium text-stone-700">
                 {userType === "STUDENT" ? "Student Roll Number" : "Staff Email"}
               </label>
               <input

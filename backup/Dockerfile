@@ -1,13 +1,14 @@
 FROM postgres:16-alpine
 
+ARG TARGETARCH
 RUN apk add --no-cache curl \
-    && curl -fL -o mc https://dl.min.io/client/mc/release/linux-amd64/mc \
+    && test "${TARGETARCH}" = "amd64" -o "${TARGETARCH}" = "arm64" \
+    && curl -fL -o mc "https://dl.min.io/client/mc/release/linux-${TARGETARCH}/mc" \
     && chmod +x mc \
     && mv mc /usr/local/bin/
 
 COPY backup.sh /backup.sh
-RUN chmod +x /backup.sh
+COPY entrypoint.sh /entrypoint.sh
+RUN sed -i 's/\r$//' /backup.sh /entrypoint.sh && chmod +x /backup.sh /entrypoint.sh
 
-RUN echo "${SCHEDULE:-@daily} /backup.sh" > /etc/crontabs/root
-
-CMD ["crond", "-f", "-d", "8"]
+ENTRYPOINT ["/entrypoint.sh"]

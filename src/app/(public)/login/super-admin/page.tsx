@@ -66,12 +66,12 @@ export default function SaLoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-stone-700" htmlFor="super-admin-email">Email</label>
-              <Input id="super-admin-email" name="email" type="email" placeholder="admin@domain.com" required />
+              <Input id="super-admin-email" name="email" type="email" maxLength={255} placeholder="admin@domain.com" required />
             </div>
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-stone-700" htmlFor="super-admin-password">Password</label>
-              <Input id="super-admin-password" name="password" type="password" placeholder="Enter your password" required />
+              <Input id="super-admin-password" name="password" type="password" maxLength={1024} placeholder="Enter your password" required />
             </div>
 
             <div className="space-y-1.5">
@@ -82,6 +82,7 @@ export default function SaLoginPage() {
                 id="security-answer"
                 name="securityAnswer"
                 type="password"
+                maxLength={255}
                 placeholder="Enter your security answer"
                 required
               />

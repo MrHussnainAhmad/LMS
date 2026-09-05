@@ -13,6 +13,10 @@ export const createStudentSchema = z.object({
   yearOfJoining: z.coerce.number().min(2000).max(2100),
   classRollNumber: z.string().min(1),
   phone: z.string().trim().max(50).optional(),
+  guardianEmail: z.preprocess(
+    (value) => value === "" || value === null ? undefined : value,
+    z.string().trim().email().max(255).optional(),
+  ),
   age: z.coerce.number().optional(),
 });
 

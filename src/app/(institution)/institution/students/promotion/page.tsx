@@ -5,6 +5,7 @@ import { CheckCircle2, Eye, Loader2, RefreshCw, Send, Users } from "lucide-react
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { formatClassSection } from "@/lib/class-section-label";
 
 type Batch = {
   id: number;
@@ -58,8 +59,8 @@ export default function PromotionPage() {
     <div className="max-w-6xl space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Auto Promotion</h1>
-          <p className="text-stone-500">Review teacher-published Promotion results before making them official.</p>
+          <h1 className="text-3xl font-display font-bold text-brand-950">Auto Promotion</h1>
+          <p className="mt-1 text-stone-500">Review teacher-published promotion results before making them official.</p>
         </div>
         <Button variant="outline" onClick={load} disabled={loading}>
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
@@ -69,7 +70,7 @@ export default function PromotionPage() {
 
       {!loaded && !loading && (
         <Card>
-          <CardContent className="p-6 text-sm text-stone-500">
+          <CardContent className="p-6 text-left text-sm leading-6 text-stone-500">
             Click &ldquo;Load promotion results&rdquo; to fetch batches ready for review.
           </CardContent>
         </Card>
@@ -133,7 +134,7 @@ export default function PromotionPage() {
                         </Badge>
                       </div>
                       <p className="text-sm text-stone-500">
-                        Class {batch.className}{batch.sectionName ? `, ${batch.sectionName}` : ""} - {batch.subjectCount} subjects
+                        Class {formatClassSection(batch.className, batch.sectionName, ", ")} - {batch.subjectCount} subjects
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">

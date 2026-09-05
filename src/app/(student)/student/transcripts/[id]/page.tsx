@@ -72,7 +72,7 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
       </div>
 
       {/* Transcript Document Container */}
-      <div className="bg-white border border-stone-200 shadow-sm p-4 sm:p-8 md:p-12 print:shadow-none print:border-none print:p-0">
+      <div className="print-document bg-white border border-stone-200 shadow-sm p-4 sm:p-8 md:p-12 print:shadow-none print:border-none print:p-0">
         
         {/* Header Section */}
         <div className="border-b-2 border-stone-800 pb-6 mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">

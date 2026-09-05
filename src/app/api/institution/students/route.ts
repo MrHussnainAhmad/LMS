@@ -9,6 +9,11 @@ import { logAudit } from '@/lib/audit';
 import { getClientIp } from '@/lib/client-ip';
 import { generateStudentLoginRollNumber } from '@/lib/login-identifiers';
 import { allocateAdmissionSequences } from '@/lib/admission-sequences';
+import { prepareParentActivation, syncStudentGuardian } from '@/lib/parent-identity';
+import { enqueueEmail } from '@/lib/email-outbox';
+import { ParentAccountActivationEmail, ParentStudentLinkedEmail } from '@/lib/email';
+import { invalidateUserValidity } from '@/lib/user';
+import { ZodError } from 'zod';
 
 const WHOLE_CLASS_SECTION_NAME = "Whole Class";
 
@@ -52,13 +57,15 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 
-    const { firstName, lastName, campusId, classId, sectionId, gender, yearOfJoining, classRollNumber, phone, age } = parsed.data;
+    const { firstName, lastName, campusId, classId, sectionId, gender, yearOfJoining, classRollNumber, phone, age, guardianEmail } = parsed.data;
 
     const [[inst], [classObj], sectionRows, campusRows] = await Promise.all([
       db.select({
         id: institutions.id,
         type: institutions.type,
         username: institutions.username,
+        name: institutions.name,
+        logoKey: institutions.logoKey,
       }).from(institutions).where(eq(institutions.id, tenantId)).limit(1),
       db.select({
         id: classes.id,
@@ -98,24 +105,82 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
     const initialPassword = '1234567890';
     const passwordHash = await hash(initialPassword);
     const name = `${firstName} ${lastName}`.trim();
+    
+    const parentActivation = guardianEmail
+      ? await prepareParentActivation(tenantId, guardianEmail)
+      : null;
 
-    const [newStudent] = await db.insert(students).values({
-      institutionId: tenantId,
-      campusId,
-      name,
-      gender,
-      loginRollNumber,
-      passwordHash,
-      classId,
-      sectionId: sectionObj.id,
-      yearOfJoining,
-      admissionSequence,
-      classRollNumber,
-      phone,
-      age,
-      mustChangePassword: true,
-      isActive: true,
-    }).returning({ id: students.id });
+    const { newStudent, parentLink } = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(students).values({
+        institutionId: tenantId,
+        campusId,
+        name,
+        gender,
+        loginRollNumber,
+        passwordHash,
+        classId,
+        sectionId: sectionObj.id,
+        yearOfJoining,
+        admissionSequence,
+        classRollNumber,
+        phone,
+        age,
+        guardianEmail: guardianEmail?.trim().toLowerCase() || null,
+        mustChangePassword: true,
+        isActive: true,
+      }).returning({ id: students.id });
+
+      const parentLink = guardianEmail
+        ? await syncStudentGuardian(tx, {
+          institutionId: tenantId,
+          studentId: created.id,
+          guardianEmail,
+          guardianPhone: phone || null,
+          actorId: session.userId,
+          actorRole: session.role,
+          ip: getClientIp(req),
+          activation: parentActivation,
+        })
+        : null;
+        
+      return { newStudent: created, parentLink };
+    });
+
+    if (parentLink?.guardianEmail) {
+      if (parentLink.activation) {
+        await enqueueEmail({
+          institutionId: tenantId,
+          to: parentLink.guardianEmail,
+          subject: `Parent account credentials - ${inst.name}`,
+          html: ParentAccountActivationEmail({
+            institutionName: inst.name,
+            institutionLogoUrl: inst.logoKey,
+            studentName: name,
+            institutionUsername: inst.username,
+            guardianEmail: parentLink.guardianEmail,
+            temporaryPassword: parentLink.activation.temporaryPassword,
+          }),
+          dedupeKey: `parent:${parentLink.parentId}:initial-activation`,
+        });
+      } else if (parentLink.newlyLinked) {
+        await enqueueEmail({
+          institutionId: tenantId,
+          to: parentLink.guardianEmail,
+          subject: `New student linked - ${inst.name}`,
+          html: ParentStudentLinkedEmail({
+            institutionName: inst.name,
+            institutionLogoUrl: inst.logoKey,
+            studentName: name,
+            guardianEmail: parentLink.guardianEmail,
+          }),
+          dedupeKey: `parent:${parentLink.parentId}:student-link:${newStudent.id}`,
+        });
+      }
+    }
+    
+    if (parentLink?.parentId) {
+      await invalidateUserValidity('PARENT', parentLink.parentId);
+    }
 
     after(async () => {
       try {
@@ -142,8 +207,12 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
       message: 'Student created successfully', 
       credentials: { loginRollNumber, initialPassword } 
     }, { status: 201 });
-  } catch (err: unknown) {
-    if (typeof err === 'object' && err && 'code' in err && err.code === '23505') {
+  } catch (err: any) {
+    if (err instanceof ZodError) {
+      return NextResponse.json({ error: err.issues[0]?.message || 'Invalid guardian email' }, { status: 400 });
+    }
+    const isDuplicate = err?.code === '23505' || err?.cause?.code === '23505';
+    if (isDuplicate) {
       return NextResponse.json({ error: 'Login roll number or class roll number already exists' }, { status: 409 });
     }
     console.error("Create student failed:", err);

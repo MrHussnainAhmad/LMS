@@ -3,6 +3,7 @@ import cloudinary from '@/lib/cloudinary';
 import { requireRole } from '@/lib/rbac';
 import { withRateLimit } from '@/lib/rate-limit';
 import { bodyTooLargeResponse, readJsonBody } from '@/lib/http';
+import { ownedUploadFolder } from '@/lib/upload-ownership';
 
 /**
  * The signed `folder` was previously whatever the caller asked for. A signature is
@@ -11,13 +12,12 @@ import { bodyTooLargeResponse, readJsonBody } from '@/lib/http';
  * for institution logos, signatures and proofs), and the route had no rate limit at
  * all, so it doubled as an unmetered way to burn the Cloudinary quota.
  *
- * These are the only two folders any client actually requests — every other caller
- * sends no body and gets the default.
+ * The server now assigns every account a tenant/role/user namespace. Clients receive
+ * that signed folder in the response and cannot request a different destination.
  */
-const ALLOWED_UPLOAD_FOLDERS = new Set(['lms-uploads', 'vouchers']);
-const DEFAULT_UPLOAD_FOLDER = 'lms-uploads';
+const ALLOWED_FORMATS = 'jpg,jpeg,png,webp,pdf,docx,txt';
 
-/** Nothing legitimate sends more than a single short folder name. */
+/** The endpoint accepts no client-selected upload parameters. */
 const MAX_SIGNATURE_BODY_BYTES = 1024;
 
 export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'SUPER_ADMIN'], async (req, { session }) => {
@@ -44,11 +44,10 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'SUPER_ADMIN
     const body = await readJsonBody<{ folder?: unknown }>(req, MAX_SIGNATURE_BODY_BYTES);
     if (!body.ok && body.status === 413) return bodyTooLargeResponse();
 
-    const requestedFolder = body.ok && typeof body.data?.folder === 'string' ? body.data.folder : '';
-    if (requestedFolder && !ALLOWED_UPLOAD_FOLDERS.has(requestedFolder)) {
-      return NextResponse.json({ error: 'Unsupported upload folder' }, { status: 400 });
+    if (body.ok && body.data?.folder !== undefined) {
+      return NextResponse.json({ error: 'Upload folders are assigned by the server' }, { status: 400 });
     }
-    const folder = requestedFolder || DEFAULT_UPLOAD_FOLDER;
+    const folder = ownedUploadFolder(session);
 
     const timestamp = Math.round(Date.now() / 1000);
 
@@ -57,6 +56,7 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'SUPER_ADMIN
       {
         timestamp: timestamp,
         folder: folder,
+        allowed_formats: ALLOWED_FORMATS,
       },
       apiSecret
     );
@@ -67,6 +67,8 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'SUPER_ADMIN
         timestamp,
         cloudName,
         apiKey,
+        folder,
+        allowedFormats: ALLOWED_FORMATS,
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );

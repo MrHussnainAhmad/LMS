@@ -4,6 +4,8 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { validateProductionEnvironment } = await import('./lib/production-env');
+    validateProductionEnvironment();
     const { registerShutdownHandlers } = await import('./lib/process-lifecycle');
     registerShutdownHandlers();
   }

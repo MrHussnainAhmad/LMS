@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowRight, CheckCircle2, Clock, CalendarDays } from "lucide-react";
 import Link from "next/link";
+import { formatClassSection } from "@/lib/class-section-label";
 function formatDistanceToNow(date: Date) {
   const diffInSeconds = Math.floor((date.getTime() - Date.now()) / 1000);
   if (diffInSeconds < 0) return "past";
@@ -80,7 +81,7 @@ export default function StaffBatchResultsPage() {
               </CardHeader>
               <CardContent className="flex-1 flex flex-col justify-between">
                 <div className="text-sm text-stone-600 space-y-1 mb-4">
-                  <p><strong>Class:</strong> {res.className} {res.sectionName ? `(${res.sectionName})` : ''}</p>
+                  <p><strong>Class:</strong> {formatClassSection(res.className, res.sectionName)}</p>
                   <p><strong>Max Marks:</strong> {res.maxMarks}</p>
                   {!res.isEffectivelyPublished && (
                     <div className="flex items-center gap-1.5 text-amber-600 mt-2">

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { TestActions } from "@/components/tests/TestActions";
 import { gradeMixedTestAction } from "@/app/actions/online-test-actions";
+import { formatClassSection } from "@/lib/class-section-label";
 
 type TestSummary = { id: number; onlineTestId: number; title: string; maxMarks: number; className: string; sectionName: string | null; subjectName: string | null; durationMinutes: number; mode: "MCQ" | "MIX"; submissionCount: number; pendingReviewCount: number };
 type Question = { id: number; questionType: "MCQ" | "SHORT"; prompt: string; marks: number; orderIndex: number };
@@ -63,7 +64,7 @@ export function HostedTestsList({
         if ((event.currentTarget as HTMLDetailsElement).open) void loadDetails(test.onlineTestId);
       }}>
         <summary className="flex cursor-pointer flex-col gap-3 p-5 hover:bg-stone-50 sm:flex-row sm:items-center sm:justify-between">
-          <div><h3 className="font-semibold text-brand-950">{test.title}</h3><p className="text-sm text-stone-500">{test.mode} - {test.className} - {test.sectionName || "Section"} - {test.subjectName || "Subject"}</p><p className="text-xs text-stone-500">{test.durationMinutes} min - {test.maxMarks} marks - {test.submissionCount} submissions{test.pendingReviewCount ? ` (${test.pendingReviewCount} pending)` : ""}</p><TestActions testId={test.id} currentTitle={test.title} currentDurationMinutes={test.durationMinutes} /></div>
+          <div><h3 className="font-semibold text-brand-950">{test.title}</h3><p className="text-sm text-stone-500">{test.mode} - {formatClassSection(test.className, test.sectionName)} - {test.subjectName || "Subject"}</p><p className="text-xs text-stone-500">{test.durationMinutes} min - {test.maxMarks} marks - {test.submissionCount} submissions{test.pendingReviewCount ? ` (${test.pendingReviewCount} pending)` : ""}</p><TestActions testId={test.id} currentTitle={test.title} currentDurationMinutes={test.durationMinutes} /></div>
           <span className="w-fit rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-brand-700">Review submissions</span>
         </summary>
         <div className="border-t border-border bg-stone-50/50 p-5">

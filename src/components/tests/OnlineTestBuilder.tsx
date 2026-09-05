@@ -5,6 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { createOnlineTestAction } from "@/app/actions/online-test-actions";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Button } from "@/components/ui/button";
+import { formatClassSection } from "@/lib/class-section-label";
 
 type SectionOption = {
   id: number;
@@ -42,7 +43,7 @@ export function OnlineTestBuilder({ sections, subjects }: { sections: SectionOpt
             className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
           >
             {sections.map((section) => (
-              <option key={section.id} value={section.id}>{section.className} - {section.sectionName}</option>
+              <option key={section.id} value={section.id}>{formatClassSection(section.className, section.sectionName)}</option>
             ))}
           </select>
         </div>

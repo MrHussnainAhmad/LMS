@@ -51,8 +51,8 @@ export default async function StudentIdCardPage() {
           <CreditCard className="h-5 w-5" />
         </div>
         <div>
-          <h1 className="text-2xl font-display font-bold text-brand-950">My ID Card</h1>
-          <p className="text-sm text-stone-500">Your official student identity card. Print or save as needed.</p>
+          <h1 className="font-display text-3xl font-bold text-brand-950">My ID Card</h1>
+          <p className="mt-1 text-sm text-stone-500">Your official student identity card. Print or save as needed.</p>
         </div>
       </div>
 

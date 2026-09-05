@@ -190,6 +190,22 @@ export async function updateAppVersionAction(version: string) {
   return { success: true };
 }
 
+export async function updatePublicSiteBaseDomainAction(value: string) {
+  const session = await getSession();
+  if (!session || session.role !== 'SUPER_ADMIN') throw new Error('Unauthorized');
+  const domain = value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
+  if (domain.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain)) throw new Error('Enter a valid base domain without https:// or a path');
+  const { systemSettings } = await import('@/db/schema');
+  const [settings] = await db.select({ id: systemSettings.id }).from(systemSettings).limit(1);
+  if (settings) await db.update(systemSettings).set({ publicSiteBaseDomain: domain, updatedAt: new Date() }).where(eq(systemSettings.id, settings.id));
+  else await db.insert(systemSettings).values({ publicSiteBaseDomain: domain });
+  const { invalidatePublicSiteBaseDomainCache } = await import('@/lib/public-site-domain');
+  invalidatePublicSiteBaseDomainCache();
+  revalidatePath('/sa/dashboard');
+  revalidatePath('/institution/settings/public-website');
+  return { domain };
+}
+
 export async function updateSoftwareVersionAction(version: string) {
   const session = await getSession();
   if (!session || (session.role !== "SUPER_ADMIN" && session.role !== "EMPLOYEE")) {
@@ -222,6 +238,7 @@ export async function updateTicketPlatformStatusAction(ticketId: number, platfor
     throw new Error("Unauthorized");
   }
 
+  // tenant-audit: allow-cross-tenant tickets — platform support is explicitly authorized to manage forwarded tickets from every institution.
   const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId)).limit(1);
   if (!ticket || !ticket.isForwarded) {
     throw new Error("Ticket not found or not forwarded");

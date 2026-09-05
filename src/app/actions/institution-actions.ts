@@ -117,15 +117,31 @@ export async function createSubjectAction(formData: FormData) {
   const session = await getSession();
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
-  const institutionId = session.userId;
-  const name = formData.get("name") as string;
-  const code = formData.get("code") as string;
+  const institutionId = session.institutionId || session.userId;
+  const names = Array.from(new Map(
+    String(formData.get("name") || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .map((name) => [name.toLocaleLowerCase(), name]),
+  ).values());
+  const code = String(formData.get("code") || "").trim();
+  if (names.length === 0 || names.length > 50 || names.some((name) => name.length > 255)) {
+    throw new Error("Enter between 1 and 50 valid subject names");
+  }
+  if (code.length > 50) throw new Error("Subject code is too long");
+  if (names.length > 1 && code) throw new Error("Leave subject code empty when adding multiple subjects");
 
-  await db.insert(subjects).values({
+  const existing = await db.select({ name: subjects.name }).from(subjects).where(eq(subjects.institutionId, institutionId));
+  const existingNames = new Set(existing.map((subject) => subject.name.trim().toLocaleLowerCase()));
+  const newNames = names.filter((name) => !existingNames.has(name.toLocaleLowerCase()));
+  if (newNames.length === 0) throw new Error("All entered subjects already exist");
+
+  await db.insert(subjects).values(newNames.map((name) => ({
     institutionId,
     name,
-    code,
-  });
+    code: names.length === 1 ? code || null : null,
+  })));
 
   revalidatePath("/institution/academics");
   return { success: true };
@@ -466,57 +482,6 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   });
 
   revalidatePath("/institution/timetable");
-  return { success: true };
-}
-
-export async function updateFeeVoucherSettingsAction(settings: {
-  acceptFeeVouchers: boolean;
-  openDay?: number;
-  lateDay?: number;
-  lateFee?: number;
-}) {
-  const session = await getSession();
-  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
-
-  const institutionId = session.institutionId || session.userId;
-
-  if (!settings.acceptFeeVouchers) {
-    await db.update(institutions)
-      .set({ acceptFeeVouchers: false })
-      .where(eq(institutions.id, institutionId));
-
-    revalidatePath("/institution/settings");
-    revalidatePath("/student/vouchers");
-    return { success: true };
-  }
-
-  const openDay = Number(settings.openDay);
-  const lateDay = Number(settings.lateDay);
-  const lateFee = Number(settings.lateFee ?? 0);
-  if (!Number.isInteger(openDay) || openDay < 1 || openDay > 28) {
-    throw new Error("Voucher opening day must be between 1 and 28.");
-  }
-  if (!Number.isInteger(lateDay) || lateDay < 1 || lateDay > 28) {
-    throw new Error("Late voucher day must be between 1 and 28.");
-  }
-  if (lateDay <= openDay) {
-    throw new Error("Late voucher day must be after the opening day.");
-  }
-  if (!Number.isInteger(lateFee) || lateFee < 0 || lateFee > 1_000_000) {
-    throw new Error("Late fee must be a whole PKR amount between 0 and 1,000,000.");
-  }
-
-  await db.update(institutions)
-    .set({
-      acceptFeeVouchers: true,
-      feeVoucherOpenDay: openDay,
-      feeVoucherLateDay: lateDay,
-      feeVoucherLateFee: lateFee,
-    })
-    .where(eq(institutions.id, institutionId));
-
-  revalidatePath("/institution/settings");
-  revalidatePath("/student/vouchers");
   return { success: true };
 }
 

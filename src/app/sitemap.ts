@@ -1,7 +1,11 @@
 export const dynamic = 'force-dynamic';
 import { MetadataRoute } from 'next'
+import { headers } from 'next/headers';
 import { db } from "@/db";
 import { platformPages, blogs } from "@/db/schema";
+import { institutionPublicUrl, parseInstitutionHostname } from "@/lib/institution-domain";
+import { resolveInstitutionTenant } from "@/lib/institution-tenant";
+import { getPublicSiteBaseDomain } from "@/lib/public-site-domain";
 
 const privateRoutePrefixes = [
   'admin',
@@ -25,8 +29,33 @@ function isPublicRouteSlug(slug: string): boolean {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const pages = await db.select({ slug: platformPages.slug, updatedAt: platformPages.updatedAt }).from(platformPages);
-  const allBlogs = await db.select({ slug: blogs.slug, updatedAt: blogs.updatedAt }).from(blogs);
+  const requestHeaders = await headers();
+  const baseDomain = await getPublicSiteBaseDomain();
+  const parsedHostname = parseInstitutionHostname(requestHeaders.get('host') || '', baseDomain);
+
+  if (parsedHostname.kind === 'institution') {
+    const resolution = await resolveInstitutionTenant(parsedHostname.slug);
+    if (resolution.kind !== 'active') return [];
+
+    const routes: MetadataRoute.Sitemap = [{
+      url: institutionPublicUrl(resolution.tenant.publicSlug, undefined, 'https:', baseDomain),
+      changeFrequency: 'weekly',
+      priority: 1,
+    }];
+    if (resolution.tenant.admissionsEnabled) {
+      routes.push({
+        url: `${institutionPublicUrl(resolution.tenant.publicSlug, undefined, 'https:', baseDomain)}/admissions`,
+        changeFrequency: 'daily',
+        priority: 0.9,
+      });
+    }
+    return routes;
+  }
+
+  const [pages, allBlogs] = await Promise.all([
+    db.select({ slug: platformPages.slug, updatedAt: platformPages.updatedAt }).from(platformPages),
+    db.select({ slug: blogs.slug, updatedAt: blogs.updatedAt }).from(blogs),
+  ]);
   
   const dynamicRoutes = pages.filter((page) => isPublicRouteSlug(page.slug)).map((page) => ({
     url: `https://nisaab360.app/${page.slug}`,

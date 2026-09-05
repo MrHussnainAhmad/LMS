@@ -62,10 +62,10 @@ export function StudentLeaveRequestButton() {
       setStartDate("");
       setEndDate("");
       setParentPhone("");
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Error",
-        description: err.message,
+        description: err instanceof Error ? err.message : "Failed to submit leave request",
         variant: "destructive",
       });
     } finally {
@@ -104,7 +104,7 @@ export function StudentLeaveRequestButton() {
                 <DialogTitle className="text-3xl font-display font-bold leading-tight mb-3">
                   Request<br/>a Leave
                 </DialogTitle>
-                <DialogDescription className="text-orange-100 text-sm leading-relaxed">
+                <DialogDescription className="text-left text-orange-100 text-sm leading-relaxed">
                   Need some time off? Submit your leave application to your class teacher. Please provide an honest reason and valid dates.
                 </DialogDescription>
               </div>
@@ -117,7 +117,7 @@ export function StudentLeaveRequestButton() {
             
             {/* Right Side: Form */}
             <div className="md:col-span-3 p-6 sm:p-8 bg-white">
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-6 pt-1 text-left">
                 <div className="space-y-3">
                   <Label className="text-stone-700 font-semibold text-sm">How long do you need?</Label>
                   <RadioGroup

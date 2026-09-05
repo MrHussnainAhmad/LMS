@@ -3,6 +3,7 @@ import { announcements, expoPushTickets, notifications, staff, students } from "
 import { resolveAnnouncementRecipients } from "@/lib/announcements";
 import { and, eq, inArray, lt, or, sql, SQL } from "drizzle-orm";
 import { after } from "next/server";
+import { formatClassSection } from "@/lib/class-section-label";
 
 type NotificationType = 'ANNOUNCEMENT' | 'EXAM_TIMETABLE' | 'ASSIGNMENT' | 'TEST' | 'MARKS' | 'ATTENDANCE' | 'GENERAL' | 'LEAVE_REQUEST' | 'DIARY';
 
@@ -510,7 +511,7 @@ export async function createOnlineTestNotifications({
     userId: student.id,
     type: "TEST",
     title: "New Online Test",
-    message: `${title} is available for ${className} - ${sectionName} in ${subjectName}. Timer: ${durationMinutes} minutes.`,
+    message: `${title} is available for ${formatClassSection(className, sectionName)} in ${subjectName}. Timer: ${durationMinutes} minutes.`,
     referenceId: onlineTestId,
   })));
 }

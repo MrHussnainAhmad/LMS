@@ -4,11 +4,13 @@ import { useState } from "react";
 import { Loader2, PenLine } from "lucide-react";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { enterMarksManuallyAction } from "@/app/actions/assessment-actions";
+import { formatClassSection } from "@/lib/class-section-label";
 
 type SectionOption = {
   sectionId: number;
   sectionName: string;
   classId: number;
+  className: string;
 };
 
 type RosterStudent = {
@@ -85,14 +87,14 @@ export function TestMarksEntry({
       <div className="border-t border-border p-4 space-y-4">
         {eligibleSections.length > 1 && (
           <div>
-            <label className="block text-xs font-medium text-stone-600 mb-1">Section</label>
+            <label className="mb-2 block text-xs font-medium text-stone-600">Section</label>
             <select
               value={selectedSectionId ?? ""}
               onChange={(e) => handleSectionChange(Number(e.target.value))}
               className="w-full rounded-md border border-border px-3 py-2 text-sm bg-surface"
             >
               {eligibleSections.map((s) => (
-                <option key={s.sectionId} value={s.sectionId}>{s.sectionName}</option>
+                <option key={s.sectionId} value={s.sectionId}>{formatClassSection(s.className, s.sectionName)}</option>
               ))}
             </select>
           </div>
@@ -108,6 +110,7 @@ export function TestMarksEntry({
         ) : loaded && selectedSectionId ? (
           <form action={enterMarksManuallyAction} className="space-y-4">
             <input type="hidden" name="testId" value={testId} />
+            <input type="hidden" name="sectionId" value={selectedSectionId} />
             <input type="hidden" name="totalMarks" value={maxMarks} />
             {roster.length === 0 ? (
               <p className="text-sm text-stone-500">No students found for this class.</p>

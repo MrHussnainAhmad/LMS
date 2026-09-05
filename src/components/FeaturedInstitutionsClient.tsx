@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toaster";
 import { Loader2, Plus, Trash2, ImageUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { prepareContentUpload } from "@/lib/client-upload-file";
 
 type FeaturedInst = {
   id: number;
@@ -41,22 +42,22 @@ export default function FeaturedInstitutionsClient({
   const handleImageUpload = async (file: File) => {
     setIsUploadingImage(true);
     try {
-      if (!file.type.startsWith("image/")) throw new Error("Please select an image file");
-      if (file.size > 2 * 1024 * 1024) throw new Error("Image must be 2MB or smaller");
+      const preparedFile = await prepareContentUpload(file, { allowedKinds: ['image'], maximumBytes: 2 * 1024 * 1024 });
 
       const sigRes = await fetch("/api/upload/signature", { method: "POST" });
       const signaturePayload = await sigRes.json();
       
-      if (!sigRes.ok || !signaturePayload.signature) {
+      if (!sigRes.ok || !signaturePayload.signature || !signaturePayload.folder) {
         throw new Error(signaturePayload.error || "Upload service is not configured");
       }
 
       const uploadData = new FormData();
-      uploadData.append("file", file);
+      uploadData.append("file", preparedFile);
       uploadData.append("api_key", signaturePayload.apiKey);
       uploadData.append("timestamp", signaturePayload.timestamp.toString());
       uploadData.append("signature", signaturePayload.signature);
-      uploadData.append("folder", "lms-uploads");
+      uploadData.append("folder", signaturePayload.folder);
+      uploadData.append("allowed_formats", signaturePayload.allowedFormats);
 
       const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/image/upload`, {
         method: "POST",
@@ -64,11 +65,13 @@ export default function FeaturedInstitutionsClient({
       });
       const uploadPayload = await cloudinaryResponse.json();
       
-      if (!cloudinaryResponse.ok || !uploadPayload.secure_url) {
+      if (!cloudinaryResponse.ok || !uploadPayload.public_id) {
         throw new Error(uploadPayload.error?.message || "Cloudinary rejected the picture upload");
       }
-
-      setLogoKey(uploadPayload.secure_url);
+      const completionResponse = await fetch('/api/upload/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicId: uploadPayload.public_id, resourceType: uploadPayload.resource_type, imageOnly: true }) });
+      const completed = await completionResponse.json();
+      if (!completionResponse.ok) throw new Error(completed.error || 'Uploaded image could not be verified');
+      setLogoKey(completed.url);
       toast({ title: "Image Uploaded", description: "Logo ready to save.", variant: "success" });
     } catch (error: unknown) {
       toast({

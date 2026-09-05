@@ -12,6 +12,7 @@ import { requireRole, getTenantContext } from "@/lib/rbac";
 import { getCachedOrFetch } from "@/lib/redis";
 import { getVisibleAnnouncements } from "@/lib/announcements";
 import { and, eq, gt } from "drizzle-orm";
+import { isInstitutionCourseStreamingConfigured } from "@/lib/course-streaming";
 
 const DASHBOARD_CACHE_TTL_SECONDS = 45;
 
@@ -19,7 +20,7 @@ type DashboardPayload = {
   firstName: string;
   /** Kept for mobile client shape; unread is loaded when the notification UI opens. */
   unreadNotificationsCount: number;
-  timetable: Array<{ dayOfWeek: number; startTime: string; endTime: string; subjectName: string | null; sectionName: string | null }>;
+  timetable: Array<{ dayOfWeek: number; startTime: string; endTime: string; subjectName: string | null; className: string | null; sectionName: string | null }>;
   assignments: Array<{ id: number; title: string; dueAt: string; className: string | null; sectionName: string | null; subjectName: string | null }>;
   announcements: Array<{ id: number; title: string; content: string; createdAtIso: string; senderRole?: string; isRead: boolean }>;
 };
@@ -27,7 +28,7 @@ type DashboardPayload = {
 export const GET = requireRole(["STAFF"], async (_req: NextRequest, { session }) => {
   const tenantId = getTenantContext(session);
   const staffId = session.userId;
-  const cacheKey = `cache:staff:dashboard:${tenantId}:${staffId}`;
+  const cacheKey = `cache:staff:dashboard:v2:${tenantId}:${staffId}`;
 
   const payload = await getCachedOrFetch(cacheKey, DASHBOARD_CACHE_TTL_SECONDS, async (): Promise<DashboardPayload | { error: string }> => {
     const [staffRow] = await db
@@ -49,11 +50,13 @@ export const GET = requireRole(["STAFF"], async (_req: NextRequest, { session })
         startTime: staffAssignments.startTime,
         endTime: staffAssignments.endTime,
         subjectName: subjects.name,
+        className: classes.name,
         sectionName: sections.name,
       })
         .from(staffAssignments)
         .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
         .leftJoin(sections, eq(staffAssignments.sectionId, sections.id))
+        .leftJoin(classes, eq(sections.classId, classes.id))
         .where(and(
           eq(staffAssignments.staffId, staffId),
           eq(staffAssignments.institutionId, tenantId),
@@ -119,5 +122,6 @@ export const GET = requireRole(["STAFF"], async (_req: NextRequest, { session })
     return NextResponse.json(payload, { status: 404 });
   }
 
-  return NextResponse.json(payload);
+  const coursesEnabled = await isInstitutionCourseStreamingConfigured(tenantId);
+  return NextResponse.json({ ...payload, coursesEnabled });
 });

@@ -2,12 +2,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { db } from "@/db";
 import { classes, marks, sections, staffAssignments, subjects, tests } from "@/db/schema";
-import { createStaffAssessmentAction, uploadMarksCsvAction } from "@/app/actions/assessment-actions";
+import { createStaffAssessmentAction } from "@/app/actions/assessment-actions";
 import { getSession } from "@/lib/auth";
 import { and, count, eq, inArray, isNull, or } from "drizzle-orm";
-import { ClipboardList, FileEdit, Upload } from "lucide-react";
+import { ClipboardList, FileEdit } from "lucide-react";
 import { redirect } from "next/navigation";
 import { TestMarksEntry } from "./TestMarksEntry";
+import { BulkMarksUpload } from "./BulkMarksUpload";
+import { formatClassSection } from "@/lib/class-section-label";
 
 export default async function StaffMarksPage() {
   const session = await getSession();
@@ -88,19 +90,19 @@ export default async function StaffMarksPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
-            <form action={createStaffAssessmentAction} className="space-y-4">
+            <form action={createStaffAssessmentAction} className="space-y-4 pt-2 text-left">
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Class / Section</label>
+                <label className="mb-2 block text-sm font-medium text-stone-700">Class / Section</label>
                 <select name="sectionId" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-surface">
                   <option value="">Select class...</option>
                   {sectionOptions.map((slot) => (
-                    <option key={slot.sectionId} value={slot.sectionId}>{slot.className} - {slot.sectionName}</option>
+                    <option key={slot.sectionId} value={slot.sectionId}>{formatClassSection(slot.className, slot.sectionName)}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Type</label>
+                <label className="mb-2 block text-sm font-medium text-stone-700">Type</label>
                 <select name="type" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-surface">
                   <option value="DAILY">Daily</option>
                   <option value="WEEKLY">Weekly</option>
@@ -109,17 +111,17 @@ export default async function StaffMarksPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Title</label>
+                <label className="mb-2 block text-sm font-medium text-stone-700">Title</label>
                 <input name="title" required placeholder="e.g. Chapter 3 Quiz" className="w-full rounded-md border border-border px-3 py-2 text-sm" />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Date</label>
+                  <label className="mb-2 block text-sm font-medium text-stone-700">Date</label>
                   <input name="date" type="date" required className="w-full rounded-md border border-border px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Total</label>
+                  <label className="mb-2 block text-sm font-medium text-stone-700">Total</label>
                   <input name="maxMarks" type="number" min="1" step="0.01" required className="w-full rounded-md border border-border px-3 py-2 text-sm" />
                 </div>
               </div>
@@ -159,11 +161,16 @@ export default async function StaffMarksPage() {
                     <div>
                       <h3 className="font-semibold text-brand-950">{test.title}</h3>
                       <p className="text-sm text-stone-500">
-                        {test.type} - {className}{sectionName ? ` - ${sectionName}` : ""} - {subjectName || "Subject"}
+                        {test.type} - {formatClassSection(className, sectionName)} - {subjectName || "Subject"}
                       </p>
                       <p className="text-xs text-stone-500">
                         {new Date(test.date).toLocaleDateString()} - {test.maxMarks} marks - {marksByTest.get(test.id) || 0} uploaded
                       </p>
+                      {test.createdByRole === "STAFF" && (
+                        <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${test.resultsPublishedAt ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                          {test.resultsPublishedAt ? "Published" : "Draft results"}
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-4 xl:col-span-2">
@@ -175,24 +182,14 @@ export default async function StaffMarksPage() {
                         sectionOptions={sectionOptions}
                       />
 
-                      <form action={uploadMarksCsvAction} className="flex flex-col sm:flex-row gap-2 rounded-md border border-border bg-stone-50 p-3">
-                        <input type="hidden" name="testId" value={test.id} />
-                        <input
-                          type="file"
-                          name="csv"
-                          accept=".csv,text/csv"
-                          required
-                          className="block w-full text-sm text-stone-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-800"
-                        />
-                        <label className="flex shrink-0 items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm text-stone-700">
-                          <input name="overwrite" type="checkbox" className="h-4 w-4" />
-                          Overwrite
-                        </label>
-                        <SubmitButton className="shrink-0">
-                          <Upload className="h-4 w-4 mr-2" />
-                          Upload CSV
-                        </SubmitButton>
-                      </form>
+                      <BulkMarksUpload
+                        testId={test.id}
+                        classId={test.classId}
+                        fixedSectionId={test.sectionId}
+                        sectionOptions={sectionOptions}
+                        canPublish={test.createdByRole === "STAFF" && test.staffId === session.userId}
+                        published={Boolean(test.resultsPublishedAt)}
+                      />
                     </div>
                   </div>
                 )})}
@@ -204,7 +201,7 @@ export default async function StaffMarksPage() {
 
       <Card>
         <CardContent className="p-4 text-sm text-stone-600">
-          CSV format: column 1 rollnumber, column 2 obtained marks, column 3 total marks. The upload is saved only if every roll number belongs to the selected class and every total matches the assessment total.
+          Download each assessment&apos;s prefilled roster, enter marks in the Marks Obtained column, save it as CSV, and upload it. Results are checked against the assigned section and remain private until published.
         </CardContent>
       </Card>
     </div>

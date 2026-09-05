@@ -9,6 +9,7 @@ import { ClipboardList, ExternalLink, UploadCloud } from "lucide-react";
 import { createStaffAssignmentAction } from "@/app/actions/assessment-actions";
 import { ReferenceFileInput } from "./ReferenceFileInput";
 import { AssignmentDetails } from "./AssignmentDetails";
+import { formatClassSection } from "@/lib/class-section-label";
 
 export default async function StaffAssignmentsPage() {
   const session = await getSession();
@@ -106,21 +107,21 @@ export default async function StaffAssignmentsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
-            <form action={createStaffAssignmentAction} className="space-y-4">
+            <form action={createStaffAssignmentAction} className="space-y-4 pt-2 text-left">
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Class / Section</label>
+                <label className="mb-2 block text-sm font-medium text-stone-700">Class / Section</label>
                 <select name="sectionId" required className="w-full rounded-md border border-border px-3 py-2 text-sm bg-surface">
                   <option value="">Select class...</option>
                   {sectionOptions.map((slot) => (
                     <option key={slot.sectionId} value={slot.sectionId}>
-                      {slot.className} - {slot.sectionName}
+                      {formatClassSection(slot.className, slot.sectionName)}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Subject</label>
+                <label className="mb-2 block text-sm font-medium text-stone-700">Subject</label>
                 <select name="subjectId" className="w-full rounded-md border border-border px-3 py-2 text-sm bg-surface">
                   <option value="">General assignment</option>
                   {subjectOptions.map((subject) => (
@@ -130,17 +131,17 @@ export default async function StaffAssignmentsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Title</label>
+                <label className="mb-2 block text-sm font-medium text-stone-700">Title</label>
                 <input name="title" required className="w-full rounded-md border border-border px-3 py-2 text-sm" />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Description</label>
+                <label className="mb-2 block text-sm font-medium text-stone-700">Description</label>
                 <textarea name="description" rows={3} className="w-full rounded-md border border-border px-3 py-2 text-sm" />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Due Date</label>
+                <label className="mb-2 block text-sm font-medium text-stone-700">Due Date</label>
                 <input name="dueAt" type="datetime-local" required className="w-full rounded-md border border-border px-3 py-2 text-sm" />
               </div>
 
@@ -177,7 +178,7 @@ export default async function StaffAssignmentsPage() {
                         <div>
                           <h3 className="font-semibold text-brand-950">{assignment.title}</h3>
                           <p className="text-sm text-stone-500">
-                            {className}{sectionName ? ` - ${sectionName}` : ""}{subjectName ? ` - ${subjectName}` : ""}
+                            {formatClassSection(className, sectionName)}{subjectName ? ` - ${subjectName}` : ""}
                           </p>
                           <p className="text-xs text-stone-500">Due {dueLabel}</p>
                           {assignment.referenceFileUrl && (

@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { Loader2 } from "lucide-react";
+import { prepareContentUpload } from "@/lib/client-upload-file";
 
 type SignaturePayload = {
   signature?: string;
   timestamp?: number;
   cloudName?: string;
   apiKey?: string;
+  folder?: string;
+  allowedFormats?: string;
   error?: string;
 };
 
@@ -90,16 +93,13 @@ export function InstitutionSignatureUploader({
   const uploadSignature = async (file: File) => {
     setIsUploading(true);
     try {
-      if (!file.type.startsWith("image/")) throw new Error("Please select an image file");
-      if (file.size > 2 * 1024 * 1024) throw new Error("Signature must be 2MB or smaller");
-
       toast({ title: "Processing...", description: "Removing background and preparing upload." });
       const transparentBlob = await processImageToTransparent(file);
-      const uploadFile = new File([transparentBlob], "signature.png", { type: "image/png" });
+      const uploadFile = await prepareContentUpload(new File([transparentBlob], "signature.png", { type: "image/png" }), { allowedKinds: ['image'], maximumBytes: 2 * 1024 * 1024 });
 
       const sigRes = await fetch("/api/upload/signature", { method: "POST" });
       const signaturePayload = await sigRes.json() as SignaturePayload;
-      if (!sigRes.ok || !signaturePayload.signature || !signaturePayload.timestamp || !signaturePayload.cloudName || !signaturePayload.apiKey) {
+      if (!sigRes.ok || !signaturePayload.signature || !signaturePayload.timestamp || !signaturePayload.cloudName || !signaturePayload.apiKey || !signaturePayload.folder) {
         throw new Error(signaturePayload.error || "Upload service is not configured");
       }
 
@@ -108,19 +108,20 @@ export function InstitutionSignatureUploader({
       uploadData.append("api_key", signaturePayload.apiKey);
       uploadData.append("timestamp", signaturePayload.timestamp.toString());
       uploadData.append("signature", signaturePayload.signature);
-      uploadData.append("folder", "lms-uploads");
+      uploadData.append("folder", signaturePayload.folder);
+      uploadData.append("allowed_formats", signaturePayload.allowedFormats || "jpg,jpeg,png,webp,pdf,docx,txt");
 
       const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/image/upload`, {
         method: "POST",
         body: uploadData,
       });
-      const uploadPayload = await cloudinaryResponse.json() as { secure_url?: string; public_id?: string; error?: { message?: string } };
-      if (!cloudinaryResponse.ok || !uploadPayload.secure_url) {
+      const uploadPayload = await cloudinaryResponse.json() as { secure_url?: string; public_id?: string; resource_type?: string; error?: { message?: string } };
+      if (!cloudinaryResponse.ok || !uploadPayload.public_id) {
         throw new Error(uploadPayload.error?.message || "Cloudinary rejected the signature upload");
       }
-
+      await api.post("/api/upload/complete", { publicId: uploadPayload.public_id, resourceType: uploadPayload.resource_type, imageOnly: true });
       await api.patch("/api/institution/signature", { publicId: uploadPayload.public_id });
-      setPreviewUrl(uploadPayload.secure_url);
+      setPreviewUrl(uploadPayload.secure_url || "");
       toast({ title: "Signature updated", description: "The Principal's signature has been saved.", variant: "success" });
       router.refresh();
     } catch (error: unknown) {

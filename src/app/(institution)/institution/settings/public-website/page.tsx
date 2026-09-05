@@ -1,0 +1,93 @@
+import Link from 'next/link';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { ArrowLeft, Globe2 } from 'lucide-react';
+import { eq } from 'drizzle-orm';
+import { db } from '@/db';
+import { institutionPublicProfiles, institutions, systemSettings } from '@/db/schema';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { getSession } from '@/lib/auth';
+import { institutionPublicUrl } from '@/lib/institution-domain';
+import { PublicWebsiteEditor } from '../PublicWebsiteEditor';
+
+export default async function InstitutionPublicWebsitePage() {
+  const session = await getSession();
+  if (!session || session.role !== 'INSTITUTION') redirect('/institution/dashboard');
+
+  const institutionId = session.institutionId || session.userId;
+  const [[institution], [publicProfile], [platformSettings], requestHeaders] = await Promise.all([
+    db.select({
+      name: institutions.name,
+      publicSlug: institutions.publicSlug,
+      publicSiteEnabled: institutions.publicSiteEnabled,
+    }).from(institutions).where(eq(institutions.id, institutionId)).limit(1),
+    db.select().from(institutionPublicProfiles).where(eq(institutionPublicProfiles.institutionId, institutionId)).limit(1),
+    db.select({ publicSiteBaseDomain: systemSettings.publicSiteBaseDomain }).from(systemSettings).limit(1),
+    headers(),
+  ]);
+
+  if (!institution) redirect('/login');
+
+  const publicUrl = institution.publicSlug
+    ? institutionPublicUrl(institution.publicSlug, requestHeaders.get('host') || '', 'https:', platformSettings?.publicSiteBaseDomain)
+    : null;
+  const qrUrl = institution.publicSlug
+    ? institutionPublicUrl(institution.publicSlug, undefined, 'https:', platformSettings?.publicSiteBaseDomain)
+    : null;
+
+  return (
+    <div className="flex h-full min-h-full max-w-6xl flex-col space-y-6 animate-fade-in">
+      <div>
+        <Link href="/institution/settings" className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-brand-700 hover:text-brand-950">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Settings
+        </Link>
+        <h1 className="text-3xl font-display font-bold text-brand-950">Public Website</h1>
+        <p className="mt-1 text-stone-500">Manage the public website for {institution.name}.</p>
+      </div>
+
+      <Card className="flex min-h-0 flex-1 flex-col">
+        <CardHeader className="border-b border-border bg-stone-50/50">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Globe2 className="h-5 w-5 text-brand-600" />
+            Website information
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex-1 p-6">
+          <PublicWebsiteEditor
+            publicSlug={institution.publicSlug}
+            publicSiteEnabled={institution.publicSiteEnabled}
+            publicUrl={publicUrl}
+            qrUrl={qrUrl}
+            initialProfile={{
+              tagline: publicProfile?.tagline || null,
+              description: publicProfile?.description || null,
+              heroImageUrl: publicProfile?.heroImageUrl || null,
+              announcementText: publicProfile?.announcementText || null,
+              announcementLink: publicProfile?.announcementLink || null,
+              aboutTitle: publicProfile?.aboutTitle || null,
+              mission: publicProfile?.mission || null,
+              vision: publicProfile?.vision || null,
+              principalName: publicProfile?.principalName || null,
+              principalTitle: publicProfile?.principalTitle || null,
+              principalMessage: publicProfile?.principalMessage || null,
+              principalImageUrl: publicProfile?.principalImageUrl || null,
+              statistics: publicProfile?.statistics || [],
+              programs: publicProfile?.programs || [],
+              highlights: publicProfile?.highlights || [],
+              galleryImages: publicProfile?.galleryImages || [],
+              publicEmail: publicProfile?.publicEmail || null,
+              publicPhone: publicProfile?.publicPhone || null,
+              publicAddress: publicProfile?.publicAddress || null,
+              mapUrl: publicProfile?.mapUrl || null,
+              facebookUrl: publicProfile?.facebookUrl || null,
+              instagramUrl: publicProfile?.instagramUrl || null,
+              youtubeUrl: publicProfile?.youtubeUrl || null,
+              accentColor: publicProfile?.accentColor || '#233c32',
+            }}
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -13,7 +13,8 @@ import {
 import { requireRole, getTenantContext } from "@/lib/rbac";
 import { getCachedOrFetch } from "@/lib/redis";
 import { getVisibleAnnouncements } from "@/lib/announcements";
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
+import { isInstitutionCourseStreamingConfigured } from "@/lib/course-streaming";
 
 const DASHBOARD_CACHE_TTL_SECONDS = 45;
 const TIMETABLE_CACHE_TTL_SECONDS = 300;
@@ -131,7 +132,7 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
       })
         .from(marks)
         .innerJoin(tests, eq(marks.testId, tests.id))
-        .where(and(eq(marks.studentId, session.userId), eq(marks.institutionId, tenantId)))
+        .where(and(eq(marks.studentId, session.userId), eq(marks.institutionId, tenantId), isNotNull(tests.resultsPublishedAt)))
         .orderBy(desc(tests.date), desc(marks.id))
         .limit(1)
         .then(([row]) => row ?? null),
@@ -191,5 +192,6 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
     return NextResponse.json(payload, { status: 404, headers });
   }
 
-  return NextResponse.json(payload, { headers });
+  const coursesEnabled = await isInstitutionCourseStreamingConfigured(tenantId);
+  return NextResponse.json({ ...payload, coursesEnabled }, { headers });
 });
