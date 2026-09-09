@@ -70,6 +70,7 @@ yarn-error.log*
 !/drizzle/0038_fee_register_performance.sql
 !/drizzle/0051_parent_identity.sql
 !/drizzle/0052_assessment_result_publishing.sql
+!/drizzle/0053_section_groups_timetable.sql
 !/drizzle/0006_login_lookup_indexes.sql
 !/drizzle/0007_push_preferences_default_enabled.sql
 

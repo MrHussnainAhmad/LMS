@@ -27,6 +27,7 @@ import {
   parseInstitutionHostname,
 } from "@/lib/institution-domain";
 import { resolveInstitutionTenant } from "@/lib/institution-tenant";
+import { getPublishedPublicEvent, listPublishedPublicEvents } from "@/lib/public-event-queries";
 import { getPublicSiteBaseDomain } from "@/lib/public-site-domain";
 import type { PublicInstitutionTenant } from "@/lib/institution-tenant";
 import { AdmissionsApplicationForm } from "./AdmissionsApplicationForm";
@@ -37,6 +38,7 @@ import { ApplicantDocumentUpload } from "./ApplicantDocumentUpload";
 import { ApplicantFeePayment } from "./ApplicantFeePayment";
 import { InstitutionHomepage } from "./InstitutionHomepage";
 import { OfflineAdmissionForm } from "./OfflineAdmissionForm";
+import { PublicEventPage } from "./PublicEventPage";
 
 // Institution publication state is mutable and tenant slugs can be assigned
 // after the first request. Never persist a pre-publication notFound() response
@@ -83,13 +85,14 @@ export async function generateMetadata({
 }: TenantSitePageProps): Promise<Metadata> {
   const { slug, path } = await params;
   const tenantRoute = path?.join("/") || "";
+  const eventSlug = path?.length === 2 && (path[0] === "event" || path[0] === "events") ? path[1] : null;
   const isAdmissionsPage = tenantRoute === "admissions";
   const isApplicantRoute = [
     "admissions/login",
     "admissions/change-password",
     "admissions/portal",
   ].includes(tenantRoute);
-  if (tenantRoute && !isAdmissionsPage && !isApplicantRoute)
+  if (tenantRoute && !isAdmissionsPage && !isApplicantRoute && !eventSlug)
     return { title: "Page Not Found", robots: { index: false, follow: false } };
 
   const tenant = await getRequestTenant(slug);
@@ -98,6 +101,9 @@ export async function generateMetadata({
       title: "Institution Not Found",
       robots: { index: false, follow: false },
     };
+
+  const publicEvent = eventSlug ? await getPublishedPublicEvent(tenant.id, eventSlug) : null;
+  if (eventSlug && !publicEvent) return { title: "Event Not Found", robots: { index: false, follow: false } };
 
   const canonical = institutionPublicUrl(
     tenant.publicSlug,
@@ -111,26 +117,32 @@ export async function generateMetadata({
     : fallbackDescription;
 
   return {
-    title: isAdmissionsPage
+    title: publicEvent
+      ? `${publicEvent.title} | ${tenant.name}`
+      : isAdmissionsPage
       ? `Admissions | ${tenant.name}`
       : isApplicantRoute
         ? `Applicant Portal | ${tenant.name}`
         : tenant.name,
-    description,
+    description: publicEvent?.summary || description,
     alternates: {
-      canonical: isAdmissionsPage
+      canonical: publicEvent
+        ? `${canonical}/event/${publicEvent.slug}`
+        : isAdmissionsPage
         ? `${canonical}/admissions`
         : isApplicantRoute
           ? undefined
           : canonical,
     },
     openGraph: {
-      title: tenant.name,
-      description,
-      url: isAdmissionsPage ? `${canonical}/admissions` : canonical,
+      title: publicEvent?.title || tenant.name,
+      description: publicEvent?.summary || description,
+      url: publicEvent ? `${canonical}/event/${publicEvent.slug}` : isAdmissionsPage ? `${canonical}/admissions` : canonical,
       siteName: tenant.name,
       type: "website",
-      images: tenant.heroImageUrl
+      images: publicEvent?.coverImageUrl
+        ? [{ url: publicEvent.coverImageUrl, alt: publicEvent.title }]
+        : tenant.heroImageUrl
         ? [{ url: tenant.heroImageUrl, alt: tenant.tagline || tenant.name }]
         : tenant.logoKey.startsWith("http")
           ? [{ url: tenant.logoKey, alt: `${tenant.name} logo` }]
@@ -148,6 +160,7 @@ export async function generateMetadata({
 export default async function TenantSitePage({ params }: TenantSitePageProps) {
   const { slug, path } = await params;
   const tenantRoute = path?.join("/") || "";
+  const eventSlug = path?.length === 2 && (path[0] === "event" || path[0] === "events") ? path[1] : null;
   const allowedRoutes = [
     "",
     "admissions",
@@ -155,19 +168,28 @@ export default async function TenantSitePage({ params }: TenantSitePageProps) {
     "admissions/change-password",
     "admissions/portal",
   ];
-  if (!allowedRoutes.includes(tenantRoute)) notFound();
+  if (!allowedRoutes.includes(tenantRoute) && !eventSlug) notFound();
 
   const tenant = await getRequestTenant(slug);
   if (!tenant) notFound();
+  if (eventSlug) {
+    const event = await getPublishedPublicEvent(tenant.id, eventSlug);
+    if (!event) notFound();
+    if (path?.[0] === "events") redirect(`/event/${event.slug}`);
+    return <PublicEventPage tenant={tenant} event={event} />;
+  }
   const studentLoginUrl = await getStudentLoginUrl();
-  if (!tenantRoute)
+  if (!tenantRoute) {
+    const publicEvents = await listPublishedPublicEvents(tenant.id);
     return (
       <InstitutionHomepage
         tenant={tenant}
         baseDomain={await getPublicSiteBaseDomain()}
         studentLoginUrl={studentLoginUrl}
+        publicEvents={publicEvents}
       />
     );
+  }
   if (tenantRoute === "admissions")
     return (
       <TenantAdmissionsPage tenant={tenant} studentLoginUrl={studentLoginUrl} />

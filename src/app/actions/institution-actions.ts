@@ -381,7 +381,7 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   const session = await getSession();
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
-  const institutionId = session.userId;
+  const institutionId = session.institutionId || session.userId;
   const sectionIdRaw = formData.get("sectionId") as string;
   const classIdRaw = formData.get("classId") as string;
   let sectionId = sectionIdRaw ? parseInt(sectionIdRaw, 10) : null;
@@ -433,27 +433,27 @@ export async function createTimetableAssignmentAction(formData: FormData) {
     if (!staffRow) throw new Error("Selected staff member was not found in this institution");
   }
 
-  const sectionConflicts = await db.select()
+  const sectionConflicts = await db.select({ id: staffAssignments.id })
     .from(staffAssignments)
     .where(and(
       eq(staffAssignments.institutionId, institutionId),
       eq(staffAssignments.sectionId, sectionId!),
       eq(staffAssignments.dayOfWeek, dayOfWeek),
       lt(staffAssignments.startTime, endTime),
-      gt(staffAssignments.endTime, startTime)
+      gt(staffAssignments.endTime, startTime),
     ))
     .limit(1);
   if (sectionConflicts.length > 0) throw new Error("This section already has a timetable entry in that time range");
 
   if (staffId) {
-    const staffConflicts = await db.select()
+    const staffConflicts = await db.select({ id: staffAssignments.id })
       .from(staffAssignments)
       .where(and(
         eq(staffAssignments.institutionId, institutionId),
         eq(staffAssignments.staffId, staffId),
         eq(staffAssignments.dayOfWeek, dayOfWeek),
         lt(staffAssignments.startTime, endTime),
-        gt(staffAssignments.endTime, startTime)
+        gt(staffAssignments.endTime, startTime),
       ))
       .limit(1);
     if (staffConflicts.length > 0) throw new Error("This staff member is already booked in that time range");

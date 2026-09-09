@@ -45,6 +45,7 @@ const scopedTables = [
   "passwordResets",
   "platformReviews",
   "sections",
+  "sectionGroups",
   "staff",
   "staffAssignments",
   "staffAttendances",

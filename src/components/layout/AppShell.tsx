@@ -46,7 +46,7 @@ export function AppShell({
   }, [initialBrand, userId, institutionId, userRole]);
 
   return (
-    <div className="app-shell flex h-dvh min-h-screen overflow-hidden text-foreground">
+    <div className="app-shell flex min-h-dvh text-foreground">
       {isSidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-brand-950/55 lg:hidden"
@@ -73,7 +73,7 @@ export function AppShell({
         />
       </div>
 
-      <div className={cn("flex min-w-0 flex-1 flex-col overflow-hidden transition-[margin] duration-200", isSidebarCollapsed ? "lg:ml-20" : "lg:ml-64")}>
+      <div className={cn("flex min-h-dvh min-w-0 flex-1 flex-col transition-[margin] duration-200", isSidebarCollapsed ? "lg:ml-20" : "lg:ml-64")}>
         <Topbar
           onMenuClick={() => setIsSidebarOpen(true)}
           role={userRole}
@@ -81,8 +81,8 @@ export function AppShell({
           onLogoutStart={clearShellClientCache}
         />
 
-        <main className="flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-9">
-          <div className="app-content h-full min-h-full">{children}</div>
+        <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-9">
+          <div className="app-content min-h-full">{children}</div>
         </main>
       </div>
     </div>

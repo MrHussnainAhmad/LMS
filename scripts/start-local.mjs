@@ -50,6 +50,14 @@ if (process.argv.includes("--deps-only")) {
   process.exit(0);
 }
 
+console.info("Applying pending local database migrations...");
+run(
+  process.execPath,
+  ["--env-file=.env", "scripts/migrate-production.mjs", "--apply"],
+  "local database migration",
+);
+console.info("Local database migrations are current.");
+
 run(process.execPath, ["scripts/prepare-standalone.mjs"], "standalone preparation");
 
 const server = spawn(

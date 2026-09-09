@@ -18,6 +18,8 @@ import {
   foreignKey,
   bigint,
 } from "drizzle-orm/pg-core";
+import type { WebsiteNotices } from "@/lib/public-website-notices";
+import type { PublicEventBlock } from "@/lib/public-events";
 import { sql } from "drizzle-orm";
 
 // --- ENUMS ---
@@ -135,6 +137,8 @@ export const ticketHistoryActionEnum = pgEnum("ticket_history_action", [
   "COMMENT_ADDED",
 ]);
 export const blogStatusEnum = pgEnum("blog_status", ["DRAFT", "PUBLISHED"]);
+export const publicEventStatusEnum = pgEnum("public_event_status", ["DRAFT", "PUBLISHED"]);
+export const publicEventDurationEnum = pgEnum("public_event_duration", ["ONE_DAY", "THREE_DAYS", "ONE_WEEK", "ONE_MONTH", "FOREVER"]);
 export const admissionCycleStatusEnum = pgEnum("admission_cycle_status", [
   "DRAFT",
   "OPEN",
@@ -330,11 +334,38 @@ export const institutionPublicProfiles = pgTable(
     facebookUrl: varchar("facebook_url", { length: 500 }),
     instagramUrl: varchar("instagram_url", { length: 500 }),
     youtubeUrl: varchar("youtube_url", { length: 500 }),
+    websiteNotices: jsonb("website_notices")
+      .$type<WebsiteNotices>(),
     accentColor: varchar("accent_color", { length: 7 })
       .default("#233c32")
       .notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
+);
+
+export const publicEvents = pgTable(
+  "public_events",
+  {
+    id: serial("id").primaryKey(),
+    institutionId: integer("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 160 }).notNull(),
+    slug: varchar("slug", { length: 120 }).notNull(),
+    summary: varchar("summary", { length: 500 }),
+    coverImageUrl: varchar("cover_image_url", { length: 500 }),
+    eventDate: varchar("event_date", { length: 120 }),
+    venue: varchar("venue", { length: 200 }),
+    blocks: jsonb("blocks").$type<PublicEventBlock[]>().default([]).notNull(),
+    status: publicEventStatusEnum("status").default("DRAFT").notNull(),
+    visibilityDuration: publicEventDurationEnum("visibility_duration").default("ONE_WEEK").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    institutionSlugUnique: uniqueIndex("public_events_institution_slug_uidx").on(t.institutionId, t.slug),
+    publicLookupIndex: index("public_events_public_lookup_idx").on(t.institutionId, t.status, t.publishedAt, t.expiresAt),
+  }),
 );
 
 // --- ADMISSIONS ---
@@ -1227,6 +1258,28 @@ export const staffProfileChangeRequests = pgTable(
   }),
 );
 
+// --- LEGACY SECTION GROUPS (retained for existing timetable data) ---
+export const sectionGroups = pgTable(
+  "section_groups",
+  {
+    id: serial("id").primaryKey(),
+    institutionId: integer("institution_id")
+      .notNull()
+      .references(() => institutions.id, { onDelete: "cascade" }),
+    sectionId: integer("section_id")
+      .notNull()
+      .references(() => sections.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 100 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    institutionSectionIndex: index("section_groups_institution_section_idx").on(
+      t.institutionId,
+      t.sectionId,
+    ),
+  }),
+);
+
 // --- STAFF ASSIGNMENTS (TIMETABLE) ---
 export const staffAssignments = pgTable(
   "staff_assignments",
@@ -1244,21 +1297,27 @@ export const staffAssignments = pgTable(
     subjectId: integer("subject_id").references(() => subjects.id, {
       onDelete: "cascade",
     }),
+    // null = whole-section period (simple timetable); set = elective sub-group period
+    groupId: integer("group_id").references(() => sectionGroups.id),
     isBreak: boolean("is_break").default(false).notNull(),
     dayOfWeek: integer("day_of_week").notNull(), // 0 = Sunday, 1 = Monday, etc.
     startTime: time("start_time").notNull(),
     endTime: time("end_time").notNull(),
   },
   (t) => ({
+    // Unchanged: a teacher cannot occupy two slots at the same start time.
     staffTimeSlotUnique: unique("staff_time_slot_unique").on(
       t.institutionId,
       t.staffId,
       t.dayOfWeek,
       t.startTime,
     ),
-    sectionTimeSlotUnique: unique("section_time_slot_unique").on(
+    // COALESCE so null groupId rows keep one-slot-per-section semantics;
+    // different groupIds may share the same section+day+start_time.
+    sectionTimeSlotUnique: uniqueIndex("section_time_slot_unique").on(
       t.institutionId,
       t.sectionId,
+      sql`COALESCE(${t.groupId}, 0)`,
       t.dayOfWeek,
       t.startTime,
     ),

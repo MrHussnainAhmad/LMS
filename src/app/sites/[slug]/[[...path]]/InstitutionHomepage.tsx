@@ -1,9 +1,10 @@
 import type { CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, ExternalLink, Mail, MapPin, Phone } from "lucide-react";
+import { ArrowRight, CalendarDays, ExternalLink, Mail, MapPin, Phone } from "lucide-react";
 import type { PublicInstitutionTenant } from "@/lib/institution-tenant";
 import { institutionPublicUrl } from "@/lib/institution-domain";
+import { PublicWebsiteNotices } from "./PublicWebsiteNotices";
 
 const linkClass = "inline-flex h-11 items-center justify-center gap-2 px-5 text-xs font-bold transition-colors";
 
@@ -13,11 +14,14 @@ function SocialIcon({ name }: { name: "Facebook" | "Instagram" | "YouTube" }) {
   return <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] fill-current" aria-hidden="true"><path d="M21.6 7.1a2.8 2.8 0 0 0-2-2C17.9 4.6 12 4.6 12 4.6s-5.9 0-7.6.5a2.8 2.8 0 0 0-2 2A29 29 0 0 0 2 12a29 29 0 0 0 .4 4.9 2.8 2.8 0 0 0 2 2c1.7.5 7.6.5 7.6.5s5.9 0 7.6-.5a2.8 2.8 0 0 0 2-2A29 29 0 0 0 22 12a29 29 0 0 0-.4-4.9ZM10 15.2V8.8l5.5 3.2-5.5 3.2Z" /></svg>;
 }
 
-export function InstitutionHomepage({ tenant, baseDomain, studentLoginUrl }: { tenant: PublicInstitutionTenant; baseDomain: string; studentLoginUrl: string }) {
+type PublicEventCard = { id: number; title: string; slug: string; summary: string | null; coverImageUrl: string | null; eventDate: string | null; venue: string | null };
+
+export function InstitutionHomepage({ tenant, baseDomain, studentLoginUrl, publicEvents }: { tenant: PublicInstitutionTenant; baseDomain: string; studentLoginUrl: string; publicEvents: PublicEventCard[] }) {
   const institutionType = tenant.type.charAt(0) + tenant.type.slice(1).toLowerCase();
   const introduction = tenant.description || `${tenant.name} is a ${institutionType.toLowerCase()} in ${tenant.city}, ${tenant.country}.`;
   const hasLogo = tenant.logoKey.startsWith("http") || tenant.logoKey.startsWith("/");
   const hasContact = Boolean(tenant.publicEmail || tenant.publicPhone || tenant.publicAddress);
+  const hasPublishedTimetable = tenant.websiteNotices.publishedTimetable.enabled && Boolean(tenant.websiteNotices.publishedTimetable.imageUrl);
   const publicUrl = institutionPublicUrl(tenant.publicSlug, undefined, 'https:', baseDomain);
   const socialLinks = [
     { label: "Facebook" as const, href: tenant.facebookUrl },
@@ -39,6 +43,8 @@ export function InstitutionHomepage({ tenant, baseDomain, studentLoginUrl }: { t
   return (
     <div className="min-h-screen bg-[#f2efe7] text-[#171c1a] selection:bg-[var(--site-accent)] selection:text-white" style={{ "--site-accent": tenant.accentColor } as CSSProperties}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredData }} />
+
+      <PublicWebsiteNotices notices={tenant.websiteNotices} />
 
       {tenant.announcementText && (
         <div className="border-b border-white/15 bg-[var(--site-accent)] px-5 py-2 text-center text-[11px] font-semibold text-white">
@@ -63,6 +69,8 @@ export function InstitutionHomepage({ tenant, baseDomain, studentLoginUrl }: { t
           <nav className="hidden items-center gap-6 lg:flex" aria-label="Institution navigation">
             <a href="#about" className="text-xs font-semibold text-black/55 hover:text-black">About</a>
             {tenant.programs.length > 0 && <a href="#programs" className="text-xs font-semibold text-black/55 hover:text-black">Programs</a>}
+            {publicEvents.length > 0 && <a href="#events" className="text-xs font-semibold text-black/55 hover:text-black">Events</a>}
+            {hasPublishedTimetable && <a href="#timetable" className="text-xs font-semibold text-black/55 hover:text-black">Timetable</a>}
             {tenant.galleryImages.length > 0 && <a href="#campus" className="text-xs font-semibold text-black/55 hover:text-black">Campus</a>}
             {hasContact && <a href="#contact" className="text-xs font-semibold text-black/55 hover:text-black">Contact</a>}
             <Link href="/admissions/login" className="text-xs font-semibold text-black/55 hover:text-black">Applicant login</Link>
@@ -139,6 +147,30 @@ export function InstitutionHomepage({ tenant, baseDomain, studentLoginUrl }: { t
                 <h2 className="max-w-3xl font-display text-3xl font-semibold leading-tight tracking-[-0.045em] sm:text-5xl">What students can study here.</h2>
               </div>
               <div>{tenant.programs.map((program, index) => <article key={`${program.title}-${index}`} className="grid gap-3 border-b border-white/15 py-7 sm:grid-cols-[80px_0.45fr_0.55fr] sm:gap-8"><span className="text-xs font-semibold text-white/35">{String(index + 1).padStart(2, "0")}</span><h3 className="font-display text-xl font-semibold sm:text-2xl">{program.title}</h3><p className="text-sm leading-7 text-white/55">{program.description || "Contact the institution for program details."}</p></article>)}</div>
+            </div>
+          </section>
+        )}
+
+        {publicEvents.length > 0 && (
+          <section id="events" className="scroll-mt-16 border-b border-black/10 bg-[#f2efe7]">
+            <div className="mx-auto max-w-[1440px] border-x border-black/10 px-6 py-16 sm:px-10 sm:py-20 lg:px-14">
+              <div className="mb-10 grid gap-6 border-b border-black/10 pb-9 lg:grid-cols-[0.35fr_0.65fr]"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--site-accent)]">What is happening</p><h2 className="font-display text-3xl font-semibold tracking-[-0.045em] sm:text-5xl">Events at {tenant.name}</h2></div>
+              <div className="grid gap-px bg-black/10 md:grid-cols-2 xl:grid-cols-3">{publicEvents.map((event) => <article key={event.id} className="flex flex-col bg-[#f2efe7]"><div className="relative aspect-[16/10] overflow-hidden bg-[#d9d4c9]">{event.coverImageUrl ? <Image unoptimized fill sizes="(max-width: 768px) 100vw, 480px" src={event.coverImageUrl} alt="" className="object-cover transition-transform duration-500 hover:scale-[1.02]" /> : <div className="absolute inset-0 grid place-items-center bg-[var(--site-accent)] text-5xl font-semibold text-white/15">EVENT</div>}</div><div className="flex flex-1 flex-col p-6"><div className="flex flex-wrap gap-3 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--site-accent)]">{event.eventDate && <span className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" />{event.eventDate}</span>}{event.venue && <span>{event.venue}</span>}</div><h3 className="mt-4 font-display text-2xl font-semibold tracking-[-0.035em]">{event.title}</h3>{event.summary && <p className="mt-3 line-clamp-3 text-sm leading-7 text-black/55">{event.summary}</p>}<Link href={`/event/${event.slug}`} className="mt-7 inline-flex items-center gap-2 text-xs font-bold text-[var(--site-accent)]">Learn more <ArrowRight className="h-3.5 w-3.5" /></Link></div></article>)}</div>
+            </div>
+          </section>
+        )}
+
+        {hasPublishedTimetable && (
+          <section id="timetable" className="scroll-mt-16 border-b border-black/10 bg-[#e9e5dc]">
+            <div className="mx-auto max-w-[1440px] border-x border-black/10 px-6 py-16 sm:px-10 sm:py-20 lg:px-14">
+              <div className="mb-10 grid gap-6 border-b border-black/10 pb-9 lg:grid-cols-[0.35fr_0.65fr] lg:items-end">
+                <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--site-accent)]">Academic schedule</p><h2 className="mt-5 font-display text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">Class timetable</h2></div>
+                <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-end sm:justify-between"><p className="max-w-xl text-sm leading-7 text-black/55">View the current timetable published by {tenant.name}. Open the image at full size for easier reading or saving.</p><a href={tenant.websiteNotices.publishedTimetable.imageUrl} target="_blank" rel="noopener noreferrer" className={`${linkClass} shrink-0 bg-[#171c1a] text-white hover:bg-[var(--site-accent)]`}>Open full size <ExternalLink className="h-3.5 w-3.5" /></a></div>
+              </div>
+              <a href={tenant.websiteNotices.publishedTimetable.imageUrl} target="_blank" rel="noopener noreferrer" aria-label="Open class timetable at full size" className="block border border-black/10 bg-white p-2 shadow-[0_18px_50px_rgba(23,28,26,0.08)] sm:p-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={tenant.websiteNotices.publishedTimetable.imageUrl} alt={`${tenant.name} class timetable`} loading="lazy" className="mx-auto max-h-[1100px] w-full object-contain" />
+              </a>
             </div>
           </section>
         )}

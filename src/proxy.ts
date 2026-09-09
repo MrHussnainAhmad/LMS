@@ -282,7 +282,7 @@ export const config = {
      * - api (API routes are protected by rbac.ts)
      * - _next/static (static files)
      * - _next/image (image optimization files)
-     * - favicon.ico, sitemap.xml, robots.txt (metadata files)
+     * - favicon.ico, sitemap.xml, robots.txt, llms.txt (metadata files)
      * - models (face-recognition model weights, served straight from public/)
      * - anything with a static asset extension
      *
@@ -292,6 +292,6 @@ export const config = {
      * file that has no auth semantics at all. A single portal page pulls dozens
      * of these.
      */
-    '/((?!api|_next/static|_next/image|models/|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:js|mjs|css|map|png|jpg|jpeg|gif|svg|webp|avif|ico|woff|woff2|ttf|otf|eot|mp4|webm|wasm|exe|apk|zip|dmg)$).*)',
+    '/((?!api|_next/static|_next/image|models/|favicon.ico|sitemap.xml|robots.txt|llms\\.txt$|.*\\.(?:js|mjs|css|map|png|jpg|jpeg|gif|svg|webp|avif|ico|woff|woff2|ttf|otf|eot|mp4|webm|wasm|exe|apk|zip|dmg)$).*)',
   ],
 };

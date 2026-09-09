@@ -14,7 +14,7 @@ export function AssignmentForm({
   sectionId,
   classId,
   subjects,
-  staff
+  staff,
 }: {
   sectionId: number | null;
   classId?: number | null;
@@ -24,6 +24,7 @@ export function AssignmentForm({
   const [isBreak, setIsBreak] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
+  const breakInputId = "isBreak";
 
   return (
     <form action={async (formData) => { 
@@ -41,13 +42,13 @@ export function AssignmentForm({
       <div className="flex items-center gap-2 mb-4">
         <input 
           type="checkbox" 
-          id="isBreak" 
+          id={breakInputId}
           name="isBreak" 
           checked={isBreak}
           onChange={(e) => setIsBreak(e.target.checked)}
           className="rounded border-stone-300 text-brand-600 focus:ring-brand-500"
         />
-        <label htmlFor="isBreak" className="text-sm font-medium text-stone-700">
+        <label htmlFor={breakInputId} className="text-sm font-medium text-stone-700">
           This is a Break / Recess
         </label>
       </div>

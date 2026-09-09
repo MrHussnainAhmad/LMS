@@ -17,6 +17,9 @@ export const GET = requireRole(['STUDENT'], async (req: NextRequest, { session }
     return NextResponse.json({ error: 'Student not found' }, { status: 404 });
   }
 
+  // Students belong to a section, not (yet) to a section_group.
+  // Until student↔group membership exists, return every period for the section
+  // (including parallel elective groups) so the slot shows the full split.
   const timetable = await getCachedOrFetch(
     `cache:timetable:student:${tenantId}:${student.sectionId}`,
     600,

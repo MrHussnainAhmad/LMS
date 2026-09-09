@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EMPTY_WEBSITE_NOTICES } from '@/lib/public-website-notices';
 
 const nullableText = (maximum: number) => z.string().trim().max(maximum).transform((value) => value || null);
 const nullableHttpsUrl = (maximum = 500) => z.string().trim().max(maximum).refine((value) => {
@@ -6,12 +7,55 @@ const nullableHttpsUrl = (maximum = 500) => z.string().trim().max(maximum).refin
   try { return new URL(value).protocol === 'https:'; } catch { return false; }
 }, 'Enter a valid HTTPS URL').transform((value) => value || null);
 const nullableLink = z.string().trim().max(500).refine((value) => {
-  if (!value || value.startsWith('/')) return true;
+  if (!value || value.startsWith('/') || value.startsWith('#')) return true;
   try { return new URL(value).protocol === 'https:'; } catch { return false; }
 }, 'Enter a valid page path or HTTPS URL').transform((value) => value || null);
+const optionalHttpsUrl = z.string().trim().max(500).refine((value) => {
+  if (!value) return true;
+  try { return new URL(value).protocol === 'https:'; } catch { return false; }
+}, 'Enter a valid HTTPS URL');
+const optionalLink = z.string().trim().max(500).refine((value) => {
+  if (!value || value.startsWith('/') || value.startsWith('#')) return true;
+  try { return new URL(value).protocol === 'https:'; } catch { return false; }
+}, 'Enter a valid page path or HTTPS URL');
 const contentCard = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(500),
+}).strict();
+const popupAction = {
+  buttonText: z.string().trim().max(80),
+  buttonUrl: optionalLink,
+};
+const websiteNotices = z.object({
+  eventPopup: z.object({
+    enabled: z.boolean(),
+    title: z.string().trim().max(160),
+    description: z.string().trim().max(1200),
+    imageUrl: optionalHttpsUrl,
+    dateTime: z.string().trim().max(120),
+    venue: z.string().trim().max(200),
+    ...popupAction,
+  }).strict(),
+  urgentAlert: z.object({
+    enabled: z.boolean(),
+    message: z.string().trim().max(300),
+    ...popupAction,
+  }).strict(),
+  upcomingEventsPopup: z.object({
+    enabled: z.boolean(),
+    heading: z.string().trim().max(160),
+    events: z.array(z.object({
+      title: z.string().trim().max(160),
+      description: z.string().trim().max(600),
+      dateTime: z.string().trim().max(120),
+      venue: z.string().trim().max(200),
+      ...popupAction,
+    }).strict()).max(8),
+  }).strict(),
+  publishedTimetable: z.object({
+    enabled: z.boolean(),
+    imageUrl: optionalHttpsUrl,
+  }).strict().default(EMPTY_WEBSITE_NOTICES.publishedTimetable),
 }).strict();
 
 export const institutionPublicProfileSchema = z.object({
@@ -41,5 +85,6 @@ export const institutionPublicProfileSchema = z.object({
   facebookUrl: nullableHttpsUrl(),
   instagramUrl: nullableHttpsUrl(),
   youtubeUrl: nullableHttpsUrl(),
+  websiteNotices: websiteNotices.default(EMPTY_WEBSITE_NOTICES),
   accentColor: z.enum(['#233c32', '#1d4ed8', '#7c2d12', '#5b21b6', '#0f766e']),
 }).strict();

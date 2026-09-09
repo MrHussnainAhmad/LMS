@@ -48,6 +48,9 @@ const SUPPLEMENTAL_MIGRATIONS = [
   "0050_refresh_token_rotation.sql",
   "0051_parent_identity.sql",
   "0052_assessment_result_publishing.sql",
+  "0053_section_groups_timetable.sql",
+  "0054_public_website_notices.sql",
+  "0055_public_events.sql",
 ];
 
 if (!process.argv.includes("--apply"))

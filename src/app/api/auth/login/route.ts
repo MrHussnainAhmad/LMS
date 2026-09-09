@@ -138,6 +138,14 @@ async function clearFailedLogins(role: UserRole, userId: number) {
     .where(eq(accountLockouts.id, lockout.id));
 }
 
+async function clearFailedLoginsBestEffort(role: UserRole, userId: number) {
+  try {
+    await clearFailedLogins(role, userId);
+  } catch (err) {
+    console.error('Failed to clear login lockout state:', err);
+  }
+}
+
 async function recordFailedLogin(role: UserRole, userId: number, institutionId: number | undefined, ip: string) {
   const now = new Date();
   const [existing] = await db.select()
@@ -578,12 +586,10 @@ export async function POST(req: NextRequest) {
       graduatedStudentAccessAllowed: role === 'STUDENT' ? stu?.graduatedAccessAllowed : undefined,
     };
 
-    const [{ accessToken, refreshToken }] = await Promise.all([
-      createTokens(payload),
-      clearFailedLogins(role, user.id),
-    ]);
+    const { accessToken, refreshToken } = await createTokens(payload);
 
     await setAuthCookies(accessToken, refreshToken);
+    after(() => clearFailedLoginsBestEffort(role, user.id));
 
     after(() => runPostLoginSideEffects({
       role,

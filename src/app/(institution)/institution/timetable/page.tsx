@@ -91,7 +91,7 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
     assignments = await db.select({
       assignment: staffAssignments,
       subject: subjects.name,
-      teacher: staff.name
+      teacher: staff.name,
     }).from(staffAssignments)
       .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
       .leftJoin(staff, eq(staffAssignments.staffId, staff.id))
@@ -99,15 +99,21 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
       .orderBy(staffAssignments.startTime);
   }
 
-  const timetableEntries: TimetableEntry[] = assignments.map((row) => ({
-    id: row.assignment.id,
-    dayOfWeek: row.assignment.dayOfWeek,
-    startTime: row.assignment.startTime,
-    endTime: row.assignment.endTime,
-    title: row.assignment.isBreak ? "Break / Recess" : row.subject || "Subject",
-    subtitle: row.teacher,
-    isBreak: row.assignment.isBreak,
-  }));
+  const timetableEntries: TimetableEntry[] = assignments.map((row) => {
+    const subjectLabel = row.assignment.isBreak ? "Break / Recess" : row.subject || "Subject";
+    return {
+      id: row.assignment.id,
+      dayOfWeek: row.assignment.dayOfWeek,
+      startTime: row.assignment.startTime,
+      endTime: row.assignment.endTime,
+      title: subjectLabel,
+      subtitle: row.teacher,
+      isBreak: row.assignment.isBreak,
+    };
+  });
+
+  const subjectOptions = allSubjects.map((s) => ({ id: s.id, name: s.name }));
+  const staffOptions = allStaff.map((s) => ({ id: s.id, name: s.name }));
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -158,7 +164,7 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
                     sectionId={selectedSectionId} 
                     classId={selectedClassId}
                     currentInchargeId={selectedTarget.classTeacherId}
-                    staff={allStaff.map(s => ({ id: s.id, name: s.name }))}
+                    staff={staffOptions}
                   />
                 )}
               </CardContent>
@@ -171,12 +177,12 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
                   Assign Time Slot
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-6">
+              <CardContent className="space-y-4 p-6">
                 <AssignmentForm 
                   sectionId={selectedSectionId} 
                   classId={selectedClassId}
-                  subjects={allSubjects.map(s => ({ id: s.id, name: s.name }))}
-                  staff={allStaff.map(s => ({ id: s.id, name: s.name }))}
+                  subjects={subjectOptions}
+                  staff={staffOptions}
                 />
               </CardContent>
             </Card>

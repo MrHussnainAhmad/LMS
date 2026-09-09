@@ -8,6 +8,7 @@ import {
 } from '@/lib/institution-domain';
 import { getCachedOrFetch, redis } from '@/lib/redis';
 import { getPublicSiteBaseDomain } from '@/lib/public-site-domain';
+import { normalizeWebsiteNotices, type WebsiteNotices } from '@/lib/public-website-notices';
 
 const TENANT_CACHE_TTL_SECONDS = 60;
 
@@ -43,6 +44,7 @@ export type PublicInstitutionTenant = {
   facebookUrl: string | null;
   instagramUrl: string | null;
   youtubeUrl: string | null;
+  websiteNotices: WebsiteNotices;
   accentColor: string;
 };
 
@@ -104,6 +106,7 @@ export async function resolveInstitutionTenant(slugInput: string): Promise<Insti
           facebookUrl: institutionPublicProfiles.facebookUrl,
           instagramUrl: institutionPublicProfiles.instagramUrl,
           youtubeUrl: institutionPublicProfiles.youtubeUrl,
+          websiteNotices: institutionPublicProfiles.websiteNotices,
           accentColor: institutionPublicProfiles.accentColor,
           status: institutions.status,
           publicSiteEnabled: institutions.publicSiteEnabled,
@@ -130,6 +133,7 @@ export async function resolveInstitutionTenant(slugInput: string): Promise<Insti
         programs: row.programs || [],
         highlights: row.highlights || [],
         galleryImages: row.galleryImages || [],
+        websiteNotices: normalizeWebsiteNotices(row.websiteNotices),
       };
     },
   );
@@ -171,6 +175,7 @@ export async function resolveInstitutionTenant(slugInput: string): Promise<Insti
       facebookUrl: tenant.facebookUrl,
       instagramUrl: tenant.instagramUrl,
       youtubeUrl: tenant.youtubeUrl,
+      websiteNotices: normalizeWebsiteNotices(tenant.websiteNotices),
       accentColor: tenant.accentColor,
     },
   };

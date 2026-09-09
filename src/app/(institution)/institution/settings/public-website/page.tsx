@@ -8,6 +8,8 @@ import { institutionPublicProfiles, institutions, systemSettings } from '@/db/sc
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getSession } from '@/lib/auth';
 import { institutionPublicUrl } from '@/lib/institution-domain';
+import { normalizeWebsiteNotices } from '@/lib/public-website-notices';
+import { listPublishedPublicEvents } from '@/lib/public-event-queries';
 import { PublicWebsiteEditor } from '../PublicWebsiteEditor';
 
 export default async function InstitutionPublicWebsitePage() {
@@ -15,7 +17,7 @@ export default async function InstitutionPublicWebsitePage() {
   if (!session || session.role !== 'INSTITUTION') redirect('/institution/dashboard');
 
   const institutionId = session.institutionId || session.userId;
-  const [[institution], [publicProfile], [platformSettings], requestHeaders] = await Promise.all([
+  const [[institution], [publicProfile], [platformSettings], requestHeaders, publishedEvents] = await Promise.all([
     db.select({
       name: institutions.name,
       publicSlug: institutions.publicSlug,
@@ -24,6 +26,7 @@ export default async function InstitutionPublicWebsitePage() {
     db.select().from(institutionPublicProfiles).where(eq(institutionPublicProfiles.institutionId, institutionId)).limit(1),
     db.select({ publicSiteBaseDomain: systemSettings.publicSiteBaseDomain }).from(systemSettings).limit(1),
     headers(),
+    listPublishedPublicEvents(institutionId, 100),
   ]);
 
   if (!institution) redirect('/login');
@@ -36,7 +39,7 @@ export default async function InstitutionPublicWebsitePage() {
     : null;
 
   return (
-    <div className="flex h-full min-h-full max-w-6xl flex-col space-y-6 animate-fade-in">
+    <div className="w-full max-w-6xl space-y-6 animate-fade-in">
       <div>
         <Link href="/institution/settings" className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-brand-700 hover:text-brand-950">
           <ArrowLeft className="h-4 w-4" />
@@ -46,19 +49,20 @@ export default async function InstitutionPublicWebsitePage() {
         <p className="mt-1 text-stone-500">Manage the public website for {institution.name}.</p>
       </div>
 
-      <Card className="flex min-h-0 flex-1 flex-col">
+      <Card className="overflow-hidden">
         <CardHeader className="border-b border-border bg-stone-50/50">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Globe2 className="h-5 w-5 text-brand-600" />
             Website information
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex-1 p-6">
+        <CardContent className="min-w-0 p-4 sm:p-6">
           <PublicWebsiteEditor
             publicSlug={institution.publicSlug}
             publicSiteEnabled={institution.publicSiteEnabled}
             publicUrl={publicUrl}
             qrUrl={qrUrl}
+            eventLinks={publishedEvents.map((event) => ({ title: event.title, slug: event.slug }))}
             initialProfile={{
               tagline: publicProfile?.tagline || null,
               description: publicProfile?.description || null,
@@ -83,6 +87,7 @@ export default async function InstitutionPublicWebsitePage() {
               facebookUrl: publicProfile?.facebookUrl || null,
               instagramUrl: publicProfile?.instagramUrl || null,
               youtubeUrl: publicProfile?.youtubeUrl || null,
+              websiteNotices: normalizeWebsiteNotices(publicProfile?.websiteNotices),
               accentColor: publicProfile?.accentColor || '#233c32',
             }}
           />

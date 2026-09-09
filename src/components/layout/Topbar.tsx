@@ -66,7 +66,7 @@ export function Topbar({ onMenuClick, role, brand, onLogoutStart }: TopbarProps)
   };
 
   return (
-    <header className="z-30 flex h-[68px] shrink-0 items-center justify-between border-b border-border bg-[#f2efe7]/95 px-4 backdrop-blur-md sm:px-6">
+    <header className="sticky top-0 z-30 flex h-[68px] shrink-0 items-center justify-between border-b border-border bg-[#f2efe7]/95 px-4 backdrop-blur-md sm:px-6">
       <div className="flex min-w-0 items-center gap-3 sm:gap-4">
         <Button variant="ghost" size="icon" className="-ml-2 text-stone-700 lg:hidden" onClick={onMenuClick}>
           <Menu className="h-5 w-5" />

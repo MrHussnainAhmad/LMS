@@ -2,7 +2,7 @@
 
 import { AppShell } from "@/components/layout/AppShell";
 import type { ShellBrand } from "@/components/layout/BrandMark";
-import { LayoutDashboard, Users, UserSquare2, BookOpen, Calendar, Settings, MapPin, Megaphone, ClipboardList, CheckSquare, ShieldCheck, Ticket, IdCard, ArrowUpRight, UserPlus, WalletCards } from "lucide-react";
+import { LayoutDashboard, Users, UserSquare2, BookOpen, Calendar, Settings, MapPin, Megaphone, ClipboardList, CheckSquare, ShieldCheck, Ticket, IdCard, ArrowUpRight, UserPlus, WalletCards, CalendarDays } from "lucide-react";
 
 /** Role-permission sidebar only — leave badges load on the Leaves page. */
 const SIDEBAR_ITEMS = [
@@ -22,6 +22,7 @@ const SIDEBAR_ITEMS = [
   { label: "Timetable", href: "/institution/timetable", icon: Calendar },
   { label: "Exams", href: "/institution/exams", icon: ClipboardList },
   { label: "Announcements", href: "/institution/announcements", icon: Megaphone },
+  { label: "Website Events", href: "/institution/website-events", icon: CalendarDays },
   { label: "Admins", href: "/institution/admins", icon: ShieldCheck },
   { label: "Helpdesk", href: "/institution/helpdesk", icon: Ticket },
   { label: "Settings", href: "/institution/settings", icon: Settings },
@@ -42,7 +43,7 @@ export default function InstitutionLayout({
 }) {
   const filteredItems = SIDEBAR_ITEMS.filter((item) => {
     if (role === "INSTITUTION_ADMIN") {
-      return item.label !== "Settings" && item.label !== "Admins";
+      return item.label !== "Settings" && item.label !== "Admins" && item.label !== "Website Events";
     }
     return true;
   });

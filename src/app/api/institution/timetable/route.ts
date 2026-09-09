@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { staffAssignments, staff, sections, classes, subjects } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, lt, gt } from "drizzle-orm";
 import { requireRole, getTenantContext } from "@/lib/rbac";
 
 export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
@@ -68,25 +68,59 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
 
     if (!Number.isInteger(sectionId)) return NextResponse.json({ error: "Invalid section ID" }, { status: 400 });
 
+    const day = Number(dayOfWeek);
+    const resolvedStaffId = staffId ? Number(staffId) : null;
+    const resolvedSubjectId = subjectId ? Number(subjectId) : null;
+
+    const sectionConflicts = await db.select({ id: staffAssignments.id })
+      .from(staffAssignments)
+      .where(and(
+        eq(staffAssignments.institutionId, institutionId),
+        eq(staffAssignments.sectionId, sectionId),
+        eq(staffAssignments.dayOfWeek, day),
+        lt(staffAssignments.startTime, endTime),
+        gt(staffAssignments.endTime, startTime),
+      ))
+      .limit(1);
+    if (sectionConflicts.length > 0) {
+      return NextResponse.json({ error: "This section already has a timetable entry in that time range" }, { status: 409 });
+    }
+
+    if (resolvedStaffId) {
+      const staffConflicts = await db.select({ id: staffAssignments.id })
+        .from(staffAssignments)
+        .where(and(
+          eq(staffAssignments.institutionId, institutionId),
+          eq(staffAssignments.staffId, resolvedStaffId),
+          eq(staffAssignments.dayOfWeek, day),
+          lt(staffAssignments.startTime, endTime),
+          gt(staffAssignments.endTime, startTime),
+        ))
+        .limit(1);
+      if (staffConflicts.length > 0) {
+        return NextResponse.json({ error: "This staff member is already booked in that time range" }, { status: 409 });
+      }
+    }
+
     const [inserted] = await db.insert(staffAssignments).values({
       institutionId,
       sectionId,
-      dayOfWeek: Number(dayOfWeek),
+      dayOfWeek: day,
       startTime,
       endTime,
       isBreak: Boolean(isBreak),
-      staffId: staffId ? Number(staffId) : null,
-      subjectId: subjectId ? Number(subjectId) : null,
+      staffId: resolvedStaffId,
+      subjectId: resolvedSubjectId,
     }).returning({ id: staffAssignments.id });
 
     // Invalidate caches
     const { redis } = await import("@/lib/redis");
     await redis.del(`cache:timetable:student:${institutionId}:${sectionId}`).catch(() => {});
-    if (staffId) {
+    if (resolvedStaffId) {
     await Promise.all([
-      redis.del(`cache:timetable:staff:${institutionId}:${staffId}`),
-      redis.del(`cache:timetable:staff:v2:${institutionId}:${staffId}`),
-      redis.del(`cache:staff:dashboard:v2:${institutionId}:${staffId}`),
+      redis.del(`cache:timetable:staff:${institutionId}:${resolvedStaffId}`),
+      redis.del(`cache:timetable:staff:v2:${institutionId}:${resolvedStaffId}`),
+      redis.del(`cache:staff:dashboard:v2:${institutionId}:${resolvedStaffId}`),
     ]).catch(() => {});
     }
 
