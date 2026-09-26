@@ -51,6 +51,11 @@ const SUPPLEMENTAL_MIGRATIONS = [
   "0053_section_groups_timetable.sql",
   "0054_public_website_notices.sql",
   "0055_public_events.sql",
+  "0056_institution_payment_gateway.sql",
+  "0057_gateway_payment_attempts.sql",
+  "0058_institution_google_drive_backups.sql",
+  "0059_central_backup_settings.sql",
+  "0060_central_database_backups.sql",
 ];
 
 if (!process.argv.includes("--apply"))

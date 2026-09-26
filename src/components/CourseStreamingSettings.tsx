@@ -133,7 +133,7 @@ export function CourseStreamingSettings() {
 
   return (
     <>
-      <form onSubmit={save} className="space-y-5">
+      <form onSubmit={save} className="mt-2 space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4">
           <div className="flex items-start gap-3">
             <span className="mt-0.5 grid h-9 w-9 place-items-center rounded-lg bg-white text-brand-800 shadow-sm">

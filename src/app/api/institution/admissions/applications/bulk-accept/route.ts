@@ -119,7 +119,7 @@ function acceptedStep(application: Candidate): NextStep {
     }
     return { status: "UNDER_REVIEW", title: "Application accepted", description: "The institution will provide an interview schedule." };
   }
-  if (application.admissionFeeAmount && (application.paymentMethods.length > 0 || (application.paymentBankName && application.paymentAccountNumber) || application.admissionFeeInstructions)) {
+  if (application.admissionFeeAmount) {
     const dueDate = feeDueDate(application.admissionFeeDueDays);
     return {
       status: "FEE_PENDING",
@@ -128,11 +128,11 @@ function acceptedStep(application: Candidate): NextStep {
       fee: {
         amount: application.admissionFeeAmount,
         dueDate,
-        instructions: application.admissionFeeInstructions || "Pay using the account details below, then submit the transaction ID and receipt.",
-        bankName: application.paymentBankName,
-        accountNumber: application.paymentAccountNumber,
-        qrUrl: application.paymentQrUrl,
-        paymentMethods: application.paymentMethods,
+        instructions: application.admissionFeeInstructions || "Choose one of the institution's configured online payment gateways.",
+        bankName: null,
+        accountNumber: null,
+        qrUrl: null,
+        paymentMethods: [],
       },
     };
   }

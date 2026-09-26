@@ -10,6 +10,7 @@ import { AssignmentForm } from "./AssignmentForm";
 import { InchargeForm } from "./InchargeForm";
 import { WeeklyTimetable, type TimetableEntry } from "@/components/timetable/ScheduleViews";
 import { formatClassSection } from "@/lib/class-section-label";
+import Link from "next/link";
 
 type TimetableRow = {
   assignment: typeof staffAssignments.$inferSelect;
@@ -122,12 +123,20 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
           <h1 className="text-3xl font-display font-bold text-brand-950">Timetable Manager</h1>
           <p className="text-stone-500 mt-1">Assign teachers, subjects, and timeslots for classes.</p>
         </div>
-        {timetableTargets.length > 0 && (
-          <SectionSelector 
-            sections={timetableTargets.map((target) => ({ value: target.value, label: target.label }))} 
-            defaultSectionId={selectedTarget?.value || null} 
-          />
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/institution/timetable/overview"
+            className="inline-flex items-center rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800 transition hover:border-brand-300 hover:bg-brand-100"
+          >
+            Institution Timetable
+          </Link>
+          {timetableTargets.length > 0 && (
+            <SectionSelector
+              sections={timetableTargets.map((target) => ({ value: target.value, label: target.label }))}
+              defaultSectionId={selectedTarget?.value || null}
+            />
+          )}
+        </div>
       </div>
 
       {timetableTargets.length === 0 ? (

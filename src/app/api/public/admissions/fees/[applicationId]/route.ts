@@ -214,7 +214,13 @@ export async function POST(
     );
   }
 
-  await db.transaction(async (tx) => {
+  const submitted = await db.transaction(async (tx) => {
+    const [current] = await tx.select({ status: admissionApplications.status }).from(admissionApplications)
+      .where(and(eq(admissionApplications.id, applicationId), eq(admissionApplications.institutionId, authorized.session.institutionId))).for("update");
+    if (!current || current.status !== "FEE_PENDING") return false;
+    const [fee] = await tx.select({ status: admissionFeePayments.status }).from(admissionFeePayments)
+      .where(and(eq(admissionFeePayments.id, authorized.payment.id), eq(admissionFeePayments.institutionId, authorized.session.institutionId))).for("update");
+    if (!fee || fee.status !== authorized.payment.status) return false;
     await tx
       .update(admissionFeePayments)
       .set({
@@ -249,6 +255,8 @@ export async function POST(
           eq(admissionApplications.status, "FEE_PENDING"),
         ),
       );
+    return true;
   });
+  if (!submitted) return NextResponse.json({ error: "Fee status changed. Refresh before submitting proof." }, { status: 409 });
   return NextResponse.json({ success: true, status: "FEE_VERIFICATION" });
 }

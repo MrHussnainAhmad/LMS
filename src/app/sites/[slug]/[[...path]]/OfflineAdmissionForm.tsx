@@ -32,13 +32,7 @@ type OfflineAdmissionFormProps = {
     paymentBankName: string | null;
     paymentAccountNumber: string | null;
     paymentQrUrl: string | null;
-    paymentMethods: Array<{
-      id: string;
-      providerName: string;
-      accountTitle: string;
-      accountNumber: string;
-      qrUrl: string | null;
-    }>;
+
   };
   offerings: Offering[];
   accentColor: string;
@@ -328,27 +322,9 @@ export function OfflineAdmissionForm({
                   <p>
                     Due within {cycle.admissionFeeDueDays} day(s) of the offer
                   </p>
-                  {cycle.paymentMethods.map((method) => (
-                    <div key={method.id}>
-                      <p>
-                        <strong>{method.providerName}</strong>
-                      </p>
-                      <p>Account title / username: {method.accountTitle}</p>
-                      <p>Account / IBAN / mobile: {method.accountNumber}</p>
-                      {method.qrUrl && (
-                        <div className="offline-payment-qr">
-                          <Image
-                            src={method.qrUrl}
-                            alt={`${method.providerName} payment QR`}
-                            width={108}
-                            height={108}
-                            unoptimized
-                          />
-                          <em>Scan only after receiving an admission offer</em>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  <p>
+                    Please pay online via the applicant portal or contact the admissions office for payment details.
+                  </p>
                   {cycle.admissionFeeInstructions ? (
                     <small>{cycle.admissionFeeInstructions}</small>
                   ) : null}

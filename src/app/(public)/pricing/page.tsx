@@ -150,6 +150,7 @@ export default function PricingPage() {
         <p>One system for the work between the bells.</p>
         <div>
           <Link href="/pricing">Pricing</Link>
+          <Link href="/faq">FAQ</Link>
           <Link href="/login">Sign in</Link>
           <Link href="/register">Register</Link>
         </div>

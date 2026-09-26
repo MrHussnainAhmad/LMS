@@ -1,39 +1,26 @@
-import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
-import { HeadObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
-import { pool } from '@/db';
+import { eq } from "drizzle-orm";
+import { db, pool } from "@/db";
+import { institutionBackups, institutionGoogleDriveBackups } from "@/db/schema";
+import { decryptStreamingCredentials } from "@/lib/streaming-credentials";
+import { verifyGoogleDriveBackup } from "@/lib/google-drive-backups";
 
 async function main() {
-  const region = process.env.B2_REGION?.trim();
-  const bucket = process.env.B2_BUCKET_NAME?.trim();
-  const accessKeyId = process.env.B2_APPLICATION_KEY_ID?.trim();
-  const secretAccessKey = process.env.B2_APPLICATION_KEY?.trim();
-  if (!region || !bucket || !accessKeyId || !secretAccessKey) throw new Error('B2 backup configuration is incomplete');
-
-  const migrations = ['0041_institution_backups.sql', '0042_institution_backup_retries.sql'];
-  for (const name of migrations) {
-    const migrationSql = await readFile(`drizzle/${name}`, 'utf8');
-    const expected = createHash('sha256').update(migrationSql).digest('hex');
-    const ledger = await pool.query<{ sha256: string }>('SELECT sha256 FROM nisaab360_supplemental_migrations WHERE name = $1', [name]);
-    if (ledger.rows[0]?.sha256 !== expected) throw new Error(`Migration ledger mismatch: ${name}`);
+  const rows = await db.select({
+    id: institutionBackups.id,
+    objectKey: institutionBackups.objectKey,
+    fileSize: institutionBackups.fileSize,
+    institutionId: institutionBackups.institutionId,
+    credentialsEncrypted: institutionGoogleDriveBackups.credentialsEncrypted,
+  }).from(institutionBackups).innerJoin(institutionGoogleDriveBackups, eq(institutionGoogleDriveBackups.institutionId, institutionBackups.institutionId))
+    .where(eq(institutionBackups.status, "COMPLETED"));
+  for (const row of rows) {
+    if (!row.objectKey?.startsWith("gdrive:") || !row.fileSize || !row.credentialsEncrypted) throw new Error(`Invalid Google Drive metadata for institution backup ${row.id}`);
+    const credentials = decryptStreamingCredentials(row.credentialsEncrypted);
+    if (!credentials?.refreshToken) throw new Error(`Google Drive credentials are unavailable for institution ${row.institutionId}`);
+    const valid = await verifyGoogleDriveBackup({ refreshToken: credentials.refreshToken, fileId: row.objectKey.slice("gdrive:".length), expectedSize: row.fileSize });
+    if (!valid) throw new Error(`Google Drive file verification failed for institution backup ${row.id}`);
   }
-
-  const client = new S3Client({
-    region, endpoint: `https://s3.${region}.backblazeb2.com`, forcePathStyle: true,
-    credentials: { accessKeyId, secretAccessKey },
-  });
-  const completed = await pool.query<{
-    id: number; object_key: string; file_size: string; sha256: string;
-  }>(`SELECT id, object_key, file_size::text, sha256 FROM institution_backups
-      WHERE status = 'COMPLETED' ORDER BY id`);
-  for (const backup of completed.rows) {
-    const remote = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: backup.object_key }));
-    if (Number(remote.ContentLength) !== Number(backup.file_size) || remote.Metadata?.sha256 !== backup.sha256) {
-      throw new Error(`Remote metadata mismatch for institution backup ${backup.id}`);
-    }
-  }
-  const listed = await client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: 'postgres-backups/', MaxKeys: 1000 }));
-  process.stdout.write(`Verified ${completed.rowCount ?? completed.rows.length} institution backups; ${listed.KeyCount ?? 0} backup objects currently visible in B2.\n`);
+  process.stdout.write(`Verified ${rows.length} institution Google Drive backup record(s).\n`);
 }
 
 void main().catch((error) => {
@@ -42,4 +29,3 @@ void main().catch((error) => {
 }).finally(async () => {
   await pool.end();
 });
-

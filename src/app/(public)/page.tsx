@@ -573,6 +573,7 @@ export default async function LandingPage() {
             <Link href="#platform">Institution view</Link>
             <Link href="#features">Features</Link>
             <Link href="/pricing">Pricing</Link>
+            <Link href="/faq">FAQ</Link>
             <Link href="/download-app">Mobile app</Link>
             <Link href="/download-software">Software</Link>
           </nav>
@@ -588,6 +589,7 @@ export default async function LandingPage() {
             <p>Company</p>
             <Link href="/about-us">About</Link>
             <Link href="/contact">Contact</Link>
+            <Link href="/faq">FAQ</Link>
             <Link href="/privacy-policy">Privacy</Link>
             <Link href="/terms-of-service">Terms</Link>
           </nav>

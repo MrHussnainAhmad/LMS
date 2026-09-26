@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -17,6 +18,23 @@ function run(command, args, friendlyName) {
     process.exit(1);
   }
 
+  if (result.status !== 0) {
+    console.error(`\n${friendlyName} failed with exit code ${result.status}.`);
+    process.exit(result.status ?? 1);
+  }
+}
+
+function runWithInput(command, args, input, friendlyName) {
+  const result = spawnSync(command, args, {
+    cwd: projectRoot,
+    env: process.env,
+    input,
+    stdio: ["pipe", "inherit", "inherit"],
+  });
+  if (result.error) {
+    console.error(`\nCould not run ${friendlyName}: ${result.error.message}`);
+    process.exit(1);
+  }
   if (result.status !== 0) {
     console.error(`\n${friendlyName} failed with exit code ${result.status}.`);
     process.exit(result.status ?? 1);
@@ -52,9 +70,20 @@ if (process.argv.includes("--deps-only")) {
 
 console.info("Applying pending local database migrations...");
 run(
-  process.execPath,
-  ["--env-file=.env", "scripts/migrate-production.mjs", "--apply"],
+  "docker",
+  ["compose", "run", "--rm", "migrate"],
   "local database migration",
+);
+// The migration image may be cached while local source migrations change. The
+// new institution Google Drive table is idempotent, so apply this local-only
+// supplemental migration through the PostgreSQL container itself. This avoids
+// relying on the Windows-published 5433 port, which is not reachable on every
+// Docker Desktop installation.
+runWithInput(
+  "docker",
+  ["compose", "exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-U", "app", "-d", "app"],
+  readFileSync(path.join(projectRoot, "drizzle", "0058_institution_google_drive_backups.sql")),
+  "local institution backup migration",
 );
 console.info("Local database migrations are current.");
 

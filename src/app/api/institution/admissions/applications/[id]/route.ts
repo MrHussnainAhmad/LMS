@@ -248,16 +248,9 @@ function automaticWorkflowStep(
     };
   }
 
-  if (
-    application.admissionFeeAmount &&
-    (application.paymentMethods.length > 0 ||
-      (application.paymentBankName && application.paymentAccountNumber) ||
-      application.admissionFeeInstructions)
-  ) {
+  if (application.admissionFeeAmount) {
     const dueDate = feeDueDate(application.admissionFeeDueDays);
-    const instructions =
-      application.admissionFeeInstructions ||
-      "Pay using the account details below, then submit the transaction ID and receipt.";
+    const instructions = application.admissionFeeInstructions || "Choose one of the institution's configured online payment gateways.";
     return {
       status: "FEE_PENDING",
       title: "Admission offered — fee payment requested",
@@ -266,10 +259,10 @@ function automaticWorkflowStep(
         amount: application.admissionFeeAmount,
         dueDate,
         instructions,
-        bankName: application.paymentBankName,
-        accountNumber: application.paymentAccountNumber,
-        qrUrl: application.paymentQrUrl,
-        paymentMethods: application.paymentMethods,
+        bankName: null,
+        accountNumber: null,
+        qrUrl: null,
+        paymentMethods: [],
       },
     };
   }
@@ -1049,10 +1042,26 @@ export const PATCH = requireRole(
       const temporaryPassword = crypto.randomBytes(9).toString("base64url");
       const passwordHash = await hashPassword(temporaryPassword);
       const enrollmentIp = getClientIp(req);
-      const parentActivation = await prepareParentActivation(
-        institutionId,
-        application.guardianEmail,
-      );
+      const [applicantAccount] = application.applicantId
+        ? await db
+            .select({
+              id: admissionApplicantAccounts.id,
+              passwordHash: admissionApplicantAccounts.passwordHash,
+            })
+            .from(admissionApplicantAccounts)
+            .where(eq(admissionApplicantAccounts.id, application.applicantId))
+            .limit(1)
+        : [];
+
+      const parentActivation = applicantAccount?.passwordHash
+        ? {
+            temporaryPassword: "",
+            passwordHash: applicantAccount.passwordHash,
+          }
+        : await prepareParentActivation(
+            institutionId,
+            application.guardianEmail,
+          );
       let parentLink!: Awaited<ReturnType<typeof syncStudentGuardian>>;
       const birthDate = new Date(`${application.dateOfBirth}T00:00:00Z`);
       const now = new Date();
@@ -1183,13 +1192,16 @@ export const PATCH = requireRole(
         await enqueueEmail({
           institutionId,
           to: parentLink.guardianEmail,
-          subject: `Parent account credentials - ${application.institutionName}`,
+          subject: applicantAccount?.passwordHash
+            ? `Parent account active - ${application.institutionName}`
+            : `Parent account credentials - ${application.institutionName}`,
           html: ParentAccountActivationEmail({
             institutionName: application.institutionName,
             studentName: application.studentName,
             institutionUsername: application.institutionUsername,
             guardianEmail: parentLink.guardianEmail,
             temporaryPassword: parentLink.activation.temporaryPassword,
+            hasExistingPassword: Boolean(applicantAccount?.passwordHash),
           }),
           dedupeKey: `parent:${parentLink.parentId}:initial-activation`,
         });
@@ -1281,7 +1293,11 @@ export const PATCH = requireRole(
       }
     }
 
-    await db.transaction(async (tx) => {
+    const transitionApplied = await db.transaction(async (tx) => {
+      // Serialize manual decisions with gateway settlement before touching the fee.
+      const [current] = await tx.select({ status: admissionApplications.status }).from(admissionApplications)
+        .where(and(eq(admissionApplications.id, applicationId), eq(admissionApplications.institutionId, institutionId))).for("update");
+      if (!current || current.status !== application.status) return false;
       if (acceptedCredentials && application.applicantId) {
         const [account] = await tx
           .select({ sessionVersion: admissionApplicantAccounts.sessionVersion })
@@ -1469,7 +1485,7 @@ export const PATCH = requireRole(
             amount: action.amount,
             dueDate: action.dueDate,
             instructions: action.instructions,
-            paymentMethods: application.paymentMethods,
+            paymentMethods: [],
           })
           .onConflictDoUpdate({
             target: admissionFeePayments.applicationId,
@@ -1477,7 +1493,7 @@ export const PATCH = requireRole(
               amount: action.amount,
               dueDate: action.dueDate,
               instructions: action.instructions,
-              paymentMethods: application.paymentMethods,
+              paymentMethods: [],
               payerReference: null,
               payerSourceBank: null,
               proofFileKey: null,
@@ -1527,7 +1543,9 @@ export const PATCH = requireRole(
         actorId: session.userId,
         actorRole: session.role,
       });
+      return true;
     });
+    if (!transitionApplied) return NextResponse.json({ error: "Application changed. Refresh before reviewing it again." }, { status: 409 });
 
     const actionIp = getClientIp(req);
     await enqueueEmail({

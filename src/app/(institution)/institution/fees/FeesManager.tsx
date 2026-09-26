@@ -1,13 +1,15 @@
 "use client";
 
+import { PaymentHistory } from "@/components/PaymentHistory";
+
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toaster";
 import { api } from "@/lib/api-client";
-import { prepareContentUpload } from "@/lib/client-upload-file";
 import { formatClassSection } from "@/lib/class-section-label";
 import {
   Banknote,
@@ -17,7 +19,6 @@ import {
   ReceiptText,
   Search,
   Settings2,
-  Trash2,
   Users,
 } from "lucide-react";
 
@@ -48,14 +49,7 @@ type Invoice = {
   paidAmount: number;
   balance: number;
 };
-type PaymentMethod = {
-  id: string;
-  providerName: string;
-  accountTitle: string;
-  accountNumber: string;
-  qrUrl: string | null;
-};
-type PaymentMethodDraft = PaymentMethod & { qrFile?: File | null };
+
 type Submission = {
   id: number;
   invoiceId: number;
@@ -71,7 +65,7 @@ type FeesResponse = {
   heads: FeeHead[];
   classItems: ClassItem[];
   invoices: Invoice[];
-  paymentMethods: PaymentMethod[];
+
   submissions: Submission[];
   summary: {
     invoiceCount: number;
@@ -120,13 +114,54 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
   const [selectedStudent, setSelectedStudent] = useState<StudentOption | null>(
     null,
   );
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDraft[]>(
-    [],
-  );
+
   const [reviewSubmission, setReviewSubmission] = useState<Submission | null>(
     null,
   );
   const [reviewNote, setReviewNote] = useState("");
+
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetRollNumber, setResetRollNumber] = useState("");
+  const [resetSearchBusy, setResetSearchBusy] = useState(false);
+  const [resetAdjustments, setResetAdjustments] = useState<any[] | null>(null);
+  const [resetError, setResetError] = useState("");
+
+  const handleSearchAdjustments = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetRollNumber.trim()) return;
+    setResetSearchBusy(true);
+    setResetError("");
+    setResetAdjustments(null);
+    try {
+      const res = (await api.post("/institution/fees", {
+        action: "getAdjustmentsByRollNumber",
+        rollNumber: resetRollNumber.trim(),
+      })) as any;
+      if (res.adjustments) {
+        setResetAdjustments(res.adjustments);
+      }
+    } catch (err: any) {
+      setResetError(err.message || "Failed to find student");
+    } finally {
+      setResetSearchBusy(false);
+    }
+  };
+
+  const handleRemoveAdjustment = async (adjustmentId: number) => {
+    setResetSearchBusy(true);
+    try {
+      await api.post("/institution/fees", {
+        action: "removeAdjustment",
+        adjustmentId,
+      });
+      setResetAdjustments((prev) => prev?.filter(a => a.id !== adjustmentId) || null);
+      toast({ title: "Removed successfully" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setResetSearchBusy(false);
+    }
+  };
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -156,8 +191,7 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
           heads: result.heads ?? current?.heads ?? [],
           classItems: result.classItems ?? current?.classItems ?? [],
           invoices: result.invoices ?? current?.invoices ?? [],
-          paymentMethods:
-            result.paymentMethods ?? current?.paymentMethods ?? [],
+
           submissions: result.submissions ?? current?.submissions ?? [],
           summary: result.summary ??
             current?.summary ?? {
@@ -168,7 +202,7 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
               defaulters: 0,
             },
         }));
-        if (result.paymentMethods) setPaymentMethods(result.paymentMethods);
+
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError")
           return;
@@ -266,106 +300,6 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
     data?.classItems.find(
       (item) => item.classId === classId && item.feeHeadId === headId,
     )?.amount || 0;
-
-  const addPaymentMethod = () =>
-    setPaymentMethods((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        providerName: "",
-        accountTitle: "",
-        accountNumber: "",
-        qrUrl: null,
-        qrFile: null,
-      },
-    ]);
-  const updatePaymentMethod = (
-    id: string,
-    values: Partial<PaymentMethodDraft>,
-  ) =>
-    setPaymentMethods((current) =>
-      current.map((method) =>
-        method.id === id ? { ...method, ...values } : method,
-      ),
-    );
-  async function savePaymentMethods() {
-    if (!paymentMethods.length) {
-      toast({
-        title: "Add at least one payment method",
-        variant: "destructive",
-      });
-      return;
-    }
-    setBusy(true);
-    try {
-      const completed: PaymentMethod[] = [];
-      for (const method of paymentMethods) {
-        let qrUrl = method.qrUrl;
-        if (method.qrFile) {
-          const file = await prepareContentUpload(method.qrFile, {
-            allowedKinds: ["image"],
-            maximumBytes: 2 * 1024 * 1024,
-          });
-          const signature = await api.post<{
-            signature: string;
-            timestamp: number;
-            folder: string;
-            allowedFormats: string;
-            type: string;
-            cloudName: string;
-            apiKey: string;
-          }>("/api/institution/public-site/images", { action: "signature" });
-          const upload = new FormData();
-          upload.append("file", file);
-          upload.append("api_key", signature.apiKey);
-          upload.append("timestamp", String(signature.timestamp));
-          upload.append("signature", signature.signature);
-          upload.append("folder", signature.folder);
-          upload.append("allowed_formats", signature.allowedFormats);
-          upload.append("type", signature.type);
-          const response = await fetch(
-            `https://api.cloudinary.com/v1_1/${signature.cloudName}/image/upload`,
-            { method: "POST", body: upload },
-          );
-          const uploaded = await response.json();
-          if (!response.ok)
-            throw new Error(uploaded.error?.message || "QR upload failed");
-          const verified = await api.post<{ url: string }>(
-            "/api/institution/public-site/images",
-            {
-              action: "complete",
-              publicId: uploaded.public_id,
-              format: uploaded.format,
-              resourceType: uploaded.resource_type,
-            },
-          );
-          qrUrl = verified.url;
-        }
-        completed.push({
-          id: method.id,
-          providerName: method.providerName.trim(),
-          accountTitle: method.accountTitle.trim(),
-          accountNumber: method.accountNumber.trim(),
-          qrUrl,
-        });
-      }
-      await api.post("/api/institution/fees", {
-        action: "savePaymentMethods",
-        paymentMethods: completed,
-      });
-      setPaymentMethods(completed);
-      toast({ title: "Payment methods saved", variant: "success" });
-    } catch (error) {
-      toast({
-        title: "Could not save payment methods",
-        description:
-          error instanceof Error ? error.message : "Check every field.",
-        variant: "destructive",
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function reviewStudentPayment(statusValue: "VERIFIED" | "REJECTED") {
     if (!reviewSubmission) return;
@@ -475,6 +409,7 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
 
   return (
     <div className="space-y-7">
+      {(mode === "collections" || mode === "paid") && <PaymentHistory />}
       {mode === "collections" && (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {[
@@ -637,97 +572,7 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
             </CardContent>
           </Card>
 
-          <Card className="mt-6">
-            <CardHeader className="border-b border-border bg-stone-50/60">
-              <CardTitle className="text-lg">Student payment methods</CardTitle>
-              <p className="mt-1 text-sm text-stone-500">
-                These verified account details appear when a student pays a
-                challan.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4 p-5">
-              {paymentMethods.map((method, index) => (
-                <div
-                  key={method.id}
-                  className="rounded-lg border border-stone-200 p-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <strong>Payment method {index + 1}</strong>
-                    {paymentMethods.length > 1 && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          setPaymentMethods((current) =>
-                            current.filter((item) => item.id !== method.id),
-                          )
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" /> Remove
-                      </Button>
-                    )}
-                  </div>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <Input
-                      required
-                      value={method.providerName}
-                      onChange={(event) =>
-                        updatePaymentMethod(method.id, {
-                          providerName: event.target.value,
-                        })
-                      }
-                      placeholder="Bank / wallet name"
-                    />
-                    <Input
-                      required
-                      value={method.accountTitle}
-                      onChange={(event) =>
-                        updatePaymentMethod(method.id, {
-                          accountTitle: event.target.value,
-                        })
-                      }
-                      placeholder="Account title / username"
-                    />
-                    <Input
-                      required
-                      value={method.accountNumber}
-                      onChange={(event) =>
-                        updatePaymentMethod(method.id, {
-                          accountNumber: event.target.value,
-                        })
-                      }
-                      placeholder="Account / IBAN / mobile number"
-                    />
-                    <Input
-                      type="file"
-                      accept=".jpg,.jpeg,.png,.webp"
-                      onChange={(event) =>
-                        updatePaymentMethod(method.id, {
-                          qrFile: event.target.files?.[0] || null,
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              ))}
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  disabled={paymentMethods.length >= 8}
-                  onClick={addPaymentMethod}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add method
-                </Button>
-                <Button
-                  disabled={busy || !paymentMethods.length}
-                  onClick={() => void savePaymentMethods()}
-                >
-                  Save payment methods
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+
         </div>
       )}
 
@@ -834,13 +679,28 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
                     placeholder="Amount"
                   />
                 </div>
-                <Button
-                  variant="outline"
-                  className="h-11 w-full"
-                  disabled={busy || !selectedStudent}
-                >
-                  Save adjustment
-                </Button>
+                <div className="flex gap-2 w-full">
+                  <Button
+                    variant="outline"
+                    className="h-11 w-[70%]"
+                    disabled={busy || !selectedStudent}
+                  >
+                    Save adjustment
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-11 w-[30%]"
+                    type="button"
+                    onClick={() => {
+                      setResetDialogOpen(true);
+                      setResetRollNumber("");
+                      setResetAdjustments(null);
+                      setResetError("");
+                    }}
+                  >
+                    Reset
+                  </Button>
+                </div>
                 <p className="text-xs leading-5 text-stone-500">
                   Applies to future challans; already issued challans remain
                   unchanged for clean records.
@@ -1161,6 +1021,50 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
           </Card>
         </div>
       )}
+      <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Concessions / Extra Charges</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSearchAdjustments} className="flex gap-2">
+            <Input
+              placeholder="Roll number"
+              value={resetRollNumber}
+              onChange={(e) => setResetRollNumber(e.target.value)}
+              disabled={resetSearchBusy}
+              required
+            />
+            <Button type="submit" disabled={resetSearchBusy}>
+              {resetSearchBusy ? "Searching..." : "Search"}
+            </Button>
+          </form>
+          {resetError && <p className="text-sm text-red-600">{resetError}</p>}
+          {resetAdjustments && (
+            <div className="mt-4 space-y-3">
+              {resetAdjustments.length === 0 ? (
+                <p className="text-sm text-stone-500">No active adjustments found.</p>
+              ) : (
+                resetAdjustments.map((adj) => (
+                  <div key={adj.id} className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <p className="font-medium text-sm">{adj.label} <span className="text-stone-500 text-xs">({adj.type})</span></p>
+                      <p className="text-xs font-bold tabular-nums">Rs {adj.amount.toLocaleString()}</p>
+                    </div>
+                    <Button 
+                      variant="danger" 
+                      size="sm" 
+                      disabled={resetSearchBusy}
+                      onClick={() => handleRemoveAdjustment(adj.id)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

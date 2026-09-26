@@ -70,7 +70,7 @@ export default function PromotionPage() {
 
       {!loaded && !loading && (
         <Card>
-          <CardContent className="p-6 text-left text-sm leading-6 text-stone-500">
+          <CardContent className="p-6 text-center text-sm leading-6 text-stone-500">
             Click &ldquo;Load promotion results&rdquo; to fetch batches ready for review.
           </CardContent>
         </Card>
@@ -112,10 +112,10 @@ export default function PromotionPage() {
 
       {(loaded || loading) && (
       <div className="space-y-3">
-          {loading && <Card><CardContent className="p-5 text-sm text-stone-500">Loading promotion results...</CardContent></Card>}
+          {loading && <Card><CardContent className="p-5 text-center text-sm text-stone-500">Loading promotion results...</CardContent></Card>}
           {!loading && batches.length === 0 && (
             <Card>
-              <CardContent className="p-6 text-sm text-stone-500">
+              <CardContent className="p-6 text-center text-sm text-stone-500">
                 No Promotion results found yet. Create a result with type PROMOTION, then teachers must publish their subjects.
               </CardContent>
             </Card>

@@ -1,5 +1,7 @@
 "use client";
 
+import { PaymentHistory } from "@/components/PaymentHistory";
+
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -1434,6 +1436,7 @@ export function ApplicationsReviewPanel({
                     </section>
                   </div>
 
+                  <PaymentHistory applicationId={detail.application.id} />
                   {(detail.application.status === "OFFERED" ||
                     detail.application.status === "FEE_PENDING" ||
                     detail.application.status === "FEE_VERIFICATION" ||

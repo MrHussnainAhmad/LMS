@@ -2,6 +2,7 @@ import { db } from '@/db';
 import { institutions } from '@/db/schema';
 import { asc } from 'drizzle-orm';
 import { InstitutionBackupsClient } from './InstitutionBackupsClient';
+import { CentralDatabaseBackupSettings } from './CentralDatabaseBackupSettings';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ export default async function InstitutionBackupsPage({ searchParams }: { searchP
       <h1 className="text-3xl font-display font-bold text-brand-950">Institution Backups</h1>
       <p className="mt-1 max-w-3xl leading-6 text-stone-500">Create, verify and retrieve isolated versions for any institution. Daily versions are retained for 30 days and monthly versions for one year.</p>
     </div>
+    <CentralDatabaseBackupSettings />
     <InstitutionBackupsClient institutions={schools} initialInstitutionId={Number.isInteger(initialInstitutionId) ? initialInstitutionId : undefined} />
   </div>;
 }
-

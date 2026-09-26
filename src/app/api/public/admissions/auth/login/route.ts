@@ -64,7 +64,18 @@ export async function POST(req: NextRequest) {
       )`,
     ),
   )).limit(1);
-  if (!remainingApplication) return NextResponse.json(INVALID_CREDENTIALS, { status: 401 });
+  if (!remainingApplication) {
+    await db
+      .delete(admissionApplicantAccounts)
+      .where(eq(admissionApplicantAccounts.id, account.id));
+    return NextResponse.json(
+      {
+        error:
+          "Applicant portal access has expired 7 days after enrollment. Please sign in to the Parent Portal.",
+      },
+      { status: 401 },
+    );
+  }
 
   await db.update(admissionApplicantAccounts).set({
     failedLoginCount: 0,

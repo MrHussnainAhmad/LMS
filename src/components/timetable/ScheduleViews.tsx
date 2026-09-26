@@ -51,6 +51,17 @@ function buildSlots(entries: TimetableEntry[]) {
   ).sort((a, b) => a.startTime.localeCompare(b.startTime));
 }
 
+function entriesBySlotAndDay(entries: TimetableEntry[]) {
+  const grouped = new Map<string, TimetableEntry[]>();
+  for (const entry of entries) {
+    const key = `${slotKey(entry)}-${entry.dayOfWeek}`;
+    const current = grouped.get(key) ?? [];
+    current.push(entry);
+    grouped.set(key, current);
+  }
+  return grouped;
+}
+
 function EntryBlock({ entry, compact = false }: { entry: TimetableEntry; compact?: boolean }) {
   return (
     <div className={cn("border border-l-4 border-border p-3 shadow-sm", colorFor(entry), compact ? "rounded-md" : "rounded")}>
@@ -90,6 +101,7 @@ export function WeeklyTimetable({
   emptyDescription?: string;
 }) {
   const slots = buildSlots(entries);
+  const slotDayEntries = entriesBySlotAndDay(entries);
 
   return (
     <Card className="overflow-hidden">
@@ -128,9 +140,7 @@ export function WeeklyTimetable({
                       <p className="font-mono text-xs text-stone-500">{timeLabel(slot.endTime)}</p>
                     </div>
                     {WEEK_DAYS.map((day) => {
-                      const matchingEntries = entries.filter(
-                        (entry) => entry.dayOfWeek === day.index && entry.startTime === slot.startTime && entry.endTime === slot.endTime
-                      );
+                      const matchingEntries = slotDayEntries.get(`${slotKey(slot)}-${day.index}`) ?? [];
                       return (
                         <div key={day.index} className={cn("min-h-28 border-l border-border p-2", rowIndex % 2 === 0 ? "bg-white" : "bg-stone-50/40")}>
                           {matchingEntries.length === 0 ? (

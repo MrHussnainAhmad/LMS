@@ -40,5 +40,19 @@ export function ApplicantDocumentUpload({ documentId, accentColor }: { documentI
     } finally { setBusy(false); }
   }
 
-  return <div className="mt-3"><label className="inline-flex cursor-pointer rounded-md px-3 py-2 text-xs font-bold text-white" style={{ backgroundColor: accentColor }}><input className="sr-only" type="file" accept={CONTENT_FILE_ACCEPT} disabled={busy} onChange={upload} />{busy ? 'Compressing and uploading...' : 'Upload document'}</label><p className="mt-2 text-xs text-stone-500">JPG, PNG, WebP, PDF, DOCX, or TXT; maximum 5 MB. Images are compressed first.</p>{error && <p className="mt-2 text-xs text-red-700">{error}</p>}</div>;
+  return (
+    <div className="mt-3">
+      <label
+        className="inline-flex w-full sm:w-auto items-center justify-center cursor-pointer rounded-md px-3.5 py-2 text-xs font-bold text-white shadow-2xs hover:opacity-90 transition-opacity text-center"
+        style={{ backgroundColor: accentColor }}
+      >
+        <input className="sr-only" type="file" accept={CONTENT_FILE_ACCEPT} disabled={busy} onChange={upload} />
+        {busy ? 'Compressing and uploading...' : 'Upload document'}
+      </label>
+      <p className="mt-2 text-xs text-stone-500 leading-relaxed">
+        JPG, PNG, WebP, PDF, DOCX, or TXT; maximum 5 MB. Images are compressed first.
+      </p>
+      {error && <p className="mt-2 text-xs font-medium text-rose-700">{error}</p>}
+    </div>
+  );
 }

@@ -32,10 +32,11 @@ export const POST = requireRole(['SUPER_ADMIN'], async (req: NextRequest, { sess
   const value = body as Record<string, unknown>;
   const institutionId = typeof value.institutionId === 'number' ? value.institutionId : Number(value.institutionId);
   const backupType = value.backupType === 'EXPORT' ? 'EXPORT' : value.backupType === 'MANUAL' ? 'MANUAL' : null;
+  if (backupType === 'EXPORT') return NextResponse.json({ error: 'Institution exports are now delivered through the institution Google Drive backup' }, { status: 410 });
   if (!Number.isInteger(institutionId) || institutionId <= 0 || !backupType) return NextResponse.json({ error: 'Valid institution and backup type are required' }, { status: 400 });
   const [institution] = await db.select({ id: institutions.id, name: institutions.name }).from(institutions).where(eq(institutions.id, institutionId)).limit(1);
   if (!institution) return NextResponse.json({ error: 'Institution not found' }, { status: 404 });
-  const job = await enqueueInstitutionBackup(institutionId, backupType, session.userId);
+  const job = await enqueueInstitutionBackup(institutionId, session.userId);
   await logAudit({ institutionId, actorId: session.userId, actorRole: session.role, action: `QUEUE_INSTITUTION_${backupType}`, target: `Backup ${job.id} for ${institution.name}`, ip: getClientIp(req) });
   return NextResponse.json({ job }, { status: 202 });
 });

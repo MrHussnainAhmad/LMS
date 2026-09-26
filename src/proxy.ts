@@ -43,7 +43,7 @@ export async function proxy(request: NextRequest) {
   const hostname = (request.headers.get('host') || '').split(':')[0].toLowerCase();
 
   let rewritePath: string | null = null;
-  const isStaticOrApi = path.match(/\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf)$/i) || path.startsWith('/api');
+  const isStaticOrApi = path.match(/\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf)$/i) || path.startsWith('/api') || path.startsWith('/payments/');
   const isAuthPath = path === '/login' || path === '/institution-login' || path === '/employee-login' || path === '/parent-login' || path === '/login/super-admin' || path === '/force-password-change';
 
   if (!isStaticOrApi) {

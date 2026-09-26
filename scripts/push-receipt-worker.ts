@@ -1,7 +1,7 @@
 import { checkExpoPushReceipts, pruneResolvedPushTickets } from "@/lib/notifications";
 import { pruneExpiredRefreshTokens } from "@/lib/token-maintenance";
 import { gracefulShutdown } from "@/lib/process-lifecycle";
-import { enqueueScheduledInstitutionBackups, processNextInstitutionBackup, pruneInstitutionBackups } from "@/lib/institution-backups";
+import { enqueueScheduledInstitutionBackups, processNextInstitutionBackup } from "@/lib/institution-backups";
 import { processEmailOutboxBatch } from "@/lib/email-outbox";
 
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -17,7 +17,6 @@ let runInFlight: Promise<void> | undefined;
 let lastTokenPruneHour: number | undefined;
 let lastTicketPruneHour: number | undefined;
 let lastInstitutionBackupScheduleHour: number | undefined;
-let lastInstitutionBackupPruneDay: string | undefined;
 
 /**
  * Run a maintenance task at most once per wall-clock hour.
@@ -72,17 +71,6 @@ async function runOnce() {
     if (completed.length > 0) console.info('Institution backups completed', { backupIds: completed });
   } catch (error) {
     console.error('Institution backup processing failed', error);
-  }
-
-  const currentDay = new Date().toISOString().slice(0, 10);
-  if (lastInstitutionBackupPruneDay !== currentDay) {
-    try {
-      const result = await pruneInstitutionBackups();
-      lastInstitutionBackupPruneDay = currentDay;
-      if (result.deleted > 0) console.info('Institution backup retention completed', result);
-    } catch (error) {
-      console.error('Institution backup retention failed', error);
-    }
   }
 
   try {

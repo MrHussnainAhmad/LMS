@@ -45,12 +45,16 @@ yarn-error.log*
 .env*
 !.env.example
 .env*.local
+google_drive_setup_guide.md
 
 # local database and generated migration output
 *.db
 *.sqlite
 *.sqlite3
 /drizzle/*
+!/drizzle/0056_institution_payment_gateway.sql
+!/drizzle/0057_gateway_payment_attempts.sql
+!/drizzle/0058_institution_google_drive_backups.sql
 !/drizzle/0008_assignment_reference_files.sql
 !/drizzle/0009_dashboard_performance_indexes.sql
 !/drizzle/0015_students_institution_section_idx.sql
@@ -152,3 +156,10 @@ instituion_settings.png
 /SMOKE_TEST.md
 /CLOUDFLARE.md
 /DEPLOY.md
+
+# Unwanted AI/Local files
+CLAUDE.md
+guide.md
+reset-job.js
+tt template.jpeg
+scripts/reset-parent-password.ts

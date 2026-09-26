@@ -58,8 +58,8 @@ export function StaffLeavesClient({ initialRequests }: { initialRequests: StaffL
     <div className="space-y-4">
       {requests.length === 0 ? (
         <Card>
-          <CardContent className="p-6 text-center text-stone-500">
-            No staff leave requests found.
+          <CardContent className="flex flex-col items-center justify-center p-6 text-stone-500">
+            <p style={{ textAlign: "center" }}>No staff leave requests found.</p>
           </CardContent>
         </Card>
       ) : (

@@ -70,7 +70,6 @@ export const GET = requireRole(
       classItems,
       invoices,
       summaryRows,
-      institutionSettings,
     ] = await Promise.all([
       includeSetup && includeMeta
         ? db
@@ -144,13 +143,7 @@ export const GET = requireRole(
               ),
             )
         : Promise.resolve(null),
-      includeSetup
-        ? db
-            .select({ paymentMethods: institutions.feePaymentMethods })
-            .from(institutions)
-            .where(eq(institutions.id, institutionId))
-            .limit(1)
-        : Promise.resolve(null),
+
     ]);
     const invoiceIds = invoices?.map((invoice) => invoice.id) || [];
     const submissions =
@@ -174,7 +167,6 @@ export const GET = requireRole(
             classes: classRows,
             heads,
             classItems,
-            paymentMethods: institutionSettings?.[0]?.paymentMethods || [],
           }
         : {}),
       ...(includeCollections
@@ -217,22 +209,6 @@ export const POST = requireRole(
     const action = parsed.data;
 
     try {
-      if (action.action === "savePaymentMethods") {
-        await db
-          .update(institutions)
-          .set({ feePaymentMethods: action.paymentMethods })
-          .where(eq(institutions.id, institutionId));
-        await logAudit({
-          institutionId,
-          actorId: session.userId,
-          actorRole: session.role,
-          action: "UPDATE_FEE_PAYMENT_METHODS",
-          target: `${action.paymentMethods.length} methods`,
-          ip: getClientIp(req),
-        });
-        return NextResponse.json({ paymentMethods: action.paymentMethods });
-      }
-
       if (action.action === "createHead") {
         const [head] = await db
           .insert(feeHeads)
@@ -326,6 +302,55 @@ export const POST = requireRole(
           .returning();
         return NextResponse.json({ adjustment }, { status: 201 });
       }
+      if (action.action === "getAdjustmentsByRollNumber") {
+        const [student] = await db
+          .select({ id: students.id })
+          .from(students)
+          .where(
+            and(
+              eq(students.institutionId, institutionId),
+              eq(students.loginRollNumber, action.rollNumber),
+              isNull(students.deletedAt)
+            )
+          )
+          .limit(1);
+          
+        if (!student) {
+          return NextResponse.json({ error: "Student not found" }, { status: 404 });
+        }
+        
+        const adjustments = await db
+          .select()
+          .from(studentFeeAdjustments)
+          .where(
+            and(
+              eq(studentFeeAdjustments.studentId, student.id),
+              eq(studentFeeAdjustments.institutionId, institutionId),
+              eq(studentFeeAdjustments.isActive, true)
+            )
+          );
+          
+        return NextResponse.json({ adjustments });
+      }
+
+      if (action.action === "removeAdjustment") {
+        const [updated] = await db
+          .update(studentFeeAdjustments)
+          .set({ isActive: false })
+          .where(
+            and(
+              eq(studentFeeAdjustments.id, action.adjustmentId),
+              eq(studentFeeAdjustments.institutionId, institutionId),
+              eq(studentFeeAdjustments.isActive, true)
+            )
+          )
+          .returning();
+          
+        if (!updated) {
+          return NextResponse.json({ error: "Adjustment not found or already removed" }, { status: 404 });
+        }
+        return NextResponse.json({ adjustment: updated });
+      }
 
       if (action.action === "generateMonth") {
         if (!action.dueDate.startsWith(`${action.billingMonth}-`)) {
@@ -334,7 +359,7 @@ export const POST = requireRole(
             { status: 400 },
           );
         }
-        const [studentRows, feeRows, adjustmentRows, existingRows] =
+        const [studentRows, feeRows, adjustmentRows, existingRows, allRecurringHeads] =
           await Promise.all([
             db
               .select({ id: students.id, classId: students.classId })
@@ -381,6 +406,19 @@ export const POST = requireRole(
                   eq(feeInvoices.billingMonth, action.billingMonth),
                 ),
               ),
+            db
+              .select({
+                feeHeadId: feeHeads.id,
+                label: feeHeads.name,
+              })
+              .from(feeHeads)
+              .where(
+                and(
+                  eq(feeHeads.institutionId, institutionId),
+                  eq(feeHeads.isActive, true),
+                  eq(feeHeads.kind, "RECURRING"),
+                ),
+              ),
           ]);
         const existing = new Set(existingRows.map((row) => row.studentId));
         const feesByClass = new Map<number, typeof feeRows>();
@@ -398,7 +436,19 @@ export const POST = requireRole(
 
         const prepared = studentRows.flatMap((student) => {
           if (existing.has(student.id)) return [];
-          const fees = feesByClass.get(student.classId) || [];
+          const classFees = feesByClass.get(student.classId) || [];
+
+          const fees = allRecurringHeads.map((head) => {
+            const existingFee = classFees.find(
+              (f) => f.feeHeadId === head.feeHeadId,
+            );
+            return {
+              feeHeadId: head.feeHeadId,
+              label: head.label,
+              amount: existingFee ? existingFee.amount : 0,
+            };
+          });
+
           if (fees.length === 0) return [];
           const adjustments = adjustmentsByStudent.get(student.id) || [];
           const subtotal = fees.reduce((sum, row) => sum + row.amount, 0);

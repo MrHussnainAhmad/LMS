@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type Grade = { letter: string; min: number; max: number };
@@ -39,7 +41,14 @@ export default function GradingSettingsPage() {
 
   return (
     <div className="animate-fade-in max-w-3xl space-y-6">
-      <div><h1 className="font-display text-3xl font-bold text-brand-950">Grading Scale</h1><p className="mt-1 text-stone-500">Set the promotion threshold and grade ranges for your institution.</p></div>
+      <div>
+        <Link href="/institution/settings" className="mb-4 inline-flex items-center text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Settings
+        </Link>
+        <h1 className="font-display text-3xl font-bold text-brand-950">Grading Scale</h1>
+        <p className="mt-1 text-stone-500">Set the promotion threshold and grade ranges for your institution.</p>
+      </div>
       <div className="space-y-6 rounded-xl border border-border bg-white p-6 pt-7">
         <label className="block text-sm font-medium text-stone-700">Passing percentage<input className="mt-2 block w-full rounded-md border border-border px-3 py-2 sm:w-40" type="number" min="0" max="100" value={passingPercentage} onChange={(event) => setPassingPercentage(Number(event.target.value))} /></label>
         <div className="space-y-3">

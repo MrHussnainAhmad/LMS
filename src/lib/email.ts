@@ -198,25 +198,33 @@ export const ParentAccountActivationEmail = ({
   guardianEmail,
   temporaryPassword,
   institutionUsername,
+  hasExistingPassword,
 }: {
   institutionName: string;
   institutionLogoUrl?: string | null;
   studentName: string;
   guardianEmail: string;
-  temporaryPassword: string;
+  temporaryPassword?: string;
   institutionUsername: string;
+  hasExistingPassword?: boolean;
 }) => {
   const title = `Parent account credentials`;
   const preheader = `You have been added as a guardian on Nisaab360.`;
 
   let content = `${escapeEmailHtml(institutionName)} added you as the guardian of <strong>${escapeEmailHtml(studentName)}</strong> on Nisaab360.<br><br>`;
   content += `<strong>Institution username:</strong> ${escapeEmailHtml(institutionUsername)}<br><br>`;
-  content += `Sign in through the Nisaab360 parent portal and replace this temporary password immediately. The same account will show every child linked to this email within the institution.`;
+  if (hasExistingPassword) {
+    content += `Your parent account is now active! Sign in through the Parent Portal using your email and the same password you created on the admissions portal.`;
+  } else {
+    content += `Sign in through the Nisaab360 parent portal and replace this temporary password immediately. The same account will show every child linked to this email within the institution.`;
+  }
 
   const bodyContent = 
-    EmailHeadline({ eyebrow: 'Parent Account', headline: `Temporary credentials for your parent account`, stamp: 'Required Action' }) +
+    EmailHeadline({ eyebrow: 'Parent Account', headline: hasExistingPassword ? `Your parent account is active` : `Temporary credentials for your parent account`, stamp: 'Active' }) +
     EmailBodyText(content) +
-    EmailCredentialStub({ loginId: guardianEmail, temporaryPassword }) +
+    (hasExistingPassword
+      ? EmailBodyText(`<strong>Portal Login ID:</strong> ${escapeEmailHtml(guardianEmail)}<br><strong>Password:</strong> (Use your admissions portal password)`)
+      : EmailCredentialStub({ loginId: guardianEmail, temporaryPassword: temporaryPassword || '' })) +
     EmailSecurityNote(`If you do not recognize this institution or student link, contact the institution directly.`);
 
   return BaseEmailTemplate({

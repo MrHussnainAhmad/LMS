@@ -1,3 +1,4 @@
+import { activeGateways as availableGateways } from "@/lib/payments/config";
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
@@ -6,7 +7,7 @@ import {
   feeInvoices,
   feePayments,
   feePaymentSubmissions,
-  institutions,
+  institutionPaymentGateways,
 } from "@/db/schema";
 import { getTenantContext, requireRole } from "@/lib/rbac";
 import cloudinary from "@/lib/cloudinary";
@@ -16,6 +17,7 @@ import {
   parseAdmissionUploadCompletion,
 } from "@/lib/admission-files";
 import { withRateLimit } from "@/lib/rate-limit";
+import { decryptGatewayCredentials } from "@/lib/payment-credentials";
 
 const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 const ALLOWED_PROOF_FORMATS = new Set(["jpg", "jpeg", "png", "webp", "pdf"]);
@@ -36,18 +38,21 @@ export const GET = requireRole(
       .orderBy(desc(feeInvoices.billingMonth))
       .limit(24);
     const ids = invoices.map((invoice) => invoice.id);
-    const [institution] = await db
-      .select({ paymentMethods: institutions.feePaymentMethods })
-      .from(institutions)
-      .where(eq(institutions.id, institutionId))
+    const [gatewayRow] = await db
+      .select({ credentialsEncrypted: institutionPaymentGateways.credentialsEncrypted })
+      .from(institutionPaymentGateways)
+      .where(eq(institutionPaymentGateways.institutionId, institutionId))
       .limit(1);
+
+  const activeGateways = availableGateways(gatewayRow ? decryptGatewayCredentials(institutionId, gatewayRow.credentialsEncrypted) : null);
+
     if (ids.length === 0)
       return NextResponse.json({
         invoices: [],
         items: [],
         payments: [],
         submissions: [],
-        paymentMethods: institution?.paymentMethods || [],
+        gateways: activeGateways,
         summary: { billed: 0, paid: 0, balance: 0 },
       });
 
@@ -86,7 +91,7 @@ export const GET = requireRole(
       items,
       payments,
       submissions,
-      paymentMethods: institution?.paymentMethods || [],
+      gateways: activeGateways,
       summary: {
         billed: active.reduce((sum, invoice) => sum + invoice.totalAmount, 0),
         paid: active.reduce((sum, invoice) => sum + invoice.paidAmount, 0),

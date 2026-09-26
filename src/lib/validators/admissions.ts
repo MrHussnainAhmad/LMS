@@ -20,27 +20,11 @@ const optionalDate = z
   .transform((value) => value || null);
 
 const optionalText = (maximum: number) =>
-  z
-    .string()
-    .trim()
-    .max(maximum)
+  z.union([z.string().trim().max(maximum), z.null()])
     .transform((value) => value || null);
 const optionalDateTime = z
   .union([z.literal(""), z.string().datetime({ offset: true })])
   .transform((value) => value || null);
-const paymentMethod = z
-  .object({
-    id: z.string().trim().min(1).max(80),
-    providerName: z.string().trim().min(2).max(120),
-    accountTitle: z.string().trim().min(2).max(160),
-    accountNumber: z.string().trim().min(3).max(160),
-    qrUrl: optionalText(500).refine(
-      (value) => !value || /^https:\/\//i.test(value),
-      "Payment QR must be a secure uploaded image",
-    ),
-  })
-  .strict();
-
 const admissionCycleFields = {
     name: z.string().trim().min(2).max(120),
     academicYear: z.string().trim().min(4).max(20),
@@ -68,10 +52,9 @@ const admissionCycleFields = {
     interviewInstructions: optionalText(1000),
     admissionFeeAmount: z.number().int().positive().max(100_000_000),
     admissionFeeDueDays: z.number().int().min(1).max(90),
-    paymentMethods: z
-      .array(paymentMethod)
-      .min(1, "Add at least one payment method")
-      .max(8),
+    // Older open browser tabs may still submit this retired field. Accept it
+    // during the UI transition, but the API deliberately ignores its value.
+    paymentMethods: z.unknown().optional(),
     admissionFeeInstructions: optionalText(1000),
 };
 

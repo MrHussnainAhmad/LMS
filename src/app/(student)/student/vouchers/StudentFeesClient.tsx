@@ -1,13 +1,13 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import Image from "next/image";
+import { PaymentHistory } from "@/components/PaymentHistory";
+
+import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toaster";
 import { api } from "@/lib/api-client";
-import { prepareContentUpload } from "@/lib/client-upload-file";
 import {
   Banknote,
   ChevronDown,
@@ -46,19 +46,12 @@ type Submission = {
   status: "SUBMITTED" | "VERIFIED" | "REJECTED";
   reviewerNote: string | null;
 };
-type Method = {
-  id: string;
-  providerName: string;
-  accountTitle: string;
-  accountNumber: string;
-  qrUrl: string | null;
-};
 type Response = {
   invoices: Invoice[];
   items: Item[];
   payments: Payment[];
   submissions: Submission[];
-  paymentMethods: Method[];
+  gateways: string[];
   summary: { billed: number; paid: number; balance: number };
 };
 const money = (value: number) =>
@@ -71,7 +64,6 @@ export function StudentFeesClient() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [paying, setPaying] = useState<Invoice | null>(null);
   const [busy, setBusy] = useState(false);
-  const [fileName, setFileName] = useState("No receipt selected");
   const load = useCallback(async () => {
     try {
       setData(await api.get<Response>("/api/student/fees"));
@@ -92,62 +84,37 @@ export function StudentFeesClient() {
     return () => window.clearTimeout(timer);
   }, [load]);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function payWithGateway(gateway: string) {
     if (!paying) return;
-    const values = new FormData(event.currentTarget);
-    const proof = values.get("proof");
-    if (!(proof instanceof File) || !proof.size) return;
     setBusy(true);
     try {
-      const file = await prepareContentUpload(proof, {
-        allowedKinds: ["image", "pdf"],
-      });
-      const signature = await api.post<{
-        signature: string;
-        timestamp: number;
-        folder: string;
-        allowedFormats: string;
-        type: string;
-        cloudName: string;
-        apiKey: string;
-      }>("/api/student/fees", { action: "signature", invoiceId: paying.id });
-      const upload = new FormData();
-      upload.append("file", file);
-      upload.append("api_key", signature.apiKey);
-      upload.append("timestamp", String(signature.timestamp));
-      upload.append("signature", signature.signature);
-      upload.append("folder", signature.folder);
-      upload.append("allowed_formats", signature.allowedFormats);
-      upload.append("type", signature.type);
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${signature.cloudName}/auto/upload`,
-        { method: "POST", body: upload },
+      const { redirectUrl, payload, checkoutUrl } = await api.post<{ redirectUrl: string; payload: Record<string, string>; checkoutUrl?: string }>(
+        "/api/student/fees/pay",
+        { invoiceId: paying.id, gateway }
       );
-      const uploaded = await response.json();
-      if (!response.ok)
-        throw new Error(uploaded.error?.message || "Receipt upload failed");
-      await api.post("/api/student/fees", {
-        action: "complete",
-        invoiceId: paying.id,
-        amount: Number(values.get("amount")),
-        sourceBankName: values.get("sourceBankName"),
-        transactionId: values.get("transactionId"),
-        publicId: uploaded.public_id,
-        format: uploaded.format,
-        resourceType: uploaded.resource_type,
-      });
-      toast({ title: "Payment sent for verification", variant: "success" });
-      setPaying(null);
-      setFileName("No receipt selected");
-      await load();
+
+      if (checkoutUrl) { window.location.assign(checkoutUrl); return; }
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = redirectUrl;
+      form.style.display = "none";
+
+      for (const [key, value] of Object.entries(payload)) {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = key;
+        input.value = value;
+        form.appendChild(input);
+      }
+
+      document.body.appendChild(form);
+      form.submit();
     } catch (error) {
       toast({
-        title: "Payment submission failed",
+        title: "Payment initialization failed",
         description: error instanceof Error ? error.message : "Try again.",
         variant: "destructive",
       });
-    } finally {
       setBusy(false);
     }
   }
@@ -160,12 +127,12 @@ export function StudentFeesClient() {
     );
   if (!data?.invoices.length)
     return (
-      <Card>
+      <><PaymentHistory /><Card>
         <CardContent className="p-10 text-center">
           <WalletCards className="mx-auto h-10 w-10 text-stone-300" />
           <h2 className="mt-3 font-semibold">No fee challans issued yet</h2>
         </CardContent>
-      </Card>
+      </Card></>
     );
   const feeData = data;
   const active = feeData.invoices.filter(
@@ -301,6 +268,7 @@ export function StudentFeesClient() {
 
   return (
     <div className="space-y-6">
+      <PaymentHistory />
       <div className="grid gap-4 sm:grid-cols-3">
         {[
           {
@@ -319,13 +287,17 @@ export function StudentFeesClient() {
             Icon: WalletCards,
           },
         ].map(({ label, value, Icon }) => (
-          <Card key={label}>
-            <CardContent className="flex items-center justify-between p-5">
-              <div>
-                <p className="text-xs uppercase text-stone-500">{label}</p>
-                <p className="mt-2 text-xl font-bold">{money(value)}</p>
+          <Card key={label} className="overflow-hidden rounded-xl border border-stone-200 bg-gradient-to-b from-white to-stone-50/50 shadow-sm transition-shadow hover:shadow-md">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-white/70">{label}</p>
+                <div className="rounded-lg bg-brand-50/80 p-2.5 ring-1 ring-brand-100/50">
+                  <Icon className="h-4 w-4 text-brand-700" />
+                </div>
               </div>
-              <Icon className="h-5 w-5 text-brand-600" />
+              <div className="mt-5">
+                <p className="text-3xl font-bold tracking-tight text-white">{money(value)}</p>
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -361,105 +333,41 @@ export function StudentFeesClient() {
               </Button>
             </CardHeader>
             <CardContent className="p-6 pt-7 text-left">
-              <div className="grid gap-3 sm:grid-cols-2">
-                {feeData.paymentMethods.map((method) => (
-                  <div key={method.id} className="rounded-lg border p-4">
-                    <strong>{method.providerName}</strong>
-                    <p className="mt-2 text-xs text-stone-500">
-                      Account title / username
-                    </p>
-                    <p>{method.accountTitle}</p>
-                    <p className="mt-2 text-xs text-stone-500">
-                      Account / IBAN / mobile
-                    </p>
-                    <p className="break-all font-mono font-bold">
-                      {method.accountNumber}
-                    </p>
-                    {method.qrUrl && (
-                      <Image
-                        src={method.qrUrl}
-                        alt="Payment QR"
-                        width={120}
-                        height={120}
-                        unoptimized
-                        className="mt-3 border object-contain p-2"
-                      />
-                    )}
-                  </div>
-                ))}
+              <div className="grid gap-4 sm:grid-cols-2 mt-4">
+                {feeData.gateways.includes("easypaisa") && (
+                  <Button
+                    className="w-full h-14 text-base font-medium shadow-sm transition-all hover:shadow-md active:scale-[0.98]"
+                    onClick={() => payWithGateway("easypaisa")}
+                    disabled={busy}
+                  >
+                    Pay with Easypaisa
+                  </Button>
+                )}
+                {feeData.gateways.includes("jazzcash") && (
+                  <Button
+                    className="w-full h-14 text-base font-medium shadow-sm transition-all hover:shadow-md active:scale-[0.98]"
+                    onClick={() => payWithGateway("jazzcash")}
+                    disabled={busy}
+                  >
+                    Pay with JazzCash
+                  </Button>
+                )}
+                {feeData.gateways.includes("hblpay") && (
+                  <Button
+                    className="w-full h-14 text-base font-medium shadow-sm transition-all hover:shadow-md active:scale-[0.98]"
+                    onClick={() => payWithGateway("hblpay")}
+                    disabled={busy}
+                  >
+                    Pay with HBL Pay
+                  </Button>
+                )}
               </div>
-              {!feeData.paymentMethods.length && (
+              {!feeData.gateways.length && (
                 <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
                   Contact the accounts office; online payment details are not
                   configured.
                 </p>
               )}
-              <form onSubmit={submit} className="mt-6 space-y-5 text-left">
-                <label className="block text-sm font-semibold leading-5">
-                  Amount
-                  <input
-                    name="amount"
-                    type="number"
-                    min="1"
-                    max={paying.totalAmount - paying.paidAmount}
-                    defaultValue={paying.totalAmount - paying.paidAmount}
-                    required
-                    className="mt-2 w-full rounded-md border px-3 py-2 text-right"
-                  />
-                </label>
-                <label className="block text-sm font-semibold leading-5">
-                  Your source bank / wallet
-                  <input
-                    name="sourceBankName"
-                    required
-                    maxLength={120}
-                    className="mt-2 w-full rounded-md border px-3 py-2"
-                  />
-                </label>
-                <label className="block text-sm font-semibold leading-5">
-                  Transaction ID
-                  <input
-                    name="transactionId"
-                    required
-                    maxLength={160}
-                    className="mt-2 w-full rounded-md border px-3 py-2"
-                  />
-                </label>
-                <label className="block text-sm font-semibold leading-5">
-                  Receipt
-                  <span className="mt-2 flex cursor-pointer items-center justify-between gap-3 rounded-md border border-dashed p-3 font-normal">
-                    <span>{fileName}</span>
-                    <b className="rounded bg-brand-950 px-3 py-2 text-white">
-                      Choose file
-                    </b>
-                    <input
-                      name="proof"
-                      required
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,.webp"
-                      className="sr-only"
-                      onChange={(event) =>
-                        setFileName(
-                          event.target.files?.[0]?.name ||
-                            "No receipt selected",
-                        )
-                      }
-                    />
-                  </span>
-                </label>
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setPaying(null)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button disabled={busy || !feeData.paymentMethods.length}>
-                    {busy ? "Submitting…" : "Send for verification"}
-                  </Button>
-                </div>
-              </form>
             </CardContent>
           </Card>
         </div>

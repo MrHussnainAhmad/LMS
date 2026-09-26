@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 const PERMISSIONS = [
   { key: "students.read", label: "View student records" },
@@ -54,7 +56,14 @@ export default function RolesPage() {
   };
 
   return <div className="max-w-4xl space-y-6 animate-fade-in">
-    <div><h1 className="text-3xl font-display font-bold text-brand-950">Staff Roles</h1><p className="mt-1 text-stone-500">Create job roles, then select one when adding each staff member.</p></div>
+    <div>
+      <Link href="/institution/settings" className="mb-4 inline-flex items-center text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        Back to Settings
+      </Link>
+      <h1 className="text-3xl font-display font-bold text-brand-950">Staff Roles</h1>
+      <p className="mt-1 text-stone-500">Create job roles, then select one when adding each staff member.</p>
+    </div>
     <div className="rounded-xl border border-border bg-white p-6 space-y-5">
       <div><p className="text-sm font-medium text-stone-700">Start with a job role</p><div className="mt-2 flex flex-wrap gap-2">{Object.keys(ROLE_TEMPLATES).map((template) => <button key={template} type="button" className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-sm text-brand-800 hover:bg-brand-100" onClick={() => selectTemplate(template as keyof typeof ROLE_TEMPLATES)}>{template}</button>)}</div></div>
       <label className="block text-sm font-medium text-stone-700">Role name<input className="mt-2 w-full rounded border p-2" placeholder="e.g. Teacher" value={name} onChange={(event) => setName(event.target.value)} /></label>

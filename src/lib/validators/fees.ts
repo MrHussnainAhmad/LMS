@@ -4,21 +4,7 @@ const positiveMoney = z.coerce.number().int().positive().max(10_000_000);
 const month = z
   .string()
   .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Use a valid billing month");
-const paymentMethod = z
-  .object({
-    id: z.string().trim().min(1).max(80),
-    providerName: z.string().trim().min(2).max(120),
-    accountTitle: z.string().trim().min(2).max(160),
-    accountNumber: z.string().trim().min(3).max(160),
-    qrUrl: z.string().trim().url().max(500).nullable(),
-  })
-  .strict();
-
 export const feeActionSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("savePaymentMethods"),
-    paymentMethods: z.array(paymentMethod).min(1).max(8),
-  }),
   z.object({
     action: z.literal("createHead"),
     name: z.string().trim().min(2).max(100),
@@ -61,4 +47,12 @@ export const feeActionSchema = z.discriminatedUnion("action", [
       message: "Explain why the payment was rejected",
       path: ["note"],
     }),
+  z.object({
+    action: z.literal("removeAdjustment"),
+    adjustmentId: z.coerce.number().int().positive(),
+  }),
+  z.object({
+    action: z.literal("getAdjustmentsByRollNumber"),
+    rollNumber: z.string().trim().min(1).max(50),
+  }),
 ]);

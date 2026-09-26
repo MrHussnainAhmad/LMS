@@ -338,7 +338,7 @@ export async function updateClassInchargeAction(formData: FormData) {
   const session = await getSession();
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new Error("Unauthorized");
 
-  const institutionId = session.userId;
+  const institutionId = session.institutionId || session.userId;
   const sectionIdRaw = formData.get("sectionId") as string;
   const classIdRaw = formData.get("classId") as string;
   let sectionId = sectionIdRaw ? parseInt(sectionIdRaw, 10) : null;
@@ -373,6 +373,7 @@ export async function updateClassInchargeAction(formData: FormData) {
     .where(eq(sections.id, sectionId!));
 
   revalidatePath("/institution/timetable");
+  revalidatePath("/institution/timetable/overview");
   revalidatePath("/staff/attendance");
   return { success: true };
 }
@@ -400,7 +401,11 @@ export async function createTimetableAssignmentAction(formData: FormData) {
 
   if (sectionIdRaw && !Number.isInteger(sectionId)) throw new Error("Invalid section ID");
   if (!sectionId && (!classId || !Number.isInteger(classId))) throw new Error("Valid section or class is required");
-  if (!Number.isInteger(dayOfWeek) || !startTime || !endTime || startTime >= endTime) {
+  const validTime = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+  if (
+    !Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 6 ||
+    !validTime.test(startTime) || !validTime.test(endTime) || startTime >= endTime
+  ) {
     throw new Error("Valid section, day, start time, and end time are required");
   }
   if (!isBreak && (!staffId || !subjectId || !Number.isInteger(staffId) || !Number.isInteger(subjectId))) {
@@ -474,7 +479,11 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   // or student/staff timetables can remain stale for up to the 10-minute TTL.
   const timetableCacheKeys = [
     `cache:timetable:student:${institutionId}:${sectionId}`,
-    ...(staffId ? [`cache:timetable:staff:${institutionId}:${staffId}`] : []),
+    ...(staffId ? [
+      `cache:timetable:staff:${institutionId}:${staffId}`,
+      `cache:timetable:staff:v2:${institutionId}:${staffId}`,
+      `cache:staff:dashboard:v2:${institutionId}:${staffId}`,
+    ] : []),
   ];
   const { redis } = await import("@/lib/redis");
   await redis.del(...timetableCacheKeys).catch((error) => {
@@ -482,6 +491,7 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   });
 
   revalidatePath("/institution/timetable");
+  revalidatePath("/institution/timetable/overview");
   return { success: true };
 }
 

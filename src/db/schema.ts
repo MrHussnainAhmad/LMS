@@ -2022,7 +2022,7 @@ export const feePayments = pgTable(
     receiptNumber: varchar("receipt_number", { length: 50 }).notNull(),
     amount: integer("amount").notNull(),
     method: varchar("method", { length: 30 })
-      .$type<"CASH" | "BANK" | "EASYPAISA" | "JAZZCASH" | "OTHER">()
+      .$type<"CASH" | "BANK" | "EASYPAISA" | "JAZZCASH" | "HBL_PAY" | "OTHER">()
       .notNull(),
     reference: varchar("reference", { length: 120 }),
     notes: text("notes"),
@@ -2044,6 +2044,43 @@ export const feePayments = pgTable(
     ),
   }),
 );
+
+export const institutionPaymentGateways = pgTable("institution_payment_gateways", {
+  institutionId: integer("institution_id").primaryKey().references(() => institutions.id, { onDelete: "cascade" }),
+  credentialsEncrypted: text("credentials_encrypted").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const gatewayPaymentAttempts = pgTable("gateway_payment_attempts", {
+  id: varchar("id", { length: 20 }).primaryKey(),
+  institutionId: integer("institution_id").notNull().references(() => institutions.id, { onDelete: "restrict" }),
+  invoiceId: integer("invoice_id").references(() => feeInvoices.id, { onDelete: "restrict" }),
+  applicationId: integer("application_id").references(() => admissionApplications.id, { onDelete: "restrict" }),
+  gateway: varchar("gateway", { length: 20 }).$type<"easypaisa" | "jazzcash" | "hblpay">().notNull(),
+  environment: varchar("environment", { length: 20 }).$type<"sandbox" | "production">().notNull(),
+  merchantId: varchar("merchant_id", { length: 160 }).notNull(),
+  amount: integer("amount").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("PKR"),
+  status: varchar("status", { length: 20 }).$type<"PENDING" | "PAID" | "REVIEW">().notNull().default("PENDING"),
+  credentialsEncrypted: text("credentials_encrypted").notNull(),
+  returnUrl: text("return_url").notNull(),
+  institutionName: text("institution_name").notNull(),
+  payerName: text("payer_name").notNull(),
+  description: text("description").notNull(),
+  receiptNumber: varchar("receipt_number", { length: 50 }).unique(),
+  providerReference: varchar("provider_reference", { length: 160 }),
+  providerResponseCode: varchar("provider_response_code", { length: 20 }),
+  evidenceDigest: varchar("evidence_digest", { length: 64 }),
+  qrImage: text("qr_image"),
+  lastCheckedAt: timestamp("last_checked_at"),
+  verifiedAt: timestamp("verified_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+}, (t) => ({
+  invoiceIdx: index("gateway_attempts_invoice_idx").on(t.institutionId, t.invoiceId, t.createdAt),
+  applicationIdx: index("gateway_attempts_application_idx").on(t.institutionId, t.applicationId, t.createdAt),
+  statusIdx: index("gateway_attempts_status_idx").on(t.institutionId, t.status, t.createdAt),
+}));
 
 export const feePaymentSubmissions = pgTable(
   "fee_payment_submissions",
@@ -2452,6 +2489,31 @@ export const institutionBackups = pgTable(
   }),
 );
 
+// One current customer-owned Google Drive backup per institution. This is
+// configuration/remote-file metadata only; PostgreSQL disaster-recovery
+// backups are handled separately by the postgres-backup container.
+export const institutionGoogleDriveBackups = pgTable(
+  "institution_google_drive_backups",
+  {
+    institutionId: integer("institution_id")
+      .primaryKey()
+      .references(() => institutions.id, { onDelete: "cascade" }),
+    credentialsEncrypted: text("credentials_encrypted"),
+    folderId: varchar("folder_id", { length: 255 }),
+    folderName: varchar("folder_name", { length: 255 }),
+    backupFileId: varchar("backup_file_id", { length: 255 }),
+    backupFileName: varchar("backup_file_name", { length: 255 }),
+    archivePasswordEncrypted: text("archive_password_encrypted"),
+    lastBackupAt: timestamp("last_backup_at", { withTimezone: true }),
+    lastBackupError: text("last_backup_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    backupFileIndex: index("institution_google_drive_backups_file_idx").on(t.backupFileId),
+  }),
+);
+
 // --- DURABLE EMAIL DELIVERY ---
 export const emailOutbox = pgTable("email_outbox", {
   id: serial("id").primaryKey(),
@@ -2509,3 +2571,46 @@ export const courseLectureProgress = pgTable("course_lecture_progress", {
   studentId: integer("student_id").notNull().references(() => students.id, { onDelete: "cascade" }),
   readAt: timestamp("read_at").notNull().defaultNow(),
 }, (t) => ({ lectureStudentUnique: unique("course_lecture_progress_lecture_student_unique").on(t.lectureId, t.studentId), studentIndex: index("course_lecture_progress_student_idx").on(t.studentId) }));
+
+// --- CENTRAL DATABASE BACKUPS ---
+// Platform-owned disaster-recovery backups uploaded to the administrator-controlled
+// Google Drive. One row per backup run. Separate from institution Google Drive backups.
+export const centralDatabaseBackups = pgTable(
+  "central_database_backups",
+  {
+    id: serial("id").primaryKey(),
+    // Deterministic idempotency key: "central-YYYY-MM-DD-HH-MM-<uuid-slice>".
+    // Used to deduplicate retried curl calls from the backup container.
+    runId: varchar("run_id", { length: 128 }).notNull().unique(),
+    // Dated filename: database-2026-09-21-00-00.sql.gz.enc
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    driveFileId: varchar("drive_file_id", { length: 255 }),
+    fileSizeBytes: bigint("file_size_bytes", { mode: "number" }),
+    // SHA-256 hex of the encrypted file computed locally before upload.
+    sha256: varchar("sha256", { length: 64 }),
+    status: varchar("status", { length: 16 })
+      .$type<"PENDING" | "UPLOADING" | "COMPLETED" | "FAILED">()
+      .notNull()
+      .default("PENDING"),
+    // Best-effort secondary B2 upload status (does not affect Drive status).
+    b2Status: varchar("b2_status", { length: 16 })
+      .$type<"SKIPPED" | "UPLOADED" | "FAILED">(),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => ({
+    statusCreatedIndex: index("central_database_backups_status_created_idx").on(t.status, t.createdAt),
+    runIdIndex: uniqueIndex("central_database_backups_run_id_idx").on(t.runId),
+  }),
+);
+
+// Singleton super-admin-controlled encryption secret for central database dumps.
+// The value is encrypted with the server credential key before storage.
+export const centralBackupSettings = pgTable("central_backup_settings", {
+  id: integer("id").primaryKey().default(1),
+  databasePasswordEncrypted: text("database_password_encrypted"),
+  updatedBy: integer("updated_by").references(() => superAdmins.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});

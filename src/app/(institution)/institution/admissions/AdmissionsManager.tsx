@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   CalendarDays,
   CalendarRange,
@@ -14,7 +15,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { prepareContentUpload } from "@/lib/client-upload-file";
 
 type Cycle = {
   id: number;
@@ -35,96 +35,8 @@ type Cycle = {
   admissionFeeAmount: number | null;
   admissionFeeDueDays: number;
   admissionFeeInstructions: string | null;
-  paymentBankName: string | null;
-  paymentAccountNumber: string | null;
-  paymentQrUrl: string | null;
-  paymentMethods: PaymentMethod[];
   status: "DRAFT" | "OPEN" | "CLOSED";
 };
-
-type PaymentMethod = {
-  id: string;
-  providerName: string;
-  accountTitle: string;
-  accountNumber: string;
-  qrUrl: string | null;
-};
-type PaymentMethodDraft = PaymentMethod & { qrFile: File | null };
-const newPaymentMethod = (): PaymentMethodDraft => ({
-  id: crypto.randomUUID(),
-  providerName: "",
-  accountTitle: "",
-  accountNumber: "",
-  qrUrl: null,
-  qrFile: null,
-});
-
-async function completePaymentMethods(methods: PaymentMethodDraft[]) {
-  const completedMethods: PaymentMethod[] = [];
-  for (const method of methods) {
-    let qrUrl = method.qrUrl;
-    if (method.qrFile && method.qrFile.size > 0) {
-      const prepared = await prepareContentUpload(method.qrFile, {
-        allowedKinds: ["image"],
-        maximumBytes: 2 * 1024 * 1024,
-      });
-      const signatureResponse = await fetch(
-        "/api/institution/public-site/images",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "signature" }),
-        },
-      );
-      const signature = await signatureResponse.json();
-      if (!signatureResponse.ok) {
-        throw new Error(signature.error || "Unable to prepare QR upload");
-      }
-      const upload = new FormData();
-      upload.append("file", prepared);
-      upload.append("api_key", signature.apiKey);
-      upload.append("timestamp", String(signature.timestamp));
-      upload.append("signature", signature.signature);
-      upload.append("folder", signature.folder);
-      upload.append("allowed_formats", signature.allowedFormats);
-      upload.append("type", signature.type);
-      const uploadResponse = await fetch(
-        `https://api.cloudinary.com/v1_1/${signature.cloudName}/image/upload`,
-        { method: "POST", body: upload },
-      );
-      const uploaded = await uploadResponse.json();
-      if (!uploadResponse.ok) {
-        throw new Error(uploaded.error?.message || "QR upload failed");
-      }
-      const completeResponse = await fetch(
-        "/api/institution/public-site/images",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "complete",
-            publicId: uploaded.public_id,
-            format: uploaded.format,
-            resourceType: uploaded.resource_type,
-          }),
-        },
-      );
-      const completed = await completeResponse.json();
-      if (!completeResponse.ok) {
-        throw new Error(completed.error || "QR upload could not be verified");
-      }
-      qrUrl = completed.url;
-    }
-    completedMethods.push({
-      id: method.id,
-      providerName: method.providerName,
-      accountTitle: method.accountTitle,
-      accountNumber: method.accountNumber,
-      qrUrl,
-    });
-  }
-  return completedMethods;
-}
 
 type Offering = {
   id: number;
@@ -171,12 +83,8 @@ export function AdmissionsManager({
     kind: "success" | "error";
     text: string;
   } | null>(null);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDraft[]>([
-    newPaymentMethod(),
-  ]);
   const [cyclePendingRemoval, setCyclePendingRemoval] = useState<Cycle | null>(null);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
-  const [editPaymentMethods, setEditPaymentMethods] = useState<PaymentMethodDraft[]>([]);
   const [editingOffering, setEditingOffering] = useState<Offering | null>(null);
   const [offeringPendingRemoval, setOfferingPendingRemoval] = useState<Offering | null>(null);
 
@@ -245,19 +153,6 @@ export function AdmissionsManager({
       const value = String(data.get(name) || "").trim();
       return value ? new Date(value).toISOString() : "";
     };
-    let completedMethods: PaymentMethod[];
-    try {
-      setBusy(true);
-      completedMethods = await completePaymentMethods(paymentMethods);
-    } catch (error) {
-      setBusy(false);
-      setMessage({
-        kind: "error",
-        text:
-          error instanceof Error ? error.message : "Payment QR upload failed",
-      });
-      return;
-    }
     const saved = await send({
       action: "createCycle",
       name: data.get("name"),
@@ -276,31 +171,15 @@ export function AdmissionsManager({
       interviewInstructions: data.get("interviewInstructions"),
       admissionFeeAmount: Number(data.get("admissionFeeAmount")),
       admissionFeeDueDays: Number(data.get("admissionFeeDueDays")),
-      paymentMethods: completedMethods,
       admissionFeeInstructions: data.get("admissionFeeInstructions"),
     });
     if (saved) {
       form.reset();
-      setPaymentMethods([newPaymentMethod()]);
     }
   }
 
   function beginEditingCycle(cycle: Cycle) {
     setEditingCycle(cycle);
-    setEditPaymentMethods(
-      cycle.paymentMethods?.length
-        ? cycle.paymentMethods.map((method) => ({ ...method, qrFile: null }))
-        : [
-            {
-              id: crypto.randomUUID(),
-              providerName: cycle.paymentBankName || "",
-              accountTitle: "",
-              accountNumber: cycle.paymentAccountNumber || "",
-              qrUrl: cycle.paymentQrUrl,
-              qrFile: null,
-            },
-          ],
-    );
   }
 
   async function updateCycle(event: FormEvent<HTMLFormElement>) {
@@ -317,18 +196,6 @@ export function AdmissionsManager({
       const value = String(data.get(name) || "").trim();
       return value ? new Date(value).toISOString() : "";
     };
-    let completedMethods: PaymentMethod[];
-    try {
-      setBusy(true);
-      completedMethods = await completePaymentMethods(editPaymentMethods);
-    } catch (error) {
-      setBusy(false);
-      setMessage({
-        kind: "error",
-        text: error instanceof Error ? error.message : "Payment QR upload failed",
-      });
-      return;
-    }
     const saved = await send({
       action: "updateCycle",
       cycleId: editingCycle.id,
@@ -348,12 +215,10 @@ export function AdmissionsManager({
       interviewInstructions: data.get("interviewInstructions"),
       admissionFeeAmount: Number(data.get("admissionFeeAmount")),
       admissionFeeDueDays: Number(data.get("admissionFeeDueDays")),
-      paymentMethods: completedMethods,
       admissionFeeInstructions: data.get("admissionFeeInstructions"),
     });
     if (saved) {
       setEditingCycle(null);
-      setEditPaymentMethods([]);
     }
   }
 
@@ -605,138 +470,10 @@ export function AdmissionsManager({
                       </span>
                     </label>
                   </div>
-                  <div className="mt-5 space-y-4">
-                    {paymentMethods.map((method, index) => (
-                      <div
-                        key={method.id}
-                        className="rounded-lg border border-emerald-200 bg-white p-4"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <h4 className="text-sm font-semibold text-emerald-950">
-                            Payment method {index + 1}
-                          </h4>
-                          {paymentMethods.length > 1 && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                setPaymentMethods((current) =>
-                                  current.filter(
-                                    (item) => item.id !== method.id,
-                                  ),
-                                )
-                              }
-                            >
-                              <Trash2 className="h-4 w-4" /> Remove
-                            </Button>
-                          )}
-                        </div>
-                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                          <label className="text-xs font-semibold text-stone-600">
-                            Bank / wallet name
-                            <input
-                              required
-                              value={method.providerName}
-                              maxLength={120}
-                              onChange={(event) =>
-                                setPaymentMethods((current) =>
-                                  current.map((item) =>
-                                    item.id === method.id
-                                      ? {
-                                          ...item,
-                                          providerName: event.target.value,
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm font-normal"
-                              placeholder="Meezan Bank, Easypaisa, JazzCash"
-                            />
-                          </label>
-                          <label className="text-xs font-semibold text-stone-600">
-                            Account title / username
-                            <input
-                              required
-                              value={method.accountTitle}
-                              maxLength={160}
-                              onChange={(event) =>
-                                setPaymentMethods((current) =>
-                                  current.map((item) =>
-                                    item.id === method.id
-                                      ? {
-                                          ...item,
-                                          accountTitle: event.target.value,
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm font-normal"
-                              placeholder="Exact receiver name shown before payment"
-                            />
-                          </label>
-                          <label className="text-xs font-semibold text-stone-600">
-                            Account / IBAN / mobile number
-                            <input
-                              required
-                              value={method.accountNumber}
-                              maxLength={160}
-                              onChange={(event) =>
-                                setPaymentMethods((current) =>
-                                  current.map((item) =>
-                                    item.id === method.id
-                                      ? {
-                                          ...item,
-                                          accountNumber: event.target.value,
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="mt-1 w-full rounded-md border border-border px-3 py-2 font-mono text-sm font-normal"
-                            />
-                          </label>
-                          <label className="text-xs font-semibold text-stone-600">
-                            QR image (optional)
-                            <input
-                              type="file"
-                              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                              onChange={(event) =>
-                                setPaymentMethods((current) =>
-                                  current.map((item) =>
-                                    item.id === method.id
-                                      ? {
-                                          ...item,
-                                          qrFile:
-                                            event.target.files?.[0] || null,
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="mt-1 block w-full rounded-md border border-border px-3 py-2 text-xs font-normal"
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={paymentMethods.length >= 8}
-                      onClick={() =>
-                        setPaymentMethods((current) => [
-                          ...current,
-                          newPaymentMethod(),
-                        ])
-                      }
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add another payment method
-                    </Button>
-                  </div>
+                  <p className="mt-4 text-sm text-emerald-900">
+                    Applicants will see the online payment gateways enabled in{" "}
+                    <Link href="/institution/settings" className="font-medium underline">Settings → Payment Gateways</Link>.
+                  </p>
                   <label className="mt-4 block text-sm font-medium text-stone-700">
                     Additional payment note (optional)
                     <textarea
@@ -1070,7 +807,6 @@ export function AdmissionsManager({
         onOpenChange={(open) => {
           if (!open && !busy) {
             setEditingCycle(null);
-            setEditPaymentMethods([]);
           }
         }}
       >
@@ -1147,31 +883,17 @@ export function AdmissionsManager({
               </div>
 
               <section className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-5">
-                <h3 className="font-semibold text-emerald-950">Admission fee and payment methods</h3>
+                <h3 className="font-semibold text-emerald-950">Admission fee</h3>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <label className="text-sm font-medium text-stone-700">Amount (PKR)<input required name="admissionFeeAmount" type="number" min={1} max={100000000} defaultValue={editingCycle.admissionFeeAmount || ""} className="mt-1 w-full rounded-md border border-border bg-white px-3 py-2 font-normal" /></label>
                   <label className="text-sm font-medium text-stone-700">Payment deadline (days)<input required name="admissionFeeDueDays" type="number" min={1} max={90} defaultValue={editingCycle.admissionFeeDueDays} className="mt-1 w-full rounded-md border border-border bg-white px-3 py-2 font-normal" /></label>
                 </div>
-                <div className="mt-5 space-y-4">
-                  {editPaymentMethods.map((method, index) => (
-                    <div key={method.id} className="rounded-lg border border-emerald-200 bg-white p-4">
-                      <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold text-stone-800">Payment method {index + 1}</p>{editPaymentMethods.length > 1 && <Button type="button" size="sm" variant="outline" onClick={() => setEditPaymentMethods((current) => current.filter((item) => item.id !== method.id))}>Remove</Button>}</div>
-                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                        <input required value={method.providerName} onChange={(event) => setEditPaymentMethods((current) => current.map((item) => item.id === method.id ? { ...item, providerName: event.target.value } : item))} placeholder="Bank or wallet" className="rounded-md border border-border px-3 py-2 text-sm" />
-                        <input required value={method.accountTitle} onChange={(event) => setEditPaymentMethods((current) => current.map((item) => item.id === method.id ? { ...item, accountTitle: event.target.value } : item))} placeholder="Account title / username" className="rounded-md border border-border px-3 py-2 text-sm" />
-                        <input required value={method.accountNumber} onChange={(event) => setEditPaymentMethods((current) => current.map((item) => item.id === method.id ? { ...item, accountNumber: event.target.value } : item))} placeholder="Account / IBAN / mobile" className="rounded-md border border-border px-3 py-2 text-sm" />
-                      </div>
-                      <label className="mt-3 block text-xs font-medium text-stone-600">Replace payment QR (optional)<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" className="mt-1 block w-full text-sm" onChange={(event) => setEditPaymentMethods((current) => current.map((item) => item.id === method.id ? { ...item, qrFile: event.target.files?.[0] || null } : item))} /></label>
-                      {method.qrUrl && !method.qrFile && <p className="mt-2 text-xs text-emerald-700">Current QR will be retained.</p>}
-                    </div>
-                  ))}
-                  <Button type="button" variant="outline" onClick={() => setEditPaymentMethods((current) => current.length >= 8 ? current : [...current, newPaymentMethod()])} disabled={editPaymentMethods.length >= 8}><Plus className="mr-2 h-4 w-4" /> Add payment method</Button>
-                </div>
+                <p className="mt-4 text-sm text-emerald-900">Online payment options come from <Link href="/institution/settings" className="font-medium underline">Settings → Payment Gateways</Link>.</p>
                 <label className="mt-4 block text-sm font-medium text-stone-700">Additional payment note<textarea name="admissionFeeInstructions" maxLength={1000} rows={2} defaultValue={editingCycle.admissionFeeInstructions || ""} className="mt-1 w-full rounded-md border border-border bg-white px-3 py-2 font-normal" /></label>
               </section>
 
               <div className="sticky bottom-0 flex justify-end gap-2 border-t border-stone-200 bg-white py-4">
-                <Button type="button" variant="outline" disabled={busy} onClick={() => { setEditingCycle(null); setEditPaymentMethods([]); }}>Cancel</Button>
+                <Button type="button" variant="outline" disabled={busy} onClick={() => setEditingCycle(null)}>Cancel</Button>
                 <Button type="submit" disabled={busy}>{busy ? "Saving..." : "Save admission information"}</Button>
               </div>
             </form>

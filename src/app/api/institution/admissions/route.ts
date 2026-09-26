@@ -55,10 +55,10 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
         admissionFeeAmount: action.admissionFeeAmount,
         admissionFeeDueDays: action.admissionFeeDueDays,
         admissionFeeInstructions: action.admissionFeeInstructions,
-        paymentMethods: action.paymentMethods,
-        paymentBankName: action.paymentMethods[0]?.providerName || null,
-        paymentAccountNumber: action.paymentMethods[0]?.accountNumber || null,
-        paymentQrUrl: action.paymentMethods[0]?.qrUrl || null,
+        paymentMethods: [],
+        paymentBankName: null,
+        paymentAccountNumber: null,
+        paymentQrUrl: null,
       }).returning();
       await logAudit({ institutionId, actorId: session.userId, actorRole: session.role, action: 'CREATE_ADMISSION_CYCLE', target: `Admission cycle ${cycle.id}`, ip: getClientIp(req) });
       return NextResponse.json({ cycle }, { status: 201 });
@@ -90,10 +90,10 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
         admissionFeeAmount: action.admissionFeeAmount,
         admissionFeeDueDays: action.admissionFeeDueDays,
         admissionFeeInstructions: action.admissionFeeInstructions,
-        paymentMethods: action.paymentMethods,
-        paymentBankName: action.paymentMethods[0]?.providerName || null,
-        paymentAccountNumber: action.paymentMethods[0]?.accountNumber || null,
-        paymentQrUrl: action.paymentMethods[0]?.qrUrl || null,
+        paymentMethods: [],
+        paymentBankName: null,
+        paymentAccountNumber: null,
+        paymentQrUrl: null,
         updatedAt: new Date(),
       }).where(and(
         eq(admissionCycles.id, existing.id),
