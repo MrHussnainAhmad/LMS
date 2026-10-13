@@ -1,9 +1,11 @@
 "use client";
+import { ActionForm } from '@/components/ui/action-form';
 
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { displaySectionName } from "@/lib/class-section-label";
 
 interface ClassOption { id: number; name: string }
 interface SectionOption { id: number; classId: number; name: string }
@@ -18,15 +20,15 @@ export function AnnouncementFormClient({
   campuses: CampusOption[];
   classes: ClassOption[];
   sections: SectionOption[];
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<unknown>;
 }) {
   const [targetType, setTargetType] = useState<string>("ALL");
   const [selectedCampusId, setSelectedCampusId] = useState<string>("");
   const [selectedClassId, setSelectedClassId] = useState<string>("");
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
 
-  const filteredSections = selectedClassId 
-    ? sections.filter(s => s.classId === parseInt(selectedClassId)) 
+  const filteredSections = selectedClassId
+    ? sections.filter(s => s.classId === parseInt(selectedClassId) && displaySectionName(s.name))
     : [];
 
   return (
@@ -38,9 +40,9 @@ export function AnnouncementFormClient({
         </CardTitle>
       </CardHeader>
       <CardContent className="p-6">
-        <form action={action} className="space-y-4">
+        <ActionForm action={action} className="space-y-4 pt-2">
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-1">Message Title</label>
+            <label className="mb-2 block text-sm font-medium text-stone-700">Message Title</label>
             <input
               type="text"
               name="title"
@@ -90,9 +92,9 @@ export function AnnouncementFormClient({
           {(targetType === "CLASS" || targetType === "SECTION") && (
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1">Select Class</label>
-              <select 
-                name="targetClassId" 
-                required 
+              <select
+                name="targetClassId"
+                required
                 value={selectedClassId}
                 onChange={(e) => {
                   setSelectedClassId(e.target.value);
@@ -117,7 +119,7 @@ export function AnnouncementFormClient({
                 className="w-full rounded-md border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="">Choose Section...</option>
-                {filteredSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {filteredSections.map(s => <option key={s.id} value={s.id}>{displaySectionName(s.name)}</option>)}
               </select>
             </div>
           )}
@@ -137,7 +139,7 @@ export function AnnouncementFormClient({
           >
             Send Announcement
           </SubmitButton>
-        </form>
+        </ActionForm>
       </CardContent>
     </Card>
   );

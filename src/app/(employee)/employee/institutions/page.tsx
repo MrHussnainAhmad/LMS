@@ -1,39 +1,83 @@
+import { positiveInteger } from "@/lib/pagination";
+import { ServerPagination } from "@/components/ui/server-pagination";
+import { actionFeedback } from '@/lib/action-feedback';
+import { ActionForm } from '@/components/ui/action-form';
 import { db } from "@/db";
 import { institutions } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Building2, FileSearch } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { updateInstitutionStatusAction, deleteInstitutionAction } from "@/app/actions/employee-actions";
+import { updateInstitutionStatusAction } from "@/app/actions/employee-actions";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
 
-export default async function EmployeeVerificationQueuePage() {
+const STATUS_FILTERS = [
+  { value: "PENDING", label: "Pending" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "REJECTED", label: "Rejected" },
+  { value: "ALL", label: "All" },
+] as const;
+type StatusFilter = typeof STATUS_FILTERS[number]["value"];
+
+export default async function EmployeeVerificationQueuePage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string }> }) {
+  const resolvedSearchParams = await searchParams;
+  const page = positiveInteger(resolvedSearchParams.page);
   const session = await getSession();
   if (!session || session.role !== "EMPLOYEE") {
     redirect("/login");
   }
 
-  const allInstitutions = await db.select()
+  const status: StatusFilter = STATUS_FILTERS.some((f) => f.value === resolvedSearchParams.status)
+    ? (resolvedSearchParams.status as StatusFilter)
+    : "PENDING";
+
+  // Default to PENDING applications only — the queue employees actually need to
+  // act on — instead of loading every institution regardless of status.
+  const institutionRows = await db.select({
+    id: institutions.id,
+    name: institutions.name,
+    username: institutions.username,
+    type: institutions.type,
+    pricingPlan: institutions.pricingPlan,
+    city: institutions.city,
+    country: institutions.country,
+    status: institutions.status,
+    createdAt: institutions.createdAt,
+  })
     .from(institutions)
-    .orderBy(desc(institutions.createdAt));
+    .where(and(isNull(institutions.parentInstitutionId), status === "ALL" ? undefined : eq(institutions.status, status)))
+    .orderBy(desc(institutions.createdAt), desc(institutions.id)).limit(51).offset((page - 1) * 50);
+  const allInstitutions = institutionRows.slice(0, 50);
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-brand-950">Institutions Queue</h1>
-          <p className="text-stone-500 mt-1">Review, verify, and manage institution applications.</p>
-        </div>
-      </div>
 
       <Card>
         <CardHeader className="border-b border-border bg-stone-50/50">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-brand-600" />
-            All Applications
-          </CardTitle>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-brand-600" />
+              Applications
+            </CardTitle>
+            <div className="flex gap-1 rounded-md bg-stone-100 p-1">
+              {STATUS_FILTERS.map((f) => (
+                <Link
+                  key={f.value}
+                  href={f.value === "PENDING" ? "/employee/institutions" : `/employee/institutions?status=${f.value}`}
+                  prefetch={false}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    status === f.value ? "bg-white text-brand-900 shadow-sm" : "text-stone-600 hover:text-brand-800"
+                  )}
+                >
+                  {f.label}
+                </Link>
+              ))}
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -42,6 +86,7 @@ export default async function EmployeeVerificationQueuePage() {
                 <tr>
                   <th className="px-6 py-4 font-medium">Institution Name</th>
                   <th className="px-6 py-4 font-medium">Type</th>
+                  <th className="px-6 py-4 font-medium">Plan</th>
                   <th className="px-6 py-4 font-medium">Location</th>
                   <th className="px-6 py-4 font-medium">Status</th>
                   <th className="px-6 py-4 font-medium">Submitted At</th>
@@ -51,7 +96,7 @@ export default async function EmployeeVerificationQueuePage() {
               <tbody className="divide-y divide-border">
                 {allInstitutions.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center">
+                    <td colSpan={7} className="px-6 py-6 sm:py-12 text-center">
                       <div className="flex flex-col items-center justify-center text-stone-500">
                         <FileSearch className="h-10 w-10 text-stone-300 mb-3" />
                         <p className="text-base font-medium text-stone-600">No Applications</p>
@@ -62,8 +107,23 @@ export default async function EmployeeVerificationQueuePage() {
                 )}
                 {allInstitutions.map((inst) => (
                   <tr key={inst.id} className="hover:bg-stone-50/50 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-brand-950">{inst.name}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded bg-brand-100 text-brand-800 flex items-center justify-center font-bold text-xs">
+                          {inst.name.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <Link href={`/employee/institutions/${inst.id}`} prefetch={false} className="font-semibold text-brand-950 hover:underline">
+                            {inst.name}
+                          </Link>
+                          <p className="text-xs text-stone-500">{inst.username}</p>
+                        </div>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-stone-600">{inst.type}</td>
+                    <td className="px-6 py-4 text-stone-600 font-medium">
+                      {inst.pricingPlan ?? "Not selected"}
+                    </td>
                     <td className="px-6 py-4 text-stone-600">{inst.city}, {inst.country}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-md text-xs font-bold ${
@@ -81,61 +141,27 @@ export default async function EmployeeVerificationQueuePage() {
                       <div className="flex flex-wrap items-center gap-2">
                         {inst.status === "PENDING" && (
                           <>
-                            <form action={async () => {
+                            <ActionForm action={async () => {
                               "use server";
+    return actionFeedback(async () => {
                               await updateInstitutionStatusAction(inst.id, "APPROVED");
-                            }}>
+
+    });
+  }}>
                               <SubmitButton className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-3 py-1 text-xs font-medium">Accept</SubmitButton>
-                            </form>
-                            <form action={async () => {
+                            </ActionForm>
+                            <ActionForm action={async () => {
                               "use server";
+    return actionFeedback(async () => {
                               await updateInstitutionStatusAction(inst.id, "REJECTED");
-                            }}>
+
+    });
+  }}>
                               <SubmitButton className="bg-rose-600 hover:bg-rose-700 text-white rounded-md px-3 py-1 text-xs font-medium">Reject</SubmitButton>
-                            </form>
+                            </ActionForm>
                           </>
                         )}
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <button className="bg-stone-200 hover:bg-stone-300 text-stone-800 rounded-md px-3 py-1 text-xs font-medium transition-colors">
-                              Delete
-                            </button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle className="text-rose-600">Delete Institution</DialogTitle>
-                            </DialogHeader>
-                            <form action={async (formData) => {
-                                "use server";
-                                await deleteInstitutionAction(inst.id, String(formData.get("confirmationName") || ""));
-                              }}>
-                              <div className="py-4">
-                                <p className="text-sm text-stone-600">
-                                  Are you absolutely sure you want to delete <strong>{inst.name}</strong>? This action cannot be undone and will permanently remove this institution and all its associated data from the platform.
-                                </p>
-                                <label className="mt-4 block text-sm font-medium text-stone-700">
-                                  Type institution name to confirm
-                                  <input
-                                    name="confirmationName"
-                                    required
-                                    className="mt-2 w-full rounded-md border border-border px-3 py-2 text-sm"
-                                    placeholder={inst.name}
-                                  />
-                                </label>
-                              </div>
-                              <div className="flex justify-end gap-3">
-                                <DialogClose asChild>
-                                  <button type="button" className="bg-white border border-border text-stone-700 hover:bg-stone-50 rounded-md px-4 py-2 text-sm font-medium transition-colors">
-                                    Cancel
-                                  </button>
-                                </DialogClose>
-                                <SubmitButton className="bg-rose-600 hover:bg-rose-700 text-white rounded-md px-4 py-2 text-sm font-medium">
-                                  Yes, Delete
-                                </SubmitButton>
-                              </div>
-                            </form>
-                          </DialogContent>
-                        </Dialog>
+
                       </div>
                     </td>
                   </tr>
@@ -145,6 +171,7 @@ export default async function EmployeeVerificationQueuePage() {
           </div>
         </CardContent>
       </Card>
+      <ServerPagination page={page} hasMore={institutionRows.length > 50} params={{ status }} />
     </div>
   );
 }

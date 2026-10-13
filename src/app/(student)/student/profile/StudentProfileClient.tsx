@@ -9,6 +9,7 @@ import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { BookOpen, CheckCircle2, KeyRound, Send, UserRound } from "lucide-react";
 import { ProfilePictureUploader } from "@/components/ProfilePictureUploader";
+import { displaySectionName } from "@/lib/class-section-label";
 
 type ProfileRequest = {
   id: number;
@@ -27,12 +28,13 @@ type StudentProfile = {
   phone: string | null;
   loginRollNumber: string;
   classRollNumber: string;
+  academicStatus: "ACTIVE" | "GRADUATED";
   age?: number | null;
   profilePictureUrl?: string | null;
   emergencyContact?: string | null;
   parentalWhatsapp?: string | null;
-  classId: number;
-  sectionId: number;
+  classId: number | null;
+  sectionId: number | null;
   className: string;
   sectionName: string;
 };
@@ -71,6 +73,7 @@ export function StudentProfileClient({
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const isGraduated = student.academicStatus === "GRADUATED";
   const [isSavingFatherName, setIsSavingFatherName] = useState(false);
   const [isSendingRequest, setIsSendingRequest] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -145,127 +148,130 @@ export function StudentProfileClient({
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-display font-bold text-brand-950">Profile & Settings</h1>
-        <p className="text-stone-500 mt-1">View your student record, request corrections, and update your password.</p>
-      </div>
+    <div className="flex min-w-0 flex-col gap-6 animate-fade-in">
 
-      <Card>
-        <CardContent className="p-6">
-          <ProfilePictureUploader 
-            currentPictureUrl={student.profilePictureUrl} 
-            name={student.firstName + " " + (student.lastName || "")} 
-            apiEndpoint="/api/student/profile" 
-          />
-        </CardContent>
-      </Card>
+      {!isGraduated && (
+        <Card className="min-w-0 overflow-hidden">
+          <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">
+            <ProfilePictureUploader
+              currentPictureUrl={student.profilePictureUrl}
+              name={student.firstName + " " + (student.lastName || "")}
+              apiEndpoint="/api/student/profile"
+            />
+          </CardContent>
+        </Card>
+      )}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        <div className="space-y-6">
-          <Card>
+      <div className={isGraduated ? "flex min-w-0 flex-col gap-6" : "grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]"}>
+        <div className="flex min-w-0 flex-col gap-6">
+          <Card className="min-w-0 overflow-hidden">
             <CardHeader className="border-b border-border bg-stone-50/70">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <UserRound className="h-5 w-5 text-brand-700" />
+              <CardTitle className="flex items-start gap-2 text-base leading-6">
+                <UserRound className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" />
                 Student Profile
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
-              <div className="grid gap-4 md:grid-cols-2">
+            <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2">
                 <ReadOnlyField label="First Name" value={student.firstName} />
                 <ReadOnlyField label="Last Name" value={student.lastName || "-"} />
                 <ReadOnlyField label="Age" value={student.age ? String(student.age) : "Not added"} />
                 <ReadOnlyField label="Emergency Contact" value={student.emergencyContact || "Not added"} />
                 <ReadOnlyField label="Parental Whatsapp" value={student.parentalWhatsapp || "Not added"} />
-                <ReadOnlyField label="Roll Number" value={student.classRollNumber} />
+                <ReadOnlyField label="Roll Number" value={student.academicStatus === "GRADUATED" ? "Graduated" : student.classRollNumber} />
                 <ReadOnlyField label="Login ID" value={student.loginRollNumber} />
+                <ReadOnlyField label="Academic Status" value={student.academicStatus === "GRADUATED" ? "Graduated" : "Active"} />
                 <ReadOnlyField label="Class" value={student.className} />
-                <ReadOnlyField label="Section" value={student.sectionName} />
+                {displaySectionName(student.sectionName) && (
+                  <ReadOnlyField label="Section" value={displaySectionName(student.sectionName)} />
+                )}
                 <ReadOnlyField label="Father Name" value={student.fatherName || "Not added"} />
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="border-b border-border bg-stone-50/70">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Send className="h-5 w-5 text-brand-700" />
-                Request Profile Correction
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <form onSubmit={handleRequest} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Field label="First Name">
-                    <Input name="firstName" placeholder={student.firstName} />
+          {!isGraduated && (
+            <Card className="min-w-0 overflow-hidden">
+              <CardHeader className="border-b border-border bg-stone-50/70">
+                <CardTitle className="flex items-start gap-2 text-base leading-6">
+                  <Send className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" />
+                  Request Profile Correction
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">
+                <form onSubmit={handleRequest} className="space-y-5 text-left">
+                  <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                    <Field label="First Name">
+                      <Input name="firstName" placeholder={student.firstName} />
+                    </Field>
+                    <Field label="Last Name">
+                      <Input name="lastName" placeholder={student.lastName || "Last name"} />
+                    </Field>
+                    <Field label="Father Name">
+                      <Input name="fatherName" placeholder={student.fatherName || "Father name"} />
+                    </Field>
+                    <Field label="Class">
+                      <select
+                        name="classId"
+                        className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring"
+                        value={requestClassId}
+                        onChange={(event) => setRequestClassId(event.target.value)}
+                      >
+                        <option value="">No class change</option>
+                        {classes.map((classRow) => (
+                          <option key={classRow.id} value={classRow.id}>{classRow.name}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Section">
+                      <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
+                        <option value="">No section change</option>
+                        {filteredSections.filter((section) => displaySectionName(section.name)).map((section) => (
+                          <option key={section.id} value={section.id}>{displaySectionName(section.name)}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                  <Field label="Reason">
+                    <textarea
+                      name="reason"
+                      required
+                      minLength={10}
+                      rows={4}
+                      className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring"
+                      placeholder="Explain what needs to be corrected and why."
+                    />
                   </Field>
-                  <Field label="Last Name">
-                    <Input name="lastName" placeholder={student.lastName || "Last name"} />
-                  </Field>
-                  <Field label="Father Name">
-                    <Input name="fatherName" placeholder={student.fatherName || "Father name"} />
-                  </Field>
-                  <Field label="Class">
-                    <select
-                      name="classId"
-                      className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring"
-                      value={requestClassId}
-                      onChange={(event) => setRequestClassId(event.target.value)}
-                    >
-                      <option value="">No class change</option>
-                      {classes.map((classRow) => (
-                        <option key={classRow.id} value={classRow.id}>{classRow.name}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Section">
-                    <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
-                      <option value="">No section change</option>
-                      {filteredSections.map((section) => (
-                        <option key={section.id} value={section.id}>{section.name}</option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
-                <Field label="Reason">
-                  <textarea
-                    name="reason"
-                    required
-                    minLength={10}
-                    rows={4}
-                    className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring"
-                    placeholder="Explain what needs to be corrected and why."
-                  />
-                </Field>
-                <Button type="submit" disabled={isSendingRequest} className="gap-2">
-                  <Send className="h-4 w-4" />
-                  {isSendingRequest ? "Sending..." : "Send Request"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                  <Button type="submit" disabled={isSendingRequest} className="gap-2">
+                    <Send className="h-4 w-4" />
+                    {isSendingRequest ? "Sending..." : "Send Request"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )}
 
-          <Card>
+          <Card className="min-w-0 overflow-hidden">
             <CardHeader className="border-b border-border bg-stone-50/70">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <BookOpen className="h-5 w-5 text-brand-700" />
+              <CardTitle className="flex items-start gap-2 text-base leading-6">
+                <BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" />
                 Request History
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 sm:p-0">
               {requests.length === 0 ? (
-                <p className="p-6 text-sm text-stone-500">No profile correction requests yet.</p>
+                <p className="p-5 text-sm leading-6 text-stone-500 sm:p-6">No profile correction requests yet.</p>
               ) : (
                 <div className="divide-y divide-border">
                   {requests.map((request) => (
-                    <div key={request.id} className="p-5">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div key={request.id} className="min-w-0 p-5 sm:p-6">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <p className="font-semibold text-brand-950">
+                          <p className="text-sm font-semibold leading-6 text-brand-950 [overflow-wrap:anywhere]">
                             {formatRequestedFields(request.requestedFields, classes, sections)}
                           </p>
-                          <p className="mt-1 text-sm text-stone-500">{request.reason}</p>
-                          {request.adminNote && <p className="mt-2 text-sm text-stone-600">Admin note: {request.adminNote}</p>}
+                          <p className="mt-1 text-sm leading-6 text-stone-500 [overflow-wrap:anywhere]">{request.reason}</p>
+                          {request.adminNote && <p className="mt-2 text-sm leading-6 text-stone-600 [overflow-wrap:anywhere]">Admin note: {request.adminNote}</p>}
                         </div>
                         <StatusBadge status={request.status} />
                       </div>
@@ -278,16 +284,16 @@ export function StudentProfileClient({
           </Card>
         </div>
 
-        <div className="space-y-6">
-          <Card>
+        {!isGraduated && <div className="flex min-w-0 flex-col gap-6">
+          <Card className="min-w-0 overflow-hidden">
             <CardHeader className="border-b border-border bg-stone-50/70">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <CheckCircle2 className="h-5 w-5 text-brand-700" />
+              <CardTitle className="flex items-start gap-2 text-base leading-6">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" />
                 Contact Information
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
-              <form onSubmit={handleContactInfo} className="space-y-4">
+            <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">
+              <form onSubmit={handleContactInfo} className="space-y-5 text-left">
                 <Field label="Father Name">
                   <Input name="fatherName" defaultValue={student.fatherName || ""} required />
                 </Field>
@@ -307,15 +313,15 @@ export function StudentProfileClient({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="min-w-0 overflow-hidden">
             <CardHeader className="border-b border-border bg-stone-50/70">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <KeyRound className="h-5 w-5 text-brand-700" />
+              <CardTitle className="flex items-start gap-2 text-base leading-6">
+                <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" />
                 Update Password
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
-              <form onSubmit={handlePassword} className="space-y-4">
+            <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">
+              <form onSubmit={handlePassword} className="space-y-5 text-left">
                 <Field label="Current Password">
                   <Input name="currentPassword" type="password" required />
                 </Field>
@@ -328,7 +334,7 @@ export function StudentProfileClient({
               </form>
             </CardContent>
           </Card>
-        </div>
+        </div>}
       </div>
     </div>
   );
@@ -336,16 +342,16 @@ export function StudentProfileClient({
 
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border bg-stone-50/60 px-4 py-3">
+    <div className="min-w-0 rounded-md border border-border bg-stone-50/60 px-4 py-3">
       <p className="text-xs font-medium uppercase tracking-wider text-stone-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-brand-950">{value}</p>
+      <p className="mt-2 text-sm font-semibold leading-6 text-brand-950 [overflow-wrap:anywhere]">{value}</p>
     </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block space-y-1.5">
+    <label className="flex min-w-0 flex-col gap-2 text-left">
       <span className="text-sm font-medium text-stone-700">{label}</span>
       {children}
     </label>
@@ -360,7 +366,7 @@ function StatusBadge({ status }: { status: ProfileRequest["status"] }) {
       : "bg-warning/20 text-yellow-700";
 
   return (
-    <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-bold ${className}`}>
+    <span className={`w-fit shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${className}`}>
       {status}
     </span>
   );

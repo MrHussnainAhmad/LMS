@@ -1,28 +1,32 @@
-"use client";
+import { getSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { StudentShell } from "./StudentShell";
+import { getShellBrandForSession } from "@/lib/shell-brand";
+import { getInstitutionCourseStreamingHint } from "@/lib/course-streaming";
 
-import { AppShell } from "@/components/layout/AppShell";
-import { LayoutDashboard, CalendarDays, FileText, CheckSquare, UploadCloud, CalendarCheck, FileQuestion, Megaphone } from "lucide-react";
-
-const SIDEBAR_ITEMS = [
-  { label: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard },
-  { label: "Announcements", href: "/student/announcements", icon: Megaphone },
-  { label: "Timetable", href: "/student/timetable", icon: CalendarDays },
-  { label: "Exam Timetable", href: "/student/exams", icon: CalendarCheck, availabilityKey: "examTimetable" as const },
-  { label: "Tests", href: "/student/tests", icon: FileQuestion, availabilityKey: "studentTests" as const },
-  { label: "Attendance", href: "/student/attendance", icon: CheckSquare },
-  { label: "Marks", href: "/student/marks", icon: FileText },
-  { label: "Transcripts", href: "/student/transcripts", icon: FileText },
-  { label: "Submissions", href: "/student/submissions", icon: UploadCloud },
-];
-
-export default function StudentLayout({
+export default async function StudentLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT") redirect("/login");
+  const institutionId = session.institutionId;
+  const [brand, coursesEnabled] = await Promise.all([
+    getShellBrandForSession(session),
+    institutionId
+      ? getInstitutionCourseStreamingHint(institutionId)
+      : Promise.resolve(false),
+  ]);
   return (
-    <AppShell sidebarItems={SIDEBAR_ITEMS} userRole="STUDENT">
+    <StudentShell
+      isGraduated={session.studentAcademicStatus === "GRADUATED"}
+      userId={session.userId}
+      institutionId={institutionId}
+      initialBrand={brand}
+      coursesEnabled={coursesEnabled}
+    >
       {children}
-    </AppShell>
+    </StudentShell>
   );
 }

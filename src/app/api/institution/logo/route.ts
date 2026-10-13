@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { institutions } from "@/db/schema";
-import { requireRole } from "@/lib/rbac";
+import { getTenantContext, requireRole } from "@/lib/rbac";
 import { eq } from "drizzle-orm";
 import cloudinary from "@/lib/cloudinary";
+import { ownsUploadPublicId } from "@/lib/upload-ownership";
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_FORMATS = new Set(["jpg", "jpeg", "png", "webp"]);
 
-export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { session }) => {
+export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   const body = await req.json();
   const publicId = typeof body.publicId === "string" ? body.publicId.trim() : "";
 
-  if (!publicId || !publicId.startsWith("lms-uploads/")) {
+  if (!publicId || !ownsUploadPublicId(session, publicId)) {
     return NextResponse.json({ error: "Uploaded logo is required" }, { status: 400 });
   }
 
@@ -25,7 +26,16 @@ export const PATCH = requireRole(["INSTITUTION"], async (req: NextRequest, { ses
 
   await db.update(institutions)
     .set({ logoKey: resource.secure_url })
-    .where(eq(institutions.id, session.userId));
+    .where(eq(institutions.id, getTenantContext(session)));
+
+  try {
+    const { redis } = await import("@/lib/redis");
+    if (redis.status === "ready") {
+      await redis.del(`cache:brand:${getTenantContext(session)}`);
+    }
+  } catch {
+    // Brand cache miss is acceptable until TTL
+  }
 
   return NextResponse.json({ message: "Institution logo updated" });
 });

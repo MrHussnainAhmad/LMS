@@ -1,10 +1,9 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { db } from "@/db";
 import { batchExamResults, batchExamSubjects, batchExams, subjects, institutions } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PrintButton } from "./PrintButton";
@@ -42,7 +41,7 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
   const signatureKey = institution?.signatureKey;
 
   if (rawResults.length === 0) {
-    return <div className="p-8 text-center text-stone-500">Transcript not found or unavailable.</div>;
+    return <div className="p-4 sm:p-8 text-center text-stone-500">Transcript not found or unavailable.</div>;
   }
 
   // Security Check: Make sure it's fully published
@@ -50,7 +49,7 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
   const allPublished = rawResults.every(r => r.isPublished || now > r.reviewDeadline);
   if (!allPublished) {
     return (
-      <div className="p-8 text-center text-amber-600 bg-amber-50 rounded-lg max-w-xl mx-auto mt-8 border border-amber-200">
+      <div className="p-4 sm:p-8 text-center text-amber-600 bg-amber-50 rounded-lg max-w-xl mx-auto mt-8 border border-amber-200">
         This transcript is still pending review from some teachers and is not yet available.
       </div>
     );
@@ -63,8 +62,8 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-12">
-      <div className="flex items-center justify-between print:hidden">
-        <Link href="/student/transcripts">
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <Link href="/student/transcripts" prefetch={false}>
           <Button variant="ghost" size="sm" className="gap-2">
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
@@ -73,7 +72,7 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
       </div>
 
       {/* Transcript Document Container */}
-      <div className="bg-white border border-stone-200 shadow-sm p-8 md:p-12 print:shadow-none print:border-none print:p-0">
+      <div className="print-document bg-white border border-stone-200 shadow-sm p-4 sm:p-8 md:p-12 print:shadow-none print:border-none print:p-0">
         
         {/* Header Section */}
         <div className="border-b-2 border-stone-800 pb-6 mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -90,8 +89,8 @@ export default async function TranscriptDetailsPage({ params }: { params: Promis
         </div>
 
         {/* Results Table */}
-        <div className="mb-10">
-          <table className="w-full text-left border-collapse">
+        <div className="mb-10 overflow-x-auto">
+          <table className="w-full min-w-[540px] border-collapse text-left">
             <thead>
               <tr className="border-b-2 border-stone-300 text-stone-900">
                 <th className="py-3 px-2 font-semibold">Subject</th>

@@ -21,27 +21,32 @@ type RecordData = {
   submissions: { createdAt: string }[];
 };
 
-export function StudentAnalytics({ data }: { data: RecordData }) {
-  const chartData = useMemo(() => {
-    const monthsMap: Record<string, any> = {};
+type ChartMonth = {
+  name: string;
+  key: string;
+  totalDays: number;
+  presentDays: number;
+  marksAvg: number;
+  testsCount: number;
+  marksPercentage: number;
+  submissionsCount: number;
+};
 
-    // Get last 6 months to display
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const mStr = d.toLocaleString("default", { month: "short", year: "2-digit" });
-      const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      monthsMap[mKey] = {
-        name: mStr,
-        key: mKey,
+export function StudentAnalytics({ data, month }: { data: RecordData; month: string }) {
+  const chartData = useMemo(() => {
+    const monthDate = new Date(`${month}-01T00:00:00`);
+    const monthsMap: Record<string, ChartMonth> = {
+      [month]: {
+        name: monthDate.toLocaleString("default", { month: "short", year: "2-digit" }),
+        key: month,
         totalDays: 0,
         presentDays: 0,
         marksAvg: 0,
         testsCount: 0,
         marksPercentage: 0,
         submissionsCount: 0,
-      };
-    }
+      },
+    };
 
     data.attendances.forEach((a) => {
       const key = a.date.substring(0, 7); // YYYY-MM
@@ -68,13 +73,13 @@ export function StudentAnalytics({ data }: { data: RecordData }) {
       }
     });
 
-    return Object.values(monthsMap).map((m: any) => ({
+    return Object.values(monthsMap).map((m) => ({
       name: m.name,
       attendanceRate: m.totalDays > 0 ? Math.round((m.presentDays / m.totalDays) * 100) : 0,
       marksAvg: m.testsCount > 0 ? Math.round(m.marksAvg / m.testsCount) : 0,
       submissions: m.submissionsCount,
     }));
-  }, [data]);
+  }, [data, month]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-6 print:hidden">

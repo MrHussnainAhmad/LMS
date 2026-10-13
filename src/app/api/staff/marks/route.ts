@@ -1,143 +1,86 @@
+import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { tests, classes, sections, subjects, staffAssignments, students, marks } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, isNull, or } from "drizzle-orm";
+import { invalidateInstitutionRosterCaches } from "@/lib/redis";
 
 export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const assignedSlotsRaw = await db.select({
-      sectionId: sections.id,
-      sectionName: sections.name,
-      classId: classes.id,
-      className: classes.name,
-      subjectId: subjects.id,
-      subjectName: subjects.name,
-    })
-      .from(staffAssignments)
+    const instId = session.institutionId!;
+    const staffId = session.userId;
+    const view = req.nextUrl.searchParams.get("view");
+    const sectionIdParam = req.nextUrl.searchParams.get("sectionId");
+    const testIdParam = req.nextUrl.searchParams.get("testId");
+
+    if (!view && !sectionIdParam && !testIdParam) {
+      return NextResponse.json({
+        error: "Scoped query required. Use ?view=metadata or ?sectionId=… (optional &testId=…).",
+      }, { status: 400 });
+    }
+    if (view && view !== "metadata") return NextResponse.json({ error: "Invalid view" }, { status: 400 });
+    if (testIdParam && !sectionIdParam) return NextResponse.json({ error: "sectionId is required with testId" }, { status: 400 });
+
+    const assignedSlots = await db.select({
+      sectionId: sections.id, sectionName: sections.name, classId: classes.id, className: classes.name,
+      subjectId: subjects.id, subjectName: subjects.name,
+    }).from(staffAssignments)
       .innerJoin(sections, eq(staffAssignments.sectionId, sections.id))
       .innerJoin(classes, eq(sections.classId, classes.id))
       .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-      .where(and(eq(staffAssignments.staffId, session.userId), eq(staffAssignments.institutionId, session.institutionId)));
+      .where(and(eq(staffAssignments.staffId, staffId), eq(staffAssignments.institutionId, instId)));
+    const sectionOptions = Array.from(new Map(assignedSlots.map((slot) => [slot.sectionId, {
+      id: slot.sectionId, name: slot.sectionName, classId: slot.classId, className: slot.className,
+    }])).values());
+    const subjectOptions = Array.from(new Map(assignedSlots
+      .filter((slot) => slot.subjectId && slot.subjectName)
+      .map((slot) => [slot.subjectId!, { id: slot.subjectId!, name: slot.subjectName!, sectionId: slot.sectionId }])).values());
+    if (view === "metadata") return NextResponse.json({ sectionOptions, subjectOptions });
 
-    const sectionOptionsMap = new Map();
-    const subjectOptionsMap = new Map();
-    const classIds = new Set<number>();
-    const subjectIds = new Set<number>();
-
-    assignedSlotsRaw.forEach(slot => {
-      classIds.add(slot.classId);
-      if (slot.subjectId) subjectIds.add(slot.subjectId);
-
-      if (!sectionOptionsMap.has(slot.sectionId)) {
-        sectionOptionsMap.set(slot.sectionId, {
-          id: slot.sectionId,
-          className: slot.className,
-          name: slot.sectionName,
-          classId: slot.classId,
-        });
-      }
-
-      if (slot.subjectId && slot.subjectName) {
-        if (!subjectOptionsMap.has(slot.subjectId)) {
-          subjectOptionsMap.set(slot.subjectId, {
-            id: slot.subjectId,
-            name: slot.subjectName,
-            sectionId: slot.sectionId,
-          });
-        }
-      }
-    });
-
-    const allInstitutionTests = await db.select({
-      id: tests.id,
-      title: tests.title,
-      type: tests.type,
-      maxMarks: tests.maxMarks,
-      date: tests.date,
-      createdByRole: tests.createdByRole,
-      staffId: tests.staffId,
-      classId: tests.classId,
-      sectionId: tests.sectionId,
-      subjectId: tests.subjectId,
-      className: classes.name,
-      sectionName: sections.name,
-      subjectName: subjects.name,
-    })
-      .from(tests)
+    const sectionId = Number(sectionIdParam);
+    if (!Number.isInteger(sectionId) || sectionId <= 0) return NextResponse.json({ error: "Invalid sectionId" }, { status: 400 });
+    const sectionSlots = assignedSlots.filter((slot) => slot.sectionId === sectionId);
+    if (sectionSlots.length === 0) return NextResponse.json({ error: "You are not assigned to this section" }, { status: 403 });
+    const subjectIds = sectionSlots.flatMap((slot) => slot.subjectId ? [slot.subjectId] : []);
+    const classId = sectionSlots[0].classId;
+    if (subjectIds.length === 0) {
+      if (testIdParam) return NextResponse.json({ error: "Assessment not found in this section" }, { status: 404 });
+      return NextResponse.json({ tests: [], sectionOptions, subjectOptions });
+    }
+    const scopedTests = await db.select({
+      id: tests.id, title: tests.title, type: tests.type, maxMarks: tests.maxMarks, date: tests.date,
+      createdByRole: tests.createdByRole, staffId: tests.staffId, classId: tests.classId, sectionId: tests.sectionId,
+      subjectId: tests.subjectId, className: classes.name, sectionName: sections.name, subjectName: subjects.name,
+    }).from(tests)
       .innerJoin(classes, eq(tests.classId, classes.id))
       .leftJoin(sections, eq(tests.sectionId, sections.id))
       .leftJoin(subjects, eq(tests.subjectId, subjects.id))
-      .where(eq(tests.institutionId, session.institutionId));
+      .where(and(eq(tests.institutionId, instId), or(
+        and(eq(tests.createdByRole, "STAFF"), eq(tests.staffId, staffId), eq(tests.sectionId, sectionId)),
+        and(eq(tests.createdByRole, "INSTITUTION"), eq(tests.classId, classId), inArray(tests.subjectId, subjectIds), or(eq(tests.sectionId, sectionId), isNull(tests.sectionId)))
+      )));
+    if (!testIdParam) return NextResponse.json({ tests: scopedTests, sectionOptions, subjectOptions });
 
-    const eligibleTests = allInstitutionTests.filter((test) => {
-      if (test.createdByRole === "STAFF") return test.staffId === session.userId;
-      return classIds.has(test.classId) && test.subjectId && subjectIds.has(test.subjectId);
-    });
-
-    // Fetch marks and students for the eligible tests
-    const markRows = await db.select({
-      testId: marks.testId,
-      studentId: marks.studentId,
-      marksObtained: marks.marksObtained,
-    }).from(marks).where(eq(marks.institutionId, session.institutionId));
-
-    const marksByTestAndStudent = new Map<string, number>();
-    const totalMarksUploaded = new Map<number, number>();
-    
-    for (const row of markRows) {
-      const key = `${row.testId}:${row.studentId}`;
-      marksByTestAndStudent.set(key, row.marksObtained);
-      totalMarksUploaded.set(row.testId, (totalMarksUploaded.get(row.testId) || 0) + 1);
-    }
-
-    const classStudents = await db.select({
-      id: students.id,
-      name: students.name,
-      classId: students.classId,
-      sectionId: students.sectionId,
-      classRollNumber: students.classRollNumber,
-    }).from(students).where(eq(students.institutionId, session.institutionId));
-
-    const studentsByClass = new Map<number, typeof classStudents>();
-    for (const student of classStudents) {
-      const existing = studentsByClass.get(student.classId) || [];
-      existing.push(student);
-      studentsByClass.set(student.classId, existing);
-    }
-
-    const testsWithRosters = eligibleTests.map(test => {
-      let roster = studentsByClass.get(test.classId) || [];
-      
-      // Filter by section if test is for a specific section
-      if (test.sectionId) {
-        roster = roster.filter(s => s.sectionId === test.sectionId);
-      }
-      
-      roster.sort((a, b) => String(a.classRollNumber).localeCompare(String(b.classRollNumber), undefined, { numeric: true }));
-
-      const mappedRoster = roster.map(s => ({
-        id: s.id,
-        name: s.name,
-        rollNumber: s.classRollNumber,
-        marksObtained: marksByTestAndStudent.get(`${test.id}:${s.id}`) ?? null
-      }));
-
-      return {
-        ...test,
-        uploadedCount: totalMarksUploaded.get(test.id) || 0,
-        roster: mappedRoster
-      };
-    });
-
+    const testId = Number(testIdParam);
+    const test = scopedTests.find((row) => row.id === testId);
+    if (!test) return NextResponse.json({ error: "Assessment not found in this section" }, { status: 404 });
+    const roster = await db.select({ id: students.id, name: students.name, rollNumber: students.classRollNumber })
+      .from(students).where(and(eq(students.institutionId, instId), eq(students.sectionId, sectionId)));
+    const studentIds = roster.map((student) => student.id);
+    const markRows = studentIds.length ? await db.select({ testId: marks.testId, studentId: marks.studentId, marksObtained: marks.marksObtained })
+      .from(marks).where(and(eq(marks.institutionId, instId), eq(marks.testId, testId), inArray(marks.studentId, studentIds))) : [];
     return NextResponse.json({
-      tests: testsWithRosters,
-      sectionOptions: Array.from(sectionOptionsMap.values()),
-      subjectOptions: Array.from(subjectOptionsMap.values()),
+      tests: [test], rosters: { [sectionId]: roster },
+      marks: Object.fromEntries(markRows.map((row) => [`${row.testId}:${row.studentId}`, row.marksObtained])),
+      sectionOptions, subjectOptions,
     });
   } catch (error) {
+    const publicInputError = inputErrorResponse(error);
+    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
+
     console.error("Error fetching marks data:", error);
     return NextResponse.json({ error: "Failed to fetch marks data" }, { status: 500 });
   }
@@ -178,34 +121,39 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
 
     const uniqueSubjectIds = Array.from(new Set(subjectIds.map(Number)));
 
-    for (const subjectId of uniqueSubjectIds) {
-      const [assignment] = await db.select().from(staffAssignments).where(and(
-        eq(staffAssignments.staffId, session.userId),
-        eq(staffAssignments.institutionId, session.institutionId),
-        eq(staffAssignments.sectionId, parsedSectionId),
-        eq(staffAssignments.subjectId, subjectId)
-      )).limit(1);
+    const assignments = await db.select({ subjectId: staffAssignments.subjectId }).from(staffAssignments).where(and(
+      eq(staffAssignments.staffId, session.userId),
+      eq(staffAssignments.institutionId, session.institutionId),
+      eq(staffAssignments.sectionId, parsedSectionId),
+      inArray(staffAssignments.subjectId, uniqueSubjectIds)
+    ));
 
-      if (!assignment) {
-        return NextResponse.json({ error: "One or more subjects are not assigned to you for this class" }, { status: 403 });
-      }
-
-      await db.insert(tests).values({
-        institutionId: session.institutionId,
-        classId: section.classId,
-        sectionId: parsedSectionId,
-        subjectId,
-        staffId: session.userId,
-        createdByRole: "STAFF",
-        type: type as "DAILY" | "WEEKLY" | "QUIZ",
-        title: title.trim(),
-        maxMarks: parsedMaxMarks,
-        date,
-      });
+    if (assignments.length !== uniqueSubjectIds.length) {
+      return NextResponse.json({ error: "One or more subjects are not assigned to you for this class" }, { status: 403 });
     }
+
+    const newTests = uniqueSubjectIds.map(subjectId => ({
+      institutionId: session.institutionId!,
+      classId: section.classId,
+      sectionId: parsedSectionId,
+      subjectId,
+      staffId: session.userId,
+      createdByRole: "STAFF" as const,
+      type: type as "DAILY" | "WEEKLY" | "QUIZ",
+      title: title.trim(),
+      maxMarks: parsedMaxMarks,
+      date,
+      resultsPublishedAt: null,
+    }));
+
+    await db.insert(tests).values(newTests);
+    await invalidateInstitutionRosterCaches(session.institutionId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const publicInputError = inputErrorResponse(error);
+    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
+
     console.error("Error creating assessment:", error);
     return NextResponse.json({ error: "Failed to create assessment" }, { status: 500 });
   }

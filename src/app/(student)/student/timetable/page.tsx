@@ -2,6 +2,8 @@ import { db } from "@/db";
 import { students, staffAssignments, subjects, staff } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { getAuthenticatedStudentPlacement } from "@/lib/auth-student";
+import { studentPlacementColumns } from "@/lib/student-columns";
 import { redirect } from "next/navigation";
 import { WeeklyTimetable, type TimetableEntry } from "@/components/timetable/ScheduleViews";
 
@@ -12,7 +14,11 @@ export default async function StudentTimetablePage() {
   }
 
   if (!session.institutionId) redirect("/login");
-  const [currentStudent] = await db.select().from(students).where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)));
+  const currentStudent = getAuthenticatedStudentPlacement(session) ?? (await db
+    .select(studentPlacementColumns)
+    .from(students)
+    .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
+    .limit(1))[0];
   if (!currentStudent) redirect("/login");
 
   const assignments = await db.select({
@@ -38,12 +44,6 @@ export default async function StudentTimetablePage() {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-brand-950">My Timetable</h1>
-          <p className="text-stone-500 mt-1">View your weekly class schedule and subjects.</p>
-        </div>
-      </div>
 
       <WeeklyTimetable
         entries={timetableEntries}

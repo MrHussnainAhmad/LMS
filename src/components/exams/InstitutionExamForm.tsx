@@ -1,9 +1,10 @@
 "use client";
+import { ActionForm } from '@/components/ui/action-form';
 
 import { useMemo, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { createInstitutionExamAction } from "@/app/actions/assessment-actions";
+import { createInstitutionExamWithFeedback as createInstitutionExamAction } from '@/app/actions/feedback-actions';
 
 type Option = {
   id: number;
@@ -14,11 +15,11 @@ interface InstitutionExamFormProps {
   classes: Option[];
   subjects: Option[];
   submitLabel?: string;
-  action?: (formData: FormData) => void | Promise<void>;
+  action?: (formData: FormData) => unknown | Promise<unknown>;
   hiddenFields?: Record<string, string>;
   initialValues?: {
     classId: number;
-    type: "MONTHLY" | "MID" | "FINAL";
+    type: "MONTHLY" | "MID" | "FINAL" | "PROMOTION";
     title: string;
     maxMarks: number;
     date: string;
@@ -98,7 +99,7 @@ export function InstitutionExamForm({
   };
 
   return (
-    <form action={action} className="space-y-4">
+    <ActionForm action={action} className="space-y-4">
       {hiddenFields && Object.entries(hiddenFields).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
@@ -119,6 +120,7 @@ export function InstitutionExamForm({
           <option value="MONTHLY">Monthly</option>
           <option value="MID">Mid</option>
           <option value="FINAL">Final</option>
+          <option value="PROMOTION">Promotion</option>
         </select>
       </div>
 
@@ -127,7 +129,7 @@ export function InstitutionExamForm({
         <input name="title" required defaultValue={initialValues?.title} placeholder="e.g. Final Term 2026" className="w-full rounded-md border border-border px-3 py-2 text-sm" />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-stone-700 mb-1">Start Date</label>
           <input
@@ -206,6 +208,6 @@ export function InstitutionExamForm({
       </div>
 
       <SubmitButton className="w-full" disabled={subjects.length === 0}>{submitLabel}</SubmitButton>
-    </form>
+    </ActionForm>
   );
 }

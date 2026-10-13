@@ -21,6 +21,7 @@ export function DashboardAnnouncements({ announcements }: { announcements: Visib
             <Link
               key={announcement.id}
               href={`/announcements/${announcement.id}`}
+              prefetch={false}
               className="block rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-stone-50"
             >
               <div className="flex items-start justify-between gap-3">

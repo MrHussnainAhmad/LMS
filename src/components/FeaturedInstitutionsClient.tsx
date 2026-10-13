@@ -1,11 +1,13 @@
 "use client";
+import { responseErrorMessage, apiErrorMessage } from '@/lib/validation-errors';
 
-import { useState, useEffect } from "react";
+
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toaster";
 import { Loader2, Plus, Trash2, ImageUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useRef } from "react";
+import { prepareContentUpload } from "@/lib/client-upload-file";
 
 type FeaturedInst = {
   id: number;
@@ -14,9 +16,12 @@ type FeaturedInst = {
   createdAt: string;
 };
 
-export default function FeaturedInstitutionsClient() {
-  const [institutions, setInstitutions] = useState<FeaturedInst[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export default function FeaturedInstitutionsClient({
+  initialInstitutions,
+}: {
+  initialInstitutions: FeaturedInst[];
+}) {
+  const [institutions, setInstitutions] = useState<FeaturedInst[]>(initialInstitutions);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [logoKey, setLogoKey] = useState("");
@@ -24,12 +29,7 @@ export default function FeaturedInstitutionsClient() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchInstitutions();
-  }, []);
-
   const fetchInstitutions = async () => {
-    setIsLoading(true);
     try {
       const res = await fetch("/api/admin/featured-institutions");
       if (res.ok) {
@@ -38,30 +38,28 @@ export default function FeaturedInstitutionsClient() {
       }
     } catch (error) {
       console.error("Failed to fetch featured institutions", error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const handleImageUpload = async (file: File) => {
     setIsUploadingImage(true);
     try {
-      if (!file.type.startsWith("image/")) throw new Error("Please select an image file");
-      if (file.size > 2 * 1024 * 1024) throw new Error("Image must be 2MB or smaller");
+      const preparedFile = await prepareContentUpload(file, { allowedKinds: ['image'], maximumBytes: 2 * 1024 * 1024 });
 
       const sigRes = await fetch("/api/upload/signature", { method: "POST" });
       const signaturePayload = await sigRes.json();
       
-      if (!sigRes.ok || !signaturePayload.signature) {
+      if (!sigRes.ok || !signaturePayload.signature || !signaturePayload.folder) {
         throw new Error(signaturePayload.error || "Upload service is not configured");
       }
 
       const uploadData = new FormData();
-      uploadData.append("file", file);
+      uploadData.append("file", preparedFile);
       uploadData.append("api_key", signaturePayload.apiKey);
       uploadData.append("timestamp", signaturePayload.timestamp.toString());
       uploadData.append("signature", signaturePayload.signature);
-      uploadData.append("folder", "lms-uploads");
+      uploadData.append("folder", signaturePayload.folder);
+      uploadData.append("allowed_formats", signaturePayload.allowedFormats);
 
       const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/image/upload`, {
         method: "POST",
@@ -69,14 +67,20 @@ export default function FeaturedInstitutionsClient() {
       });
       const uploadPayload = await cloudinaryResponse.json();
       
-      if (!cloudinaryResponse.ok || !uploadPayload.secure_url) {
+      if (!cloudinaryResponse.ok || !uploadPayload.public_id) {
         throw new Error(uploadPayload.error?.message || "Cloudinary rejected the picture upload");
       }
-
-      setLogoKey(uploadPayload.secure_url);
+      const completionResponse = await fetch('/api/upload/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicId: uploadPayload.public_id, resourceType: uploadPayload.resource_type, imageOnly: true }) });
+      const completed = await completionResponse.json();
+      if (!completionResponse.ok) throw new Error(completed.error || 'Uploaded image could not be verified');
+      setLogoKey(completed.url);
       toast({ title: "Image Uploaded", description: "Logo ready to save.", variant: "success" });
-    } catch (error: any) {
-      toast({ title: "Could not upload", description: error.message || "Upload failed", variant: "destructive" });
+    } catch (error: unknown) {
+      toast({
+        title: "Could not upload",
+        description: error instanceof Error ? error.message : "Upload failed",
+        variant: "destructive",
+      });
     } finally {
       setIsUploadingImage(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -85,7 +89,7 @@ export default function FeaturedInstitutionsClient() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim()) { toast({ title: 'Check institution name', description: 'Institution name is required.', variant: 'destructive' }); return; }
 
     setIsSubmitting(true);
     try {
@@ -95,14 +99,14 @@ export default function FeaturedInstitutionsClient() {
         body: JSON.stringify({ name, logoKey: logoKey || undefined }),
       });
 
-      if (!res.ok) throw new Error("Failed to add");
+      if (!res.ok) throw new Error(await responseErrorMessage(res));
       
       toast({ title: "Success", description: "Added featured institution" });
       setName("");
       setLogoKey("");
       fetchInstitutions();
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to add", variant: "destructive" });
+    } catch (formError) {
+      toast({ title: "Error", description: apiErrorMessage(formError), variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -111,12 +115,12 @@ export default function FeaturedInstitutionsClient() {
   const handleDelete = async (id: number) => {
     try {
       const res = await fetch(`/api/admin/featured-institutions?id=${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) throw new Error(await responseErrorMessage(res));
       
       toast({ title: "Success", description: "Removed featured institution" });
       fetchInstitutions();
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
+    } catch (formError) {
+      toast({ title: "Error", description: apiErrorMessage(formError), variant: "destructive" });
     }
   };
 
@@ -153,20 +157,22 @@ export default function FeaturedInstitutionsClient() {
               </Button>
               {logoKey && (
                 <div className="h-10 w-10 shrink-0 rounded-md border border-stone-200 overflow-hidden bg-stone-50">
+                  {/* Dynamic preview stays direct to avoid an image-proxy request. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={logoKey} alt="Logo preview" className="h-full w-full object-cover" />
                 </div>
               )}
             </div>
           </div>
-          <Button type="submit" disabled={isSubmitting || !name.trim() || isUploadingImage} className="bg-brand-600 hover:bg-brand-700">
+          <Button type="submit" disabled={isSubmitting || isUploadingImage} className="bg-brand-600 hover:bg-brand-700">
             {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
             Add
           </Button>
         </form>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden">
-        <table className="w-full text-sm text-left">
+      <div className="overflow-x-auto rounded-sm border border-stone-200 bg-white">
+        <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="bg-stone-50 border-b border-stone-200 text-stone-500 font-semibold uppercase text-xs">
             <tr>
               <th className="px-6 py-4">Institution</th>
@@ -175,14 +181,9 @@ export default function FeaturedInstitutionsClient() {
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-200">
-            {isLoading && (
+            {institutions.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-6 py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand-600" /></td>
-              </tr>
-            )}
-            {!isLoading && institutions.length === 0 && (
-              <tr>
-                <td colSpan={3} className="px-6 py-8 text-center text-stone-500">No featured institutions added yet.</td>
+                <td colSpan={3} className="px-6 py-4 sm:py-8 text-center text-stone-500">No featured institutions added yet.</td>
               </tr>
             )}
             {institutions.map((inst) => (
@@ -190,6 +191,8 @@ export default function FeaturedInstitutionsClient() {
                 <td className="px-6 py-4 font-medium text-stone-900">{inst.name}</td>
                 <td className="px-6 py-4">
                   {inst.logoKey ? (
+                    // Logos are external, user-managed URLs; direct rendering avoids added proxy burden.
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img src={inst.logoKey} alt={inst.name} className="h-8 w-auto object-contain max-w-[100px]" />
                   ) : (
                     <span className="text-stone-400 text-xs italic">No logo</span>

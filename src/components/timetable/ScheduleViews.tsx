@@ -51,6 +51,17 @@ function buildSlots(entries: TimetableEntry[]) {
   ).sort((a, b) => a.startTime.localeCompare(b.startTime));
 }
 
+function entriesBySlotAndDay(entries: TimetableEntry[]) {
+  const grouped = new Map<string, TimetableEntry[]>();
+  for (const entry of entries) {
+    const key = `${slotKey(entry)}-${entry.dayOfWeek}`;
+    const current = grouped.get(key) ?? [];
+    current.push(entry);
+    grouped.set(key, current);
+  }
+  return grouped;
+}
+
 function EntryBlock({ entry, compact = false }: { entry: TimetableEntry; compact?: boolean }) {
   return (
     <div className={cn("border border-l-4 border-border p-3 shadow-sm", colorFor(entry), compact ? "rounded-md" : "rounded")}>
@@ -90,6 +101,7 @@ export function WeeklyTimetable({
   emptyDescription?: string;
 }) {
   const slots = buildSlots(entries);
+  const slotDayEntries = entriesBySlotAndDay(entries);
 
   return (
     <Card className="overflow-hidden">
@@ -128,9 +140,7 @@ export function WeeklyTimetable({
                       <p className="font-mono text-xs text-stone-500">{timeLabel(slot.endTime)}</p>
                     </div>
                     {WEEK_DAYS.map((day) => {
-                      const matchingEntries = entries.filter(
-                        (entry) => entry.dayOfWeek === day.index && entry.startTime === slot.startTime && entry.endTime === slot.endTime
-                      );
+                      const matchingEntries = slotDayEntries.get(`${slotKey(slot)}-${day.index}`) ?? [];
                       return (
                         <div key={day.index} className={cn("min-h-28 border-l border-border p-2", rowIndex % 2 === 0 ? "bg-white" : "bg-stone-50/40")}>
                           {matchingEntries.length === 0 ? (
@@ -202,7 +212,7 @@ export function TodayTimetableCard({
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b border-border bg-stone-50/70 pb-4">
-        <CardTitle className="flex items-center justify-between text-lg">
+        <CardTitle className="flex flex-col gap-2 text-lg sm:flex-row sm:items-center sm:justify-between">
           <span className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-brand-700" />
             {title}
@@ -212,7 +222,7 @@ export function TodayTimetableCard({
       </CardHeader>
       <CardContent className="p-0">
         {sortedEntries.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-stone-500">{emptyText}</p>
+          <p className="px-6 py-6 sm:py-10 text-sm text-stone-500">{emptyText}</p>
         ) : (
           <div className="overflow-x-auto">
             <div className="min-w-[560px]">

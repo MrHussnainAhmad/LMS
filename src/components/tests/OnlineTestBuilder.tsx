@@ -1,10 +1,12 @@
 "use client";
+import { ActionForm } from '@/components/ui/action-form';
 
 import { useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { createOnlineTestAction } from "@/app/actions/online-test-actions";
+import { createOnlineTestWithFeedback as createOnlineTestAction } from '@/app/actions/feedback-actions';
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Button } from "@/components/ui/button";
+import { formatClassSection } from "@/lib/class-section-label";
 
 type SectionOption = {
   id: number;
@@ -30,7 +32,7 @@ export function OnlineTestBuilder({ sections, subjects }: { sections: SectionOpt
   );
 
   return (
-    <form action={createOnlineTestAction} className="space-y-5">
+    <ActionForm action={createOnlineTestAction} className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="mb-1 block text-sm font-medium text-stone-700">Class / Section</label>
@@ -42,7 +44,7 @@ export function OnlineTestBuilder({ sections, subjects }: { sections: SectionOpt
             className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
           >
             {sections.map((section) => (
-              <option key={section.id} value={section.id}>{section.className} - {section.sectionName}</option>
+              <option key={section.id} value={section.id}>{formatClassSection(section.className, section.sectionName)}</option>
             ))}
           </select>
         </div>
@@ -73,7 +75,7 @@ export function OnlineTestBuilder({ sections, subjects }: { sections: SectionOpt
 
       <div>
         <label className="mb-2 block text-sm font-medium text-stone-700">Test Type</label>
-        <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-stone-50 p-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border border-border bg-stone-50 p-1">
           {(["MCQ", "MIX"] as const).map((value) => (
             <label key={value} className={`cursor-pointer rounded px-3 py-2 text-center text-sm font-medium ${mode === value ? "bg-white text-brand-900 shadow-sm" : "text-stone-600"}`}>
               <input type="radio" name="mode" value={value} checked={mode === value} onChange={() => setMode(value)} className="sr-only" />
@@ -141,6 +143,6 @@ export function OnlineTestBuilder({ sections, subjects }: { sections: SectionOpt
       </div>
 
       <SubmitButton className="w-full">Host Test</SubmitButton>
-    </form>
+    </ActionForm>
   );
 }

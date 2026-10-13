@@ -1,3 +1,4 @@
+import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { students, staff } from "@/db/schema";
@@ -5,11 +6,14 @@ import { getSession } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 import { logAudit } from "@/lib/audit";
+import { getClientIp } from "@/lib/client-ip";
+import { invalidateUserValidity } from "@/lib/user";
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getSession();
-    if (!session || session.role !== "INSTITUTION" || !session.institutionId) {
+    if (session?.campusReadOnly || session?.mustChangePassword) return NextResponse.json({ error: session.mustChangePassword ? "PASSWORD_CHANGE_REQUIRED" : "This campus is read-only." }, { status: 403 });
+    if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN") || !session.institutionId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -24,6 +28,7 @@ export async function POST(req: NextRequest) {
     let userName = "";
     let userPhone: string | null = null;
     let targetIdStr = "";
+    let targetUser: { role: "STUDENT" | "STAFF"; userId: number } | undefined;
 
     if (userType === "STUDENT") {
       const [student] = await db.select({
@@ -49,6 +54,7 @@ export async function POST(req: NextRequest) {
       userName = student.name;
       userPhone = student.phone;
       targetIdStr = `Student ${student.id}`;
+      targetUser = { role: "STUDENT", userId: student.id };
 
     } else if (userType === "STAFF") {
       const [staffUser] = await db.select({
@@ -74,8 +80,13 @@ export async function POST(req: NextRequest) {
       userName = staffUser.name;
       userPhone = staffUser.phone;
       targetIdStr = `Staff ${staffUser.id}`;
+      targetUser = { role: "STAFF", userId: staffUser.id };
     } else {
       return NextResponse.json({ error: "Invalid user type" }, { status: 400 });
+    }
+
+    if (targetUser) {
+      await invalidateUserValidity(targetUser.role, targetUser.userId);
     }
 
     // Log the action
@@ -86,7 +97,7 @@ export async function POST(req: NextRequest) {
         actorRole: session.role,
         action: "PASSWORD_RESET",
         target: targetIdStr,
-        ip: req.headers.get("x-forwarded-for") ?? "127.0.0.1",
+        ip: getClientIp(req),
       });
     } catch (e) {
       console.error("Audit log failed for password reset", e);
@@ -95,6 +106,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, name: userName, phone: userPhone });
 
   } catch (err: any) {
+    const publicInputError = inputErrorResponse(err);
+    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
+
     console.error("Reset password error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

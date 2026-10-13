@@ -1,55 +1,54 @@
 type InstitutionLike = {
   type: string;
   username: string;
+  parentInstitutionId?: number | null;
+  parentUsername?: string | null;
+  campusName?: string | null;
 };
 
-type ClassLike = {
-  name: string;
-};
-
-type SectionLike = {
-  name: string;
-};
 
 function appDomain() {
-  return (process.env.APP_DOMAIN || "myapp.pk").trim();
+  return (process.env.NEXT_PUBLIC_APP_DOMAIN || "myapp.pk").trim();
 }
 
 function cleanAlphaNumeric(value: string) {
   return value.replace(/[^a-z0-9]/gi, "");
 }
 
-function sectionCode(sectionName: string) {
-  const tokens = sectionName.match(/[a-z0-9]+/gi) || [];
-  const compact = cleanAlphaNumeric(sectionName).toUpperCase();
+export function campusLoginSlug(name: string) {
+  const slug = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!slug || slug.length > 63) throw new Error('Campus name must produce a login name of 1–63 letters, numbers or hyphens.');
+  return slug;
+}
 
-  return (tokens.at(-1) || compact).toUpperCase();
+/** Human-readable, globally unique workspace username within the existing 30-character column. */
+export function campusUsernameCandidate(name: string, rootId: number, attempt = 0) {
+  const suffix = attempt === 0 ? '' : `-${rootId}${attempt === 1 ? '' : `-${attempt}`}`;
+  return `${campusLoginSlug(name).slice(0, 30 - suffix.length).replace(/-+$/, '')}${suffix}`;
 }
 
 export function generateStudentLoginRollNumber({
   institution,
-  classRow,
-  sectionRow,
   yearOfJoining,
-  classRollNumber,
+  admissionSequence,
 }: {
   institution: InstitutionLike;
-  classRow: ClassLike;
-  sectionRow: SectionLike;
   yearOfJoining: number;
-  classRollNumber: string;
+  admissionSequence: number;
 }) {
   const typeLetter = institution.type.charAt(0).toUpperCase();
   const yearLastTwo = yearOfJoining.toString().slice(-2);
-  const classNumberMatch = classRow.name.match(/\d+/);
-  const classNumber = classNumberMatch ? classNumberMatch[0] : cleanAlphaNumeric(classRow.name).substring(0, 3).toUpperCase();
-  const section = sectionCode(sectionRow.name);
 
   if (!typeLetter) throw new Error("Institution type is required to generate a student login ID");
-  if (!classNumber) throw new Error("Class name must contain at least one letter or number");
-  if (!section) throw new Error("Section name must contain at least one letter or number");
+  if (!Number.isInteger(admissionSequence) || admissionSequence < 1 || admissionSequence > 99_999_999) throw new Error("Invalid admission sequence");
 
-  return `${typeLetter}${yearLastTwo}${classNumber}${section}${classRollNumber}@${institution.username}.${appDomain()}`;
+  let namespace = institution.username;
+  if (institution.parentInstitutionId != null) {
+    if (!institution.parentUsername || !institution.campusName) throw new Error('Parent institution and campus name are required for a campus student login.');
+    namespace = `${institution.parentUsername}.${campusLoginSlug(institution.campusName)}`;
+  }
+  return `${typeLetter}${yearLastTwo}-${String(admissionSequence).padStart(8, "0")}@${namespace}.${appDomain()}`;
 }
 
 export function generateStaffEmail({

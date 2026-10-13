@@ -1,28 +1,22 @@
-"use client";
+import { getSession } from "@/lib/auth";
+import { getShellBrandForSession } from "@/lib/shell-brand";
+import { redirect } from "next/navigation";
+import { StaffShell } from "./StaffShell";
+import { getInstitutionCourseStreamingHint } from "@/lib/course-streaming";
 
-import { AppShell } from "@/components/layout/AppShell";
-import { LayoutDashboard, CheckSquare, FileEdit, CalendarDays, Megaphone, ClipboardList, CalendarCheck, FileQuestion } from "lucide-react";
-
-const SIDEBAR_ITEMS = [
-  { label: "Dashboard", href: "/staff/dashboard", icon: LayoutDashboard },
-  { label: "Timetable", href: "/staff/timetable", icon: CalendarDays },
-  { label: "Exam Timetable", href: "/staff/exams", icon: CalendarCheck, availabilityKey: "examTimetable" as const },
-  { label: "Assignments", href: "/staff/assignments", icon: ClipboardList },
-  { label: "Host Tests", href: "/staff/tests", icon: FileQuestion },
-  { label: "Attendance", href: "/staff/attendance", icon: CheckSquare },
-  { label: "Marks Entry", href: "/staff/marks", icon: FileEdit },
-  { label: "Batch Results", href: "/batch-results", icon: ClipboardList },
-  { label: "Announcements", href: "/staff/announcements", icon: Megaphone },
-];
-
-export default function StaffLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function StaffLayout({ children }: { children: React.ReactNode }) {
+  const session = await getSession();
+  if (!session || session.role !== "STAFF") redirect("/login");
+  const institutionId = session.institutionId;
+  const [brand, coursesEnabled] = await Promise.all([
+    getShellBrandForSession(session),
+    institutionId
+      ? getInstitutionCourseStreamingHint(institutionId)
+      : Promise.resolve(false),
+  ]);
   return (
-    <AppShell sidebarItems={SIDEBAR_ITEMS} userRole="STAFF">
+    <StaffShell userId={session.userId} institutionId={institutionId} initialBrand={brand} coursesEnabled={coursesEnabled}>
       {children}
-    </AppShell>
+    </StaffShell>
   );
 }

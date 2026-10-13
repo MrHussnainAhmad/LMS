@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { classes, students, subjects, tests } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 
 function todayDateString() {
   return new Date().toISOString().slice(0, 10);
@@ -13,7 +13,11 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [student] = await db.select().from(students)
+  const [student] = await db.select({
+    id: students.id,
+    classId: students.classId,
+    sectionId: students.sectionId,
+  }).from(students)
     .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
     .limit(1);
 
@@ -37,6 +41,10 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
     .where(and(
       eq(tests.institutionId, session.institutionId),
       eq(tests.classId, student.classId),
+      or(
+        isNull(tests.sectionId),
+        eq(tests.sectionId, student.sectionId)
+      ),
       eq(tests.createdByRole, "INSTITUTION"),
       inArray(tests.type, ["MONTHLY", "MID", "FINAL"])
     ))

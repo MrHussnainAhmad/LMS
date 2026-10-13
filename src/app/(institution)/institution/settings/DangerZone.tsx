@@ -1,4 +1,6 @@
 "use client";
+import { responseErrorMessage } from '@/lib/validation-errors';
+
 
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -29,7 +31,7 @@ export function DangerZone() {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to delete account");
+        throw new Error(await responseErrorMessage(res));
       }
 
       // Simulate a small delay for the animation
@@ -40,7 +42,7 @@ export function DangerZone() {
       await fetch("/api/auth/logout", { method: "POST" });
       
       // Redirect to login
-      window.location.href = "/login";
+      window.location.replace("/login");
     } catch (err: any) {
       setStep("reason");
       setErrorMsg(err.message || "Failed to delete account. Please try again.");
@@ -150,7 +152,7 @@ export function DangerZone() {
           )}
 
           {step === "deleting" && (
-            <div className="py-12 flex flex-col items-center justify-center space-y-4">
+            <div className="py-6 sm:py-12 flex flex-col items-center justify-center space-y-4">
               <Loader2 className="h-10 w-10 text-red-600 animate-spin" />
               <p className="text-lg font-medium text-stone-800 animate-pulse">Erasing all data...</p>
               <p className="text-sm text-stone-500">Please do not close this window.</p>

@@ -1,11 +1,19 @@
+import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { db } from "@/db";
 import { tests, students, marks, staffAssignments, sections } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
+import { withRateLimit } from "@/lib/rate-limit";
 
 export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, params }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const rateLimit = await withRateLimit(req, "marks_write");
+  if (!rateLimit.success) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
 
   const id = (await params)?.testId;
   const testId = Number(id);
@@ -75,36 +83,47 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, p
       return NextResponse.json({ error: "One or more students do not belong to this class" }, { status: 400 });
     }
 
-    // Upsert marks
-    for (const record of records) {
-      await db.insert(marks).values({
-        institutionId: session.institutionId,
-        testId: test.id,
-        studentId: Number(record.studentId),
-        marksObtained: Number(record.marksObtained),
-        totalMarks: expectedTotal,
-      }).onConflictDoUpdate({
-        target: [marks.testId, marks.studentId],
-        set: {
-          marksObtained: Number(record.marksObtained),
-          totalMarks: expectedTotal,
-        },
-      });
-    }
-
-    const { createBulkNotifications } = await import("@/lib/notifications");
-    await createBulkNotifications(records.map((r: any) => ({
+    // Bulk upsert: one database round trip for the complete class roster.
+    await db.insert(marks).values(records.map((record) => ({
       institutionId: session.institutionId!,
-      userRole: "STUDENT",
-      userId: Number(r.studentId),
-      type: "MARKS",
-      title: "Marks Updated",
-      message: `Your marks for ${test.title} have been updated. You scored ${r.marksObtained}/${expectedTotal}.`,
-      referenceId: test.id,
-    })));
+      testId: test.id,
+      studentId: Number(record.studentId),
+      marksObtained: Number(record.marksObtained),
+      totalMarks: expectedTotal,
+    }))).onConflictDoUpdate({
+      target: [marks.testId, marks.studentId],
+      set: {
+        marksObtained: sql`EXCLUDED.marks_obtained`,
+        totalMarks: sql`EXCLUDED.total_marks`,
+      },
+    });
+
+    const { invalidateStudentMarksCaches } = await import('@/lib/redis');
+    await invalidateStudentMarksCaches(session.institutionId!, records.map((record: {studentId: number}) => Number(record.studentId)));
+    const { createBulkNotifications } = await import("@/lib/notifications");
+    after(async () => {
+      try {
+        await createBulkNotifications(records.map((r: any) => ({
+          institutionId: session.institutionId!,
+          userRole: "STUDENT",
+          userId: Number(r.studentId),
+          type: "MARKS",
+          title: "Marks Updated",
+          message: `Your marks for ${test.title} have been updated. You scored ${r.marksObtained}/${expectedTotal}.`,
+          referenceId: test.id,
+        })));
+
+
+      } catch (e) {
+        console.error(e);
+      }
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const publicInputError = inputErrorResponse(error);
+    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
+
     console.error("Error saving manual marks:", error);
     return NextResponse.json({ error: "Failed to save marks" }, { status: 500 });
   }

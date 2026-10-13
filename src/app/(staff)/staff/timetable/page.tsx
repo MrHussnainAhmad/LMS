@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { WeeklyTimetable, type TimetableEntry } from "@/components/timetable/ScheduleViews";
+import { formatClassSection } from "@/lib/class-section-label";
 
 export default async function StaffTimetablePage() {
   const session = await getSession();
@@ -33,18 +34,12 @@ export default async function StaffTimetablePage() {
     startTime: row.assignment.startTime,
     endTime: row.assignment.endTime,
     title: row.assignment.isBreak ? "Break / Recess" : row.subject || "Subject",
-    meta: row.className ? `${row.className} - ${row.sectionName}` : null,
+    meta: row.className ? formatClassSection(row.className, row.sectionName) : null,
     isBreak: row.assignment.isBreak,
   }));
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-brand-950">My Timetable</h1>
-          <p className="text-stone-500 mt-1">View your weekly class schedule and teaching assignments.</p>
-        </div>
-      </div>
 
       <WeeklyTimetable
         entries={timetableEntries}

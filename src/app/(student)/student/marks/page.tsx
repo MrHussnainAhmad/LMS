@@ -1,14 +1,18 @@
+import { formatDefaultDate } from "@/lib/date-format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/db";
 import { marks, subjects, tests, onlineTests } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { and, desc, eq } from "drizzle-orm";
+import { windowRange } from "@/lib/month-window";
+import { and, desc, eq, gte, isNotNull, lte } from "drizzle-orm";
 import { FileText, Trophy } from "lucide-react";
 import { redirect } from "next/navigation";
 
 export default async function StudentMarksPage() {
   const session = await getSession();
   if (!session || session.role !== "STUDENT" || !session.institutionId) redirect("/login");
+
+  const { from, to } = windowRange(new Date(), 1);
 
   const rows = await db.select({
     mark: marks,
@@ -20,15 +24,17 @@ export default async function StudentMarksPage() {
     .innerJoin(tests, eq(marks.testId, tests.id))
     .leftJoin(subjects, eq(tests.subjectId, subjects.id))
     .leftJoin(onlineTests, eq(tests.id, onlineTests.testId))
-    .where(and(eq(marks.studentId, session.userId), eq(marks.institutionId, session.institutionId)))
+    .where(and(
+      eq(marks.studentId, session.userId),
+      eq(marks.institutionId, session.institutionId),
+      isNotNull(tests.resultsPublishedAt),
+      gte(tests.date, from),
+      lte(tests.date, to),
+    ))
     .orderBy(desc(marks.createdAt));
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-display font-bold text-brand-950">My Marks</h1>
-        <p className="text-stone-500 mt-1">Review uploaded assessment and exam scores.</p>
-      </div>
 
       <Card>
         <CardHeader className="border-b border-border bg-stone-50/50">
@@ -39,7 +45,7 @@ export default async function StudentMarksPage() {
         </CardHeader>
         <CardContent className="p-0">
           {rows.length === 0 ? (
-            <div className="p-12 flex flex-col items-center justify-center text-center space-y-4">
+            <div className="p-6 sm:p-12 flex flex-col items-center justify-center text-center space-y-4">
               <div className="h-16 w-16 rounded-full bg-brand-50 flex items-center justify-center">
                 <Trophy className="h-8 w-8 text-brand-400" />
               </div>
@@ -72,7 +78,7 @@ export default async function StudentMarksPage() {
                         )}
                       </h3>
                       <p className="text-sm text-stone-500">
-                        {test.type} - {subjectName || "Subject"} - {new Date(test.date).toLocaleDateString()}
+                        {test.type} - {subjectName || "Subject"} - {formatDefaultDate(new Date(test.date))}
                       </p>
                     </div>
                     <div className="text-left sm:text-right">

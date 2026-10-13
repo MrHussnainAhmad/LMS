@@ -1,3 +1,4 @@
+import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { 
@@ -5,7 +6,29 @@ import {
   onlineTestSubmissions, onlineTestQuestions, students
 } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, lt, or, sql } from "drizzle-orm";
+
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 50;
+
+type HostedTestsCursor = { createdAt: Date; id: number };
+
+function parseHostedTestsCursor(value: string | null): HostedTestsCursor | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as { createdAt?: unknown; id?: unknown };
+    const createdAt = new Date(typeof parsed.createdAt === "string" ? parsed.createdAt : "");
+    const id = Number(parsed.id);
+    if (Number.isNaN(createdAt.getTime()) || !Number.isInteger(id) || id <= 0) return null;
+    return { createdAt, id };
+  } catch {
+    return null;
+  }
+}
+
+function encodeHostedTestsCursor({ createdAt, id }: HostedTestsCursor) {
+  return Buffer.from(JSON.stringify({ createdAt: createdAt.toISOString(), id })).toString("base64url");
+}
 
 export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -35,7 +58,27 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
       }
     });
 
-    const hostedTests = await db.select({
+    const limitParam = Number(req.nextUrl.searchParams.get("limit"));
+    const limit = Number.isInteger(limitParam) && limitParam > 0
+      ? Math.min(limitParam, MAX_PAGE_SIZE)
+      : DEFAULT_PAGE_SIZE;
+    const cursorParam = req.nextUrl.searchParams.get("cursor");
+    const cursor = parseHostedTestsCursor(cursorParam);
+    if (cursorParam && !cursor) return NextResponse.json({ error: "Invalid cursor" }, { status: 400 });
+
+    const hostedTestConditions = [
+      eq(tests.staffId, session.userId),
+      eq(tests.institutionId, session.institutionId),
+    ];
+    if (cursor) {
+      const cursorCondition = or(
+        lt(onlineTests.createdAt, cursor.createdAt),
+        and(eq(onlineTests.createdAt, cursor.createdAt), lt(onlineTests.id, cursor.id))
+      );
+      if (cursorCondition) hostedTestConditions.push(cursorCondition);
+    }
+
+    const hostedTestPage = await db.select({
       testId: tests.id,
       title: tests.title,
       type: tests.type,
@@ -47,72 +90,46 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
       onlineTestId: onlineTests.id,
       durationMinutes: onlineTests.durationMinutes,
       mode: onlineTests.mode,
+      createdAt: onlineTests.createdAt,
+      submissionCount: sql<number>`count(${onlineTestSubmissions.id})::int`,
+      pendingReviewCount: sql<number>`count(*) filter (where ${onlineTestSubmissions.status} = 'PENDING_REVIEW')::int`,
     })
       .from(onlineTests)
       .innerJoin(tests, eq(onlineTests.testId, tests.id))
       .innerJoin(classes, eq(tests.classId, classes.id))
       .leftJoin(sections, eq(tests.sectionId, sections.id))
       .leftJoin(subjects, eq(tests.subjectId, subjects.id))
-      .where(and(eq(tests.staffId, session.userId), eq(tests.institutionId, session.institutionId)))
-      .orderBy(desc(onlineTests.createdAt));
+      .leftJoin(onlineTestSubmissions, and(
+        eq(onlineTestSubmissions.onlineTestId, onlineTests.id),
+        eq(onlineTestSubmissions.institutionId, session.institutionId)
+      ))
+      .where(and(...hostedTestConditions))
+      .groupBy(
+        tests.id, tests.title, tests.type, tests.maxMarks, tests.date,
+        classes.name, sections.name, subjects.name,
+        onlineTests.id, onlineTests.durationMinutes, onlineTests.mode, onlineTests.createdAt
+      )
+      .orderBy(desc(onlineTests.createdAt), desc(onlineTests.id))
+      .limit(limit + 1);
 
-    const onlineTestIds = hostedTests.map(t => t.onlineTestId);
-    
-    let submissions: any[] = [];
-    let questions: any[] = [];
-    
-    if (onlineTestIds.length > 0) {
-      submissions = await db.select({
-        id: onlineTestSubmissions.id,
-        onlineTestId: onlineTestSubmissions.onlineTestId,
-        studentName: students.name,
-        rollNumber: students.classRollNumber,
-        status: onlineTestSubmissions.status,
-        violationReason: onlineTestSubmissions.violationReason,
-        totalScore: onlineTestSubmissions.totalScore,
-        answers: onlineTestSubmissions.answers,
-      })
-        .from(onlineTestSubmissions)
-        .innerJoin(students, eq(onlineTestSubmissions.studentId, students.id))
-        .where(and(
-          eq(onlineTestSubmissions.institutionId, session.institutionId),
-          inArray(onlineTestSubmissions.onlineTestId, onlineTestIds)
-        ))
-        .orderBy(desc(onlineTestSubmissions.submittedAt));
-        
-      questions = await db.select({
-        id: onlineTestQuestions.id,
-        onlineTestId: onlineTestQuestions.onlineTestId,
-        questionType: onlineTestQuestions.questionType,
-        prompt: onlineTestQuestions.prompt,
-        marks: onlineTestQuestions.marks,
-        orderIndex: onlineTestQuestions.orderIndex,
-      }).from(onlineTestQuestions)
-        .where(inArray(onlineTestQuestions.onlineTestId, onlineTestIds));
-    }
-
-    const enhancedTests = hostedTests.map(test => {
-      const testSubmissions = submissions.filter(s => s.onlineTestId === test.onlineTestId);
-      const testQuestions = questions
-        .filter(q => q.onlineTestId === test.onlineTestId)
-        .sort((a, b) => a.orderIndex - b.orderIndex);
-        
-      return {
-        ...test,
-        id: test.testId, // Provide 'id' for compatibility
-        submissions: testSubmissions,
-        questions: testQuestions
-      };
-    });
+    const hasNextPage = hostedTestPage.length > limit;
+    const hostedTests = hasNextPage ? hostedTestPage.slice(0, limit) : hostedTestPage;
+    const lastTest = hostedTests.at(-1);
 
     return NextResponse.json({ 
-      tests: enhancedTests,
+      tests: hostedTests.map((test) => ({ ...test, id: test.testId })),
+      nextCursor: hasNextPage && lastTest
+        ? encodeHostedTestsCursor({ createdAt: lastTest.createdAt, id: lastTest.onlineTestId })
+        : null,
       assignedSlots: Array.from(sectionOptionsMap.values()),
       subjectOptions: assignedSlotsRaw.map(slot => ({
         id: slot.subjectId, name: slot.subjectName, sectionId: slot.sectionId
       }))
     });
   } catch (error) {
+    const publicInputError = inputErrorResponse(error);
+    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
+
     console.error("Error fetching hosted tests:", error);
     return NextResponse.json({ error: "Failed to fetch tests" }, { status: 500 });
   }
@@ -168,6 +185,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       title: title.trim(),
       maxMarks: totalMarks,
       date: today,
+      resultsPublishedAt: new Date(),
     }).returning();
 
     const [onlineTest] = await db.insert(onlineTests).values({
@@ -178,29 +196,26 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
     }).returning();
 
     let orderIndex = 0;
-    
-    for (const q of mcqs) {
-      await db.insert(onlineTestQuestions).values({
+    const allQuestions = [
+      ...mcqs.map((q: any) => ({
         onlineTestId: onlineTest.id,
-        questionType: "MCQ",
+        questionType: 'MCQ' as const,
         prompt: q.prompt,
         options: q.options,
         correctOptionIndex: Number(q.correctOptionIndex),
         marks: Number(q.marks),
         orderIndex: orderIndex++,
-      });
-    }
-
-    if (mode === "MIX") {
-      for (const q of shortQuestions) {
-        await db.insert(onlineTestQuestions).values({
-          onlineTestId: onlineTest.id,
-          questionType: "SHORT",
-          prompt: q.prompt,
-          marks: Number(q.marks),
-          orderIndex: orderIndex++,
-        });
-      }
+      })),
+      ...(mode === "MIX" ? (shortQuestions || []).map((q: any) => ({
+        onlineTestId: onlineTest.id,
+        questionType: 'SHORT' as const,
+        prompt: q.prompt,
+        marks: Number(q.marks),
+        orderIndex: orderIndex++,
+      })) : []),
+    ];
+    if (allQuestions.length > 0) {
+      await db.insert(onlineTestQuestions).values(allQuestions);
     }
 
     const { createOnlineTestNotifications } = await import("@/lib/notifications");
@@ -217,6 +232,9 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
 
     return NextResponse.json({ success: true, testId: test.id });
   } catch (error) {
+    const publicInputError = inputErrorResponse(error);
+    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
+
     console.error("Error creating online test:", error);
     return NextResponse.json({ error: "Failed to create online test" }, { status: 500 });
   }

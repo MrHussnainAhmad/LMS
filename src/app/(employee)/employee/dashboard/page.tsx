@@ -5,35 +5,58 @@ import { db } from "@/db";
 import { institutions } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { getVisibleAnnouncements } from "@/lib/announcements";
-import { count, desc, eq } from "drizzle-orm";
+import { getCachedOrFetch } from "@/lib/redis";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { Building2, FileCheck } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+/**
+ * Employee dashboard verification summary.
+ *
+ * Cache key: cache:employee:dashboard:overview
+ * Scope: platform (shared across employees — same pending queue)
+ * TTL: 45s
+ * Invalidation: TTL-only; approve/reject will show within TTL
+ * Acceptable staleness: ~45s
+ * Fallback: Valkey miss → Postgres
+ */
 export default async function EmployeeDashboard() {
   const session = await getSession();
   if (!session || session.role !== "EMPLOYEE") redirect("/login");
 
-  const [pendingInsts] = await db.select({ value: count() }).from(institutions).where(eq(institutions.status, "PENDING"));
-  const [approvedInsts] = await db.select({ value: count() }).from(institutions).where(eq(institutions.status, "APPROVED"));
-  const recentAnnouncements = await getVisibleAnnouncements(session, 4);
-
-  const pendingList = await db.select()
-    .from(institutions)
-    .where(eq(institutions.status, "PENDING"))
-    .orderBy(desc(institutions.createdAt))
-    .limit(5);
+  const [overview, recentAnnouncements, pendingList] = await Promise.all([
+    getCachedOrFetch("cache:employee:dashboard:overview", 45, async () => {
+      const [pendingRows, approvedRows] = await Promise.all([
+        db.select({ value: count() }).from(institutions).where(and(isNull(institutions.parentInstitutionId), eq(institutions.status, "PENDING"))),
+        db.select({ value: count() }).from(institutions).where(and(isNull(institutions.parentInstitutionId), eq(institutions.status, "APPROVED"))),
+      ]);
+      return {
+        pending: pendingRows[0]?.value ?? 0,
+        approved: approvedRows[0]?.value ?? 0,
+      };
+    }),
+    getVisibleAnnouncements(session, 4),
+    getCachedOrFetch("cache:employee:dashboard:pending-list", 45, async () =>
+      db
+        .select({
+          id: institutions.id,
+          name: institutions.name,
+          city: institutions.city,
+        })
+        .from(institutions)
+        .where(and(isNull(institutions.parentInstitutionId), eq(institutions.status, "PENDING")))
+        .orderBy(desc(institutions.createdAt))
+        .limit(5)
+    ),
+  ]);
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-display font-bold text-brand-950">Employee Portal</h1>
-        <p className="text-stone-500 mt-1">Review institution applications and manage verifications.</p>
-      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
-        <StatCard title="Assigned Verifications" value={pendingInsts.value.toString()} icon={FileCheck} />
-        <StatCard title="Processed Validations" value={approvedInsts.value.toString()} icon={Building2} />
+        <StatCard title="Assigned Verifications" value={overview.pending.toString()} icon={FileCheck} />
+        <StatCard title="Processed Validations" value={overview.approved.toString()} icon={Building2} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px] max-w-6xl">
@@ -59,6 +82,7 @@ export default async function EmployeeDashboard() {
                   </div>
                   <Link
                     href="/employee/institutions"
+                    prefetch={false}
                     className="px-4 py-2 text-sm font-medium bg-brand-800 text-white rounded-md hover:bg-brand-900 transition-colors"
                   >
                     Review Application
