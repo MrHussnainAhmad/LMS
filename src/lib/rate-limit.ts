@@ -1,62 +1,103 @@
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
 import { NextRequest } from 'next/server';
-
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL || '',
-  token: process.env.UPSTASH_REDIS_REST_TOKEN || '',
-});
-
-// Auth Routes: 5 requests per minute
-export const authRateLimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(5, '1 m'),
-  analytics: true,
-});
+import { redis } from './redis';
+import { getClientIp } from './client-ip';
 
 export type PlatformLoginKind = 'super-admin' | 'mini-admin' | 'employee';
 
-const platformLoginRateLimits: Record<PlatformLoginKind, Ratelimit> = {
-  'super-admin': new Ratelimit({
-    redis,
-    limiter: Ratelimit.slidingWindow(2, '1 m'),
-    analytics: true,
-    prefix: 'ratelimit:login:super-admin',
-  }),
-  'mini-admin': new Ratelimit({
-    redis,
-    limiter: Ratelimit.slidingWindow(5, '1 m'),
-    analytics: true,
-    prefix: 'ratelimit:login:mini-admin',
-  }),
-  employee: new Ratelimit({
-    redis,
-    limiter: Ratelimit.slidingWindow(10, '1 m'),
-    analytics: true,
-    prefix: 'ratelimit:login:employee',
-  }),
+export type RateLimitBucket =
+  | 'auth'
+  | 'api'
+  | 'refresh'
+  | 'export'
+  | 'import'
+  | 'heartbeat'
+  | 'unread'
+  | 'marks_write'
+  | 'admissions'
+  | 'admission_auth'
+  | 'student_verification'
+  | 'upload';
+
+const BUCKET_LIMITS: Record<RateLimitBucket, { limit: number; windowSeconds: number }> = {
+  auth: { limit: 5, windowSeconds: 60 },
+  api: { limit: 100, windowSeconds: 60 },
+  refresh: { limit: 30, windowSeconds: 60 },
+  export: { limit: 3, windowSeconds: 60 },
+  import: { limit: 5, windowSeconds: 60 },
+  heartbeat: { limit: 20, windowSeconds: 60 },
+  unread: { limit: 60, windowSeconds: 60 },
+  marks_write: { limit: 30, windowSeconds: 60 },
+  admissions: { limit: 5, windowSeconds: 60 },
+  admission_auth: { limit: 5, windowSeconds: 60 },
+  student_verification: { limit: 60, windowSeconds: 60 },
+  // A signature is an upload capability and each one costs Cloudinary quota.
+  // 20/min is far above any real flow (one signature per file picked by hand)
+  // and is keyed per account, not per IP.
+  upload: { limit: 20, windowSeconds: 60 },
 };
 
-// General API: 100 requests per minute
-export const apiRateLimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(100, '1 m'),
-  analytics: true,
-});
+const FALLBACK_MAX_KEYS = 10_000;
+const fallbackWindows = new Map<string, { count: number; resetAt: number }>();
 
-export async function withRateLimit(req: NextRequest, type: 'auth' | 'api' = 'api') {
-  if (!process.env.UPSTASH_REDIS_REST_URL) {
-    // Return a dummy success if upstash is not configured
-    return { success: true };
+function checkFallbackRateLimit(key: string, limit: number, windowSeconds: number) {
+  const now = Date.now();
+  let record = fallbackWindows.get(key);
+  if (!record || record.resetAt <= now) {
+    record = { count: 0, resetAt: now + windowSeconds * 1000 };
+    fallbackWindows.set(key, record);
+  }
+  record.count += 1;
+
+  if (fallbackWindows.size > FALLBACK_MAX_KEYS) {
+    for (const [candidate, value] of fallbackWindows) {
+      if (value.resetAt <= now || fallbackWindows.size > FALLBACK_MAX_KEYS) fallbackWindows.delete(candidate);
+      if (fallbackWindows.size <= FALLBACK_MAX_KEYS) break;
+    }
   }
 
-  const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';
-  const limiter = type === 'auth' ? authRateLimit : apiRateLimit;
-  
-  const identifier = `${type}_${ip}`;
-  const { success } = await limiter.limit(identifier);
+  return {
+    success: record.count <= limit,
+    retryAfterSeconds: Math.max(1, Math.ceil((record.resetAt - now) / 1000)),
+  };
+}
 
-  return { success };
+/**
+ * One round trip, atomic. The previous GET → compare → MULTI(INCR[, EXPIRE])
+ * sequence had two defects: concurrent requests all read the same pre-limit value
+ * and all passed, and a skipped EXPIRE could leave the key with no TTL at all —
+ * a permanent lockout for that IP. `EXPIRE … NX` sets the window exactly once and
+ * the decision is made from INCR's own return value.
+ */
+async function checkRateLimit(key: string, limit: number, windowSeconds: number) {
+  if (redis.status !== 'ready') return checkFallbackRateLimit(key, limit, windowSeconds);
+
+  try {
+    const result = await redis.multi().incr(key).expire(key, windowSeconds, 'NX').exec();
+    if (!result || !result[0]) return checkFallbackRateLimit(key, limit, windowSeconds);
+
+    const [incrErr, count] = result[0];
+    if (incrErr || typeof count !== 'number') return checkFallbackRateLimit(key, limit, windowSeconds);
+
+    return { success: count <= limit, retryAfterSeconds: windowSeconds };
+  } catch (err) {
+    console.error('Rate limit error:', err);
+    return checkFallbackRateLimit(key, limit, windowSeconds);
+  }
+}
+
+function clientIp(req: NextRequest) {
+  return getClientIp(req);
+}
+
+export async function withRateLimit(
+  req: NextRequest,
+  type: RateLimitBucket = 'api',
+  identity?: string | number,
+) {
+  const { limit, windowSeconds } = BUCKET_LIMITS[type] ?? BUCKET_LIMITS.api;
+  const ip = clientIp(req);
+  const suffix = identity !== undefined ? `:${identity}` : '';
+  return checkRateLimit(`ratelimit:${type}:${ip}${suffix}`, limit, windowSeconds);
 }
 
 export async function withPlatformLoginRateLimit(
@@ -64,13 +105,12 @@ export async function withPlatformLoginRateLimit(
   kind: PlatformLoginKind,
   loginIdentifier: string,
 ) {
-  if (!process.env.UPSTASH_REDIS_REST_URL) {
-    return { success: true };
-  }
+  const ip = clientIp(req);
+  const key = `ratelimit:login:${kind}:${ip}:${loginIdentifier}`;
 
-  const forwardedFor = req.headers.get('x-forwarded-for');
-  const ip = forwardedFor?.split(',')[0]?.trim() || '127.0.0.1';
-  const identifier = `${ip}:${loginIdentifier}`;
+  let limit = 5;
+  if (kind === 'super-admin') limit = 2;
+  else if (kind === 'employee') limit = 10;
 
-  return platformLoginRateLimits[kind].limit(identifier);
+  return checkRateLimit(key, limit, 60);
 }

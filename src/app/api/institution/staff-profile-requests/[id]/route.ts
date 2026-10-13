@@ -1,7 +1,8 @@
+import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { announcements, campuses, institutions, staff, staffProfileChangeRequests } from "@/db/schema";
-import { requireRole } from "@/lib/rbac";
+import { getTenantContext, requireRole } from "@/lib/rbac";
 import type { JWTPayload } from "@/lib/auth";
 import { reviewStaffProfileChangeRequestSchema } from "@/lib/validators/staff";
 import { and, eq } from "drizzle-orm";
@@ -28,14 +29,15 @@ async function notifyAnnouncement(announcementId: number) {
   await processAnnouncementNotification(announcementId);
 }
 
-export const PATCH = requireRole(["INSTITUTION"], async (
+export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (
   req: NextRequest,
   { session, params }: { session: JWTPayload; params: Promise<{ id: string }> }
 ) => {
+  const institutionId = getTenantContext(session);
   const body = await req.json();
   const parsed = reviewStaffProfileChangeRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error }, { status: 400 });
+    return NextResponse.json(validationError(parsed.error), { status: 400 });
   }
 
   const { id } = await params;
@@ -48,7 +50,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (
     .from(staffProfileChangeRequests)
     .where(and(
       eq(staffProfileChangeRequests.id, requestId),
-      eq(staffProfileChangeRequests.institutionId, session.userId)
+      eq(staffProfileChangeRequests.institutionId, institutionId)
     ))
     .limit(1);
 
@@ -60,7 +62,8 @@ export const PATCH = requireRole(["INSTITUTION"], async (
   const reviewedValues = {
     status: parsed.data.status,
     adminNote: parsed.data.adminNote || null,
-    reviewedBy: session.userId,
+    reviewedBy: session.role === "INSTITUTION" ? institutionId : null,
+    reviewedByInstitutionAdmin: session.role === "INSTITUTION_ADMIN" ? session.userId : null,
     reviewedAt: new Date(),
   };
 
@@ -69,8 +72,8 @@ export const PATCH = requireRole(["INSTITUTION"], async (
       .set(reviewedValues)
       .where(eq(staffProfileChangeRequests.id, requestId));
     const [insertedAnnouncement] = await db.insert(announcements).values({
-      institutionId: session.userId,
-      senderRole: "INSTITUTION",
+      institutionId,
+      senderRole: session.role,
       senderId: session.userId,
       targetType: "USER",
       targetUserRole: "STAFF",
@@ -83,7 +86,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (
   }
 
   const [staffRow] = await db.select().from(staff)
-    .where(and(eq(staff.id, requestRow.staffId), eq(staff.institutionId, session.userId)))
+    .where(and(eq(staff.id, requestRow.staffId), eq(staff.institutionId, institutionId)))
     .limit(1);
   if (!staffRow) return NextResponse.json({ error: "Staff not found" }, { status: 404 });
 
@@ -100,7 +103,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (
   if (requestedFields.phone) updates.phone = requestedFields.phone;
 
   if (!requestedFields.email && (updates.name || updates.phone)) {
-    const [institution] = await db.select().from(institutions).where(eq(institutions.id, session.userId)).limit(1);
+    const [institution] = await db.select().from(institutions).where(eq(institutions.id, institutionId)).limit(1);
     if (!institution) return NextResponse.json({ error: "Institution not found" }, { status: 404 });
 
     const baseEmail = generateStaffEmail({
@@ -124,7 +127,7 @@ export const PATCH = requireRole(["INSTITUTION"], async (
 
   if (requestedFields.campusId) {
     const [campus] = await db.select().from(campuses)
-      .where(and(eq(campuses.id, requestedFields.campusId), eq(campuses.institutionId, session.userId)))
+      .where(and(eq(campuses.id, requestedFields.campusId), eq(campuses.institutionId, institutionId)))
       .limit(1);
     if (!campus) return NextResponse.json({ error: "Requested campus not found" }, { status: 400 });
     updates.campusId = requestedFields.campusId;
@@ -136,8 +139,8 @@ export const PATCH = requireRole(["INSTITUTION"], async (
       .set(reviewedValues)
       .where(eq(staffProfileChangeRequests.id, requestId));
     const [insertedAnnouncement] = await db.insert(announcements).values({
-      institutionId: session.userId,
-      senderRole: "INSTITUTION",
+      institutionId,
+      senderRole: session.role,
       senderId: session.userId,
       targetType: "USER",
       targetUserRole: "STAFF",

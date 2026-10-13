@@ -29,10 +29,6 @@ export default async function StudentAnnouncementsPage({ searchParams }: { searc
 
   return (
     <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
-      <div>
-        <h1 className="text-2xl lg:text-3xl font-display font-bold text-brand-950">Announcements</h1>
-        <p className="text-stone-500 mt-1 text-sm lg:text-base">Latest notices shared with your class, section, or campus.</p>
-      </div>
 
       {announcements.length === 0 ? (
         <EmptyState
@@ -46,6 +42,7 @@ export default async function StudentAnnouncementsPage({ searchParams }: { searc
             <Link
               key={announcement.id}
               href={`/announcements/${announcement.id}`}
+              prefetch={false}
               className={cn(
                 "block rounded-lg border bg-surface p-4 shadow-sm transition-colors hover:bg-stone-50",
                 announcement.isRead ? "border-border" : "border-brand-200 bg-brand-50/40"

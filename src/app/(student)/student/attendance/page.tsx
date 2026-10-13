@@ -1,8 +1,12 @@
+import { formatUtcDate } from "@/lib/date-format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { attendances, students } from "@/db/schema";
 import { db } from "@/db";
 import { getSession } from "@/lib/auth";
-import { and, desc, eq } from "drizzle-orm";
+import { getAuthenticatedStudentPlacement } from "@/lib/auth-student";
+import { windowRange } from "@/lib/month-window";
+import { studentPlacementColumns } from "@/lib/student-columns";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { AlertCircle, CalendarDays, CheckSquare } from "lucide-react";
 import { redirect } from "next/navigation";
 
@@ -17,12 +21,23 @@ export default async function StudentAttendancePage() {
   const session = await getSession();
   if (!session || session.role !== "STUDENT" || !session.institutionId) redirect("/login");
 
-  const [student] = await db.select().from(students).where(eq(students.id, session.userId)).limit(1);
-  if (!student || student.institutionId !== session.institutionId) redirect("/login");
+  const student = getAuthenticatedStudentPlacement(session) ?? (await db
+    .select(studentPlacementColumns)
+    .from(students)
+    .where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId)))
+    .limit(1))[0];
+  if (!student) redirect("/login");
+
+  const { from, to } = windowRange(new Date(), 1);
 
   const records = await db.select()
     .from(attendances)
-    .where(and(eq(attendances.studentId, student.id), eq(attendances.institutionId, session.institutionId)))
+    .where(and(
+      eq(attendances.studentId, student.id),
+      eq(attendances.institutionId, session.institutionId),
+      gte(attendances.date, from),
+      lte(attendances.date, to),
+    ))
     .orderBy(desc(attendances.date));
 
   const totals = records.reduce(
@@ -40,10 +55,6 @@ export default async function StudentAttendancePage() {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-display font-bold text-brand-950">Attendance Record</h1>
-        <p className="text-stone-500 mt-1">Track your daily presence and absence history.</p>
-      </div>
 
       {records.length === 0 ? (
         <Card>
@@ -53,7 +64,7 @@ export default async function StudentAttendancePage() {
               Current Semester
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-12">
+          <CardContent className="p-6 sm:p-12">
             <div className="flex flex-col items-center justify-center text-center space-y-4">
               <div className="h-16 w-16 rounded-full bg-brand-50 flex items-center justify-center">
                 <AlertCircle className="h-8 w-8 text-brand-400" />
@@ -109,10 +120,7 @@ export default async function StudentAttendancePage() {
                   <div key={record.id} className="p-4 flex items-center justify-between gap-4">
                     <div>
                       <p className="font-semibold text-brand-950">
-                        {new Date(`${record.date}T00:00:00.000Z`).toLocaleDateString("en-US", {
-                          dateStyle: "medium",
-                          timeZone: "UTC",
-                        })}
+                        {formatUtcDate(new Date(`${record.date}T00:00:00.000Z`))}
                       </p>
                       <p className="text-xs text-stone-500">Section attendance</p>
                     </div>

@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { sections, classes, students } from "@/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { AttendanceClient } from "./AttendanceClient";
@@ -24,48 +24,41 @@ export default async function AttendancePage() {
     .innerJoin(classes, eq(sections.classId, classes.id))
     .where(and(eq(sections.classTeacherId, staffId), eq(sections.institutionId, session.institutionId)));
 
-  const sectionIds = assignments.map(a => a.id);
-  
-  const allStudents = sectionIds.length > 0 ? await db.select({
-    id: students.id,
-    name: students.name,
-    loginRollNumber: students.loginRollNumber,
-    sectionId: students.sectionId,
-  })
-    .from(students)
-    .where(and(eq(students.institutionId, session.institutionId), inArray(students.sectionId, sectionIds))) : [];
+  // Only preload the first section's roster on the server — the client fetches
+  // any other section's students lazily when the staff member switches sections.
+  const firstSectionId = assignments[0]?.id ?? null;
 
-  const studentsBySection: Record<number, typeof allStudents> = {};
-  allStudents.forEach(student => {
-    if (!studentsBySection[student.sectionId]) {
-      studentsBySection[student.sectionId] = [];
-    }
-    studentsBySection[student.sectionId].push(student);
-  });
+  let firstSectionStudents: { id: number; name: string; loginRollNumber: string; sectionId: number }[] = [];
+  let firstSectionMarkedToday = false;
 
-  const todayStr = new Date().toISOString().split("T")[0];
-  const todayRecords = sectionIds.length > 0 ? await db.select({
-    sectionId: attendances.sectionId,
-    studentId: attendances.studentId,
-    status: attendances.status
-  })
-    .from(attendances)
-    .where(and(
-      eq(attendances.institutionId, session.institutionId),
-      eq(attendances.date, todayStr),
-      inArray(attendances.sectionId, sectionIds)
-    )) : [];
-
-  const todayAttendanceBySection: Record<number, boolean> = {};
-  todayRecords.forEach(record => {
-    todayAttendanceBySection[record.sectionId] = true;
-  });
+  if (firstSectionId) {
+    [firstSectionStudents, firstSectionMarkedToday] = await Promise.all([
+      db.select({
+        id: students.id,
+        name: students.name,
+        loginRollNumber: students.loginRollNumber,
+        sectionId: students.sectionId,
+      })
+        .from(students)
+        .where(and(eq(students.institutionId, session.institutionId), eq(students.sectionId, firstSectionId))),
+      db.select({ id: attendances.id })
+        .from(attendances)
+        .where(and(
+          eq(attendances.institutionId, session.institutionId),
+          eq(attendances.date, new Date().toISOString().split("T")[0]),
+          eq(attendances.sectionId, firstSectionId),
+        ))
+        .limit(1)
+        .then((rows) => rows.length > 0),
+    ]);
+  }
 
   return (
-    <AttendanceClient 
-      assignedSections={assignments} 
-      studentsBySection={studentsBySection} 
-      todayAttendanceBySection={todayAttendanceBySection}
+    <AttendanceClient
+      assignedSections={assignments}
+      initialSectionId={firstSectionId}
+      initialStudents={firstSectionStudents}
+      initialAlreadyMarked={firstSectionMarkedToday}
     />
   );
 }

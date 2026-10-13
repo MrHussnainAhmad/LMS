@@ -1,3 +1,4 @@
+import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { students, subjects, staffAssignments, sections } from "@/db/schema";
@@ -7,7 +8,7 @@ import { eq, and, inArray } from "drizzle-orm";
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession();
-    if (!session || session.role !== "INSTITUTION" || !session.institutionId) {
+    if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN") || !session.institutionId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -38,7 +39,12 @@ export async function GET(req: NextRequest) {
     .orderBy(students.classRollNumber);
 
     // 2. Fetch Subjects
-    const sectionRows = await db.select({ id: sections.id }).from(sections).where(eq(sections.classId, classId));
+    const sectionRows = await db.select({ id: sections.id })
+      .from(sections)
+      .where(and(
+        eq(sections.classId, classId),
+        eq(sections.institutionId, session.institutionId)
+      ));
     const sectionIds = sectionRows.map(s => s.id);
     
     let subjectList: { name: string }[] = [];
@@ -48,7 +54,11 @@ export async function GET(req: NextRequest) {
       })
       .from(staffAssignments)
       .innerJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-      .where(inArray(staffAssignments.sectionId, sectionIds));
+      .where(and(
+        eq(staffAssignments.institutionId, session.institutionId),
+        eq(subjects.institutionId, session.institutionId),
+        inArray(staffAssignments.sectionId, sectionIds)
+      ));
 
       subjectList = timetableSubjects;
     }
@@ -62,6 +72,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ students: studentList, subjects: subjectList.map(s => s.name) });
   } catch (error: any) {
+    const publicInputError = inputErrorResponse(error);
+    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
+
     console.error("Fetch template error:", error);
     return NextResponse.json({ error: "Failed to fetch template data" }, { status: 500 });
   }

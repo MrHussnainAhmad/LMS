@@ -48,7 +48,7 @@ function PortalSkeleton() {
 function PublicSkeleton() {
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-6xl space-y-10 px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl space-y-10 px-4 py-4 sm:py-8 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
           <Skeleton className="h-10 w-40" />
           <div className="hidden gap-3 sm:flex">
@@ -83,7 +83,7 @@ function DetailSkeleton() {
   return (
     <div className="min-h-screen bg-background">
       <div className="border-b border-border bg-brand-950">
-        <div className="mx-auto max-w-5xl space-y-7 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-5xl space-y-7 px-4 py-4 sm:py-8 sm:px-6 lg:px-8">
           <Skeleton className="h-10 w-36 bg-white/20" />
           <div className="space-y-4">
             <Skeleton className="h-8 w-40 bg-white/20" />

@@ -1,3 +1,5 @@
+import { inputErrorResponse } from '@/lib/input-error-response';
+import { validationError } from '@/lib/validation-errors';
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { platformPages } from "@/db/schema";
@@ -21,6 +23,9 @@ export async function GET(req: Request) {
     const pages = await db.select().from(platformPages).orderBy(platformPages.title);
     return NextResponse.json(pages);
   } catch (error) {
+    const publicInputError = inputErrorResponse(error);
+    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
+
     console.error("Error fetching pages:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -37,10 +42,15 @@ export async function POST(req: Request) {
     const result = pageSchema.safeParse(body);
 
     if (!result.success) {
-      return NextResponse.json({ error: "Invalid data", details: result.error.issues }, { status: 400 });
+      return NextResponse.json(validationError(result.error), { status: 400 });
     }
 
     const { slug, title, content } = result.data;
+
+    // Role Clarification Enforcements
+    if (slug === "pricing" && session.role === "EMPLOYEE") {
+      return NextResponse.json({ error: "Forbidden: Employees cannot edit the pricing page" }, { status: 403 });
+    }
 
     const [existingPage] = await db.select().from(platformPages).where(eq(platformPages.slug, slug));
     const now = new Date();
@@ -76,6 +86,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ message: "Page saved successfully" });
   } catch (error) {
+    const publicInputError = inputErrorResponse(error);
+    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
+
     console.error("Error saving page:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

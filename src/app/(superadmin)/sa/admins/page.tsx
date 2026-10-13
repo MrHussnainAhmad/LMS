@@ -1,3 +1,5 @@
+import { actionFeedback } from '@/lib/action-feedback';
+import { ActionForm } from '@/components/ui/action-form';
 import { db } from "@/db";
 import { superAdmins } from "@/db/schema";
 import { desc } from "drizzle-orm";
@@ -6,37 +8,39 @@ import { ShieldAlert, Plus, Trash2 } from "lucide-react";
 import { createSuperAdminAction, deleteSuperAdminAction } from "@/app/actions/sa-actions";
 import { redirect } from "next/navigation";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { authorizeSecurityPermission } from "@/lib/security-permissions";
 import { getSession } from "@/lib/auth";
 
 export default async function SAAdminsPage() {
   const session = await getSession();
   if (!session || session.role !== "SUPER_ADMIN") redirect("/login");
 
+  const isRoot = await authorizeSecurityPermission(session, "platform.security");
   const allAdmins = await db.select()
     .from(superAdmins)
     .orderBy(desc(superAdmins.createdAt));
 
   async function createAdmin(formData: FormData) {
     "use server";
+    return actionFeedback(async () => {
     await createSuperAdminAction(formData);
     redirect("/sa/admins"); // Refresh
+
+    });
   }
 
   async function deleteAdmin(formData: FormData) {
     "use server";
+    return actionFeedback(async () => {
     const id = parseInt(formData.get("id") as string, 10);
     await deleteSuperAdminAction(id);
     redirect("/sa/admins"); // Refresh
+
+    });
   }
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-brand-950">System Admins</h1>
-          <p className="text-stone-500 mt-1">Manage top-level administrators with full system access.</p>
-        </div>
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -55,7 +59,7 @@ export default async function SAAdminsPage() {
                       <th className="px-6 py-4 font-medium">Email Address</th>
                       <th className="px-6 py-4 font-medium">Role Level</th>
                       <th className="px-6 py-4 font-medium">Created At</th>
-                      {session.isSuperAdmin && <th className="px-6 py-4 font-medium text-right">Actions</th>}
+                      {isRoot && <th className="px-6 py-4 font-medium text-right">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -70,15 +74,15 @@ export default async function SAAdminsPage() {
                         <td className="px-6 py-4 text-stone-500">
                           {new Date(admin.createdAt).toLocaleDateString()}
                         </td>
-                        {session.isSuperAdmin && (
+                        {isRoot && (
                           <td className="px-6 py-4 text-right">
                             {admin.id !== session.userId && admin.id !== 1 && (
-                              <form action={deleteAdmin}>
+                              <ActionForm action={deleteAdmin}>
                                 <input type="hidden" name="id" value={admin.id} />
                                 <button type="submit" className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Delete Admin">
                                   <Trash2 className="h-4 w-4" />
                                 </button>
-                              </form>
+                              </ActionForm>
                             )}
                           </td>
                         )}
@@ -91,7 +95,7 @@ export default async function SAAdminsPage() {
           </Card>
         </div>
 
-        {session.isSuperAdmin && (
+        {isRoot && (
           <div>
             <Card>
               <CardHeader className="border-b border-border bg-stone-50/50">
@@ -101,7 +105,7 @@ export default async function SAAdminsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
-                <form action={createAdmin} className="space-y-4">
+                <ActionForm action={createAdmin} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-stone-700 mb-1">Email Address</label>
                     <input
@@ -141,7 +145,7 @@ export default async function SAAdminsPage() {
                     />
                   </div>
                   <SubmitButton className="w-full">Create Admin</SubmitButton>
-                </form>
+                </ActionForm>
               </CardContent>
             </Card>
           </div>

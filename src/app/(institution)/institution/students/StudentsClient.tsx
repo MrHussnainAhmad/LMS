@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import { DataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, FileText, Plus, Upload, MoreHorizontal, Eye, Edit, Trash } from "lucide-react";
+import { AlertTriangle, CreditCard, FileText, Plus, Upload, MoreHorizontal, Eye, Edit, Trash } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
+import { displaySectionName } from "@/lib/class-section-label";
 import { useRouter } from "next/navigation";
 
 type StudentRow = {
@@ -23,6 +24,7 @@ type StudentRow = {
   sectionId: number;
   classRollNumber: string;
   phone: string | null;
+  guardianEmail: string | null;
 };
 
 type CreateStudentResponse = {
@@ -38,9 +40,7 @@ type ImportStudentsResponse = {
   errors?: string[];
 };
 
-type StudentTableRow = StudentRow & {
-  searchString: string;
-};
+type StudentTableRow = StudentRow;
 
 type StudentColumn = {
   header: string;
@@ -55,18 +55,31 @@ function errorMessage(error: unknown) {
 
 export function StudentsClient({
   students,
-  campuses,
   classes,
-  sections
+  sections,
+  totalCount,
+  page,
+  limit,
 }: {
   students: StudentRow[];
-  campuses: { id: number; name: string }[];
   classes: { id: number; name: string }[];
   sections: { id: number; classId: number; name: string }[];
+  totalCount?: number;
+  page?: number;
+  limit?: number;
+  filterClassId: string;
+  filterSectionId: string;
 }) {
   const { toast } = useToast();
   const router = useRouter();
-  
+  const [rows, setRows] = useState<StudentRow[]>(students);
+  const [studentsProp, setStudentsProp] = useState(students);
+
+  if (students !== studentsProp) {
+    setStudentsProp(students);
+    setRows(students);
+  }
+
   // Modals state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -74,13 +87,11 @@ export function StudentsClient({
   const [importStep, setImportStep] = useState<"guide" | "upload">("guide");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importErrors, setImportErrors] = useState<string[]>([]);
-  
+  const [campuses, setCampuses] = useState<{ id: number; name: string }[] | null>(null);
+  const campusesLoading = isCreateOpen && campuses === null;
+
   const [editStudent, setEditStudent] = useState<StudentRow | null>(null);
   const [deleteStudent, setDeleteStudent] = useState<StudentRow | null>(null);
-
-  // Filters state
-  const [filterClassId, setFilterClassId] = useState<string>("");
-  const [filterSectionId, setFilterSectionId] = useState<string>("");
 
   // Create form state
   const [selectedClassId, setSelectedClassId] = useState<string>("");
@@ -88,25 +99,29 @@ export function StudentsClient({
     ? sections.filter(s => s.classId === parseInt(selectedClassId))
     : [];
 
-  const mainFilteredSections = filterClassId 
-    ? sections.filter(s => s.classId === parseInt(filterClassId))
-    : [];
-  const rowsPerPage = filterClassId || filterSectionId ? 30 : 60;
 
-  // Prepare table data with combined search field
-  const tableData = useMemo(() => {
-    let filtered = students;
-    if (filterClassId) {
-      filtered = filtered.filter(s => s.classId === parseInt(filterClassId));
-    }
-    if (filterSectionId) {
-      filtered = filtered.filter(s => s.sectionId === parseInt(filterSectionId));
-    }
-    return filtered.map(s => ({
-      ...s,
-      searchString: `${s.name} ${s.loginRollNumber}`
-    }));
-  }, [students, filterClassId, filterSectionId]);
+
+  useEffect(() => {
+    if (!isCreateOpen || campuses !== null) return;
+
+    let ignore = false;
+    api.get<{ campuses: { id: number; name: string }[] }>("/api/institution/campuses")
+      .then((data) => {
+        if (!ignore) setCampuses(data.campuses);
+      })
+      .catch(() => {
+        if (!ignore) {
+          setCampuses([]);
+          toast({ title: "Could not load campuses", variant: "destructive" });
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [isCreateOpen, campuses, toast]);
+
+  const tableData = rows;
 
   const columns: StudentColumn[] = [
     { header: "Roll Number", accessorKey: "loginRollNumber" as const, sortable: true },
@@ -123,9 +138,16 @@ export function StudentsClient({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => router.push(`/institution/students/${s.id}`)}>
-              <Eye className="h-4 w-4 mr-2" /> View Profile
-            </DropdownMenuItem>
+            {s.id > 0 && (
+              <DropdownMenuItem onClick={() => router.push(`/institution/students/${s.id}`)}>
+                <Eye className="h-4 w-4 mr-2" /> View Profile
+              </DropdownMenuItem>
+            )}
+            {s.id > 0 && (
+              <DropdownMenuItem onClick={() => router.push(`/institution/students/id-cards?studentId=${s.id}`)}>
+                <CreditCard className="h-4 w-4 mr-2" /> ID Card
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => setEditStudent(s)}>
               <Edit className="h-4 w-4 mr-2" /> Edit Student
             </DropdownMenuItem>
@@ -143,7 +165,7 @@ export function StudentsClient({
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData);
-    
+
     try {
       const res = await api.post<CreateStudentResponse>("/api/institution/students", data);
       toast({ 
@@ -152,6 +174,7 @@ export function StudentsClient({
         variant: "success" 
       });
       setIsCreateOpen(false);
+
       router.refresh();
     } catch (err: unknown) {
       toast({ title: "Error", description: errorMessage(err), variant: "destructive" });
@@ -207,6 +230,7 @@ export function StudentsClient({
       });
       setImportFile(null);
       setIsImportOpen(false);
+      // Bulk import returns only a count — refresh to load the new page of rows.
       router.refresh();
     } catch (err: unknown) {
       toast({ title: "Import failed", description: errorMessage(err), variant: "destructive" });
@@ -221,12 +245,12 @@ export function StudentsClient({
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData);
-    
+
     try {
       await api.patch(`/api/institution/students/${editStudent.id}`, data);
       toast({ title: "Student Updated", variant: "success" });
-      setEditStudent(null);
       router.refresh();
+      setEditStudent(null);
     } catch (err: unknown) {
       toast({ title: "Error", description: errorMessage(err), variant: "destructive" });
     } finally {
@@ -239,8 +263,8 @@ export function StudentsClient({
     try {
       await api.delete(`/api/institution/students/${deleteStudent.id}`);
       toast({ title: "Student Deleted", variant: "success" });
-      setDeleteStudent(null);
       router.refresh();
+      setDeleteStudent(null);
     } catch (err: unknown) {
       toast({ title: "Error", description: errorMessage(err), variant: "destructive" });
     }
@@ -248,11 +272,8 @@ export function StudentsClient({
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-brand-950">Students</h1>
-          <p className="text-stone-500 mt-1">Manage all enrolled students across campuses.</p>
-        </div>
+      <div className="flex flex-col sm:flex-row justify-end items-start sm:items-center gap-4">
+
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -272,40 +293,45 @@ export function StudentsClient({
         </div>
       </div>
 
-      <Card className="p-4 flex gap-4 flex-wrap bg-stone-50/50">
-        <div className="space-y-1 flex-1 min-w-[200px]">
-          <label className="text-xs font-medium text-stone-500 uppercase">Filter by Class</label>
-          <select 
-            className="w-full h-10 rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring"
-            value={filterClassId}
-            onChange={(e) => { setFilterClassId(e.target.value); setFilterSectionId(""); }}
-          >
-            <option value="">All Classes</option>
-            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div className="space-y-1 flex-1 min-w-[200px]">
-          <label className="text-xs font-medium text-stone-500 uppercase">Filter by Section</label>
-          <select 
-            className="w-full h-10 rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring"
-            value={filterSectionId}
-            onChange={(e) => setFilterSectionId(e.target.value)}
-            disabled={!filterClassId}
-          >
-            <option value="">All Sections</option>
-            {mainFilteredSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </div>
-      </Card>
-
       <Card className="p-0 overflow-hidden">
         <DataTable 
           data={tableData} 
           columns={columns} 
-          searchKey="searchString" 
-          searchPlaceholder="Search students by name or roll number..."
-          pageSize={rowsPerPage}
+          pageSize={Math.max(1, rows.length)}
         />
+        {totalCount !== undefined && page !== undefined && limit !== undefined && (
+          <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-stone-500">
+              Showing {totalCount ? ((page - 1) * limit) + 1 : 0} to {Math.min(page * limit, totalCount)} of {totalCount} results
+            </div>
+            <div className="flex gap-2 self-stretch sm:self-auto">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={page <= 1} 
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("page", String(page - 1));
+                  router.push(url.pathname + url.search);
+                }}
+              >
+                Previous
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={page * limit >= totalCount} 
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("page", String(page + 1));
+                  router.push(url.pathname + url.search);
+                }}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* IMPORT MODAL */}
@@ -469,7 +495,7 @@ export function StudentsClient({
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-stone-700">Gender</label>
-                <select name="gender" className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
+                <select name="gender" className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
                   <option value="MALE">Male</option>
                   <option value="FEMALE">Female</option>
                   <option value="OTHER">Other</option>
@@ -478,9 +504,9 @@ export function StudentsClient({
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-stone-700">Campus</label>
-                <select name="campusId" required className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
-                  <option value="">Select Campus</option>
-                  {campuses.map(c => (
+                <select name="campusId" required className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring" disabled={campusesLoading || !campuses?.length}>
+                  <option value="">{campusesLoading ? "Loading campuses…" : "Select Campus"}</option>
+                  {(campuses || []).map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
@@ -502,10 +528,10 @@ export function StudentsClient({
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-stone-700">Section</label>
-                <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
-                  <option value="">No section / Whole class</option>
+                <select name="sectionId" className="h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
+                  <option value=""></option>
                   {createFilteredSections.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                    <option key={s.id} value={s.id}>{displaySectionName(s.name)}</option>
                   ))}
                 </select>
               </div>
@@ -521,6 +547,11 @@ export function StudentsClient({
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-stone-700">Phone</label>
                 <Input name="phone" placeholder="Optional" />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-sm font-medium text-stone-700">Guardian email</label>
+                <Input type="email" name="guardianEmail" placeholder="parent@example.com" />
+                <p className="text-xs text-stone-500">This becomes the parent account email. Reusing it links siblings to one parent.</p>
               </div>
             </div>
 
@@ -549,17 +580,17 @@ export function StudentsClient({
                 <Input name="name" defaultValue={editStudent.name} required />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Class</label>
-                  <select name="classId" defaultValue={editStudent.classId} className="w-full h-10 rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
+                  <select name="classId" defaultValue={editStudent.classId} className="w-full h-10 rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Section</label>
-                  <select name="sectionId" defaultValue={editStudent.sectionId} className="w-full h-10 rounded-md border border-border bg-white px-3 py-2 text-sm focus-ring">
-                    {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  <select name="sectionId" defaultValue={editStudent.sectionId} className="w-full h-10 rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring">
+                    {sections.map(s => <option key={s.id} value={s.id}>{displaySectionName(s.name)}</option>)}
                   </select>
                 </div>
               </div>
@@ -573,7 +604,12 @@ export function StudentsClient({
                 <label className="text-sm font-medium">Phone</label>
                 <Input name="phone" defaultValue={editStudent.phone || ''} />
               </div>
-              
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Guardian email</label>
+                <Input type="email" name="guardianEmail" defaultValue={editStudent.guardianEmail || ''} placeholder="parent@example.com" />
+                <p className="text-xs leading-relaxed text-stone-500">Only the institution can change this. The same email automatically groups siblings under one parent account.</p>
+              </div>
+
               <div className="pt-4 flex justify-end">
                 <Button type="submit" disabled={isSubmitting} className="bg-brand-800 hover:bg-brand-900 text-white w-full">
                   {isSubmitting ? "Saving..." : "Save Changes"}

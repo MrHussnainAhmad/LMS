@@ -1,198 +1,162 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { ArrowRight, Building2, Database, Globe2, GraduationCap, LockKeyhole, Shield, Star, CreditCard, HardDrive } from "lucide-react";
 import { db } from "@/db";
 import { institutions, platformReviews } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Shield, Building2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PlatformReviewForm } from "@/components/PlatformReviewForm";
+import { CourseStreamingSettings } from "@/components/CourseStreamingSettings";
 import { getSession } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { GraduatedStudentAccessClient } from "./GraduatedStudentAccessClient";
 import { InstitutionLogoUploader } from "./InstitutionLogoUploader";
 import { InstitutionSignatureUploader } from "./InstitutionSignatureUploader";
-import { DangerZone } from "./DangerZone";
-import { PlatformReviewForm } from "@/components/PlatformReviewForm";
-import { Star } from "lucide-react";
+import { GoogleDriveBackupSettings } from "./GoogleDriveBackupSettings";
+import { CampusIdentityEditor } from './CampusIdentityEditor';
+
+import { PaymentAccountsSettings } from "@/components/PaymentAccountsSettings";
+
+const settingsLinkClass = "block rounded-md border border-border p-4 text-left transition-colors hover:bg-stone-50";
 
 export default async function InstitutionSettingsPage() {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") {
-    redirect("/login");
-  }
-
-  const institutionId = session.userId;
-
-  const instData = await db.select()
-    .from(institutions)
-    .where(eq(institutions.id, institutionId))
-    .limit(1);
-
-  if (instData.length === 0) {
-    redirect("/login");
-  }
-
-  const profile = instData[0];
+  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) redirect("/login");
+  const institutionId = session.institutionId || session.userId;
+  const [profile] = await db.select().from(institutions).where(eq(institutions.id, institutionId)).limit(1);
+  if (!profile) redirect("/login");
+  const isMainCampus = profile.parentInstitutionId === null;
   const [existingReview] = await db.select().from(platformReviews).where(eq(platformReviews.institutionId, institutionId)).limit(1);
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-brand-950">Settings</h1>
-          <p className="text-stone-500 mt-1">Manage your institution profile and security preferences.</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* Left Column */}
-        <div className="space-y-6">
-          {/* Profile Information */}
-          <Card>
-            <CardHeader className="border-b border-border bg-stone-50/50">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-brand-600" />
-                Institution Profile
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 space-y-4">
+    <div className="animate-fade-in space-y-8">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="lg:col-span-2">
+          <CardHeader className="border-b border-border bg-stone-50/50">
+            <CardTitle className="flex items-center gap-2 text-lg"><Building2 className="h-5 w-5 text-brand-600" />Institution Profile</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-8 p-5 sm:p-6 pt-6 sm:pt-8 lg:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.2fr)] items-start">
+            <div className="space-y-6">
               <InstitutionLogoUploader currentLogoKey={profile.logoKey} institutionName={profile.name} />
-              <div className="border-t border-border" />
-              <InstitutionSignatureUploader currentSignatureKey={profile.signatureKey} />
-              <div className="border-t border-border" />
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-stone-500 uppercase tracking-wider">Institution Name</label>
-                  <p className="mt-1 font-semibold text-brand-950">{profile.name}</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-stone-500 uppercase tracking-wider">Type</label>
-                  <p className="mt-1 text-stone-700">{profile.type}</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-stone-500 uppercase tracking-wider">Username</label>
-                  <p className="mt-1 text-stone-700 font-mono text-sm">{profile.username}</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-stone-500 uppercase tracking-wider">Registration No.</label>
-                  <p className="mt-1 text-stone-700 font-mono text-sm">{profile.registrationNumber}</p>
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-stone-500 uppercase tracking-wider">Contact Details</label>
-                  <p className="mt-1 text-stone-700">{profile.contactEmail} • {profile.contactPhone}</p>
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-stone-500 uppercase tracking-wider">Location</label>
-                  <p className="mt-1 text-stone-700">{profile.address}, {profile.city}, {profile.country}</p>
-                </div>
+            </div>
+            <div className="space-y-8">
+              <dl className="grid content-start gap-x-6 gap-y-5 sm:grid-cols-2 text-left">
+                <div className="space-y-1"><dt className="text-xs font-medium uppercase tracking-wider text-stone-500">Institution Name</dt><dd className="font-semibold text-brand-950 break-words">{profile.name}</dd></div>
+                <div className="space-y-1"><dt className="text-xs font-medium uppercase tracking-wider text-stone-500">Type</dt><dd className="text-stone-700 break-words">{profile.type}</dd></div>
+                <div className="space-y-1"><dt className="text-xs font-medium uppercase tracking-wider text-stone-500">Username</dt><dd className="font-mono text-sm text-stone-700 break-words">{profile.username}</dd></div>
+                {!isMainCampus && <div className="space-y-1"><dt className="text-xs font-medium uppercase tracking-wider text-stone-500">Campus Name</dt><dd className="font-semibold text-brand-950 break-words">{profile.campusName}</dd></div>}
+                <div className="space-y-1"><dt className="text-xs font-medium uppercase tracking-wider text-stone-500">Registration No.</dt><dd className="font-mono text-sm text-stone-700 break-words">{profile.registrationNumber}</dd></div>
+                <div className="sm:col-span-2 space-y-1"><dt className="text-xs font-medium uppercase tracking-wider text-stone-500">Contact Details</dt><dd className="break-words text-stone-700">{profile.contactEmail} · {profile.contactPhone}</dd></div>
+                <div className="sm:col-span-2 space-y-1"><dt className="text-xs font-medium uppercase tracking-wider text-stone-500">Location</dt><dd className="leading-6 text-stone-700 break-words">{profile.address}, {profile.city}, {profile.country}</dd></div>
+              </dl>
+              {!isMainCampus && !session.campusReadOnly && <CampusIdentityEditor registrationNumber={profile.registrationNumber} />}
+            </div>
+            <div className="col-span-full border-t border-border pt-8" />
+            <div className="col-span-full">
+              {session.role === "INSTITUTION" && <InstitutionSignatureUploader currentSignatureKey={profile.signatureKey} />}
+            </div>
+          </CardContent>
+        </Card>
+
+        {session.role === "INSTITUTION" && (
+        <Card className="overflow-hidden lg:col-span-2">
+          <CardHeader className="border-b border-border bg-stone-50/50 p-5 sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-brand-100 bg-white"><CreditCard className="h-5 w-5 text-brand-700" /></span>
+              <div>
+                <CardTitle className="text-lg">Payment Gateways</CardTitle>
+                <p className="mt-1 text-sm leading-6 text-stone-500">Manage the bank and wallet accounts used to collect your institution&apos;s fees.</p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </CardHeader>
+          <CardContent className="p-5 sm:p-6">
+            <PaymentAccountsSettings />
+          </CardContent>
+        </Card>
+        )}
 
-          {existingReview && (
-            <Card>
-              <CardHeader className="border-b border-border bg-brand-50/50">
-                <CardTitle className="text-lg flex items-center gap-2 text-brand-800">
-                  <Star className="h-5 w-5 fill-brand-600 text-brand-600" />
-                  Your Platform Review
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <p className="text-stone-500 text-sm mb-4">You can update the review that is featured on our homepage.</p>
-                <PlatformReviewForm defaultRating={existingReview.rating} defaultContent={existingReview.content} isUpdate={true} />
-              </CardContent>
-            </Card>
-          )}
-        </div>
+        {session.role === "INSTITUTION" && (<Card className="lg:col-span-2">
+          <CardHeader className="border-b border-border bg-stone-50/50"><CardTitle className="flex items-center gap-2 text-lg"><GraduationCap className="h-5 w-5 text-brand-600" />Course Streaming</CardTitle></CardHeader>
+          <CardContent className="p-5 sm:p-6 pt-6 sm:pt-8"><CourseStreamingSettings /></CardContent>
+        </Card>)}
 
-        {/* Right Column */}
-        <div className="space-y-6">
-          {/* Security Settings */}
+        {isMainCampus && <Card className="flex flex-col">
+          <CardHeader className="border-b border-border bg-stone-50/50"><CardTitle className="flex items-center gap-2 text-lg"><Globe2 className="h-5 w-5 text-brand-600" />Public Website</CardTitle></CardHeader>
+          <CardContent className="flex-1 flex flex-col justify-between space-y-5 p-5 sm:p-6 pt-6 sm:pt-8">
+            <div className="space-y-4">
+              <p className="text-sm leading-6 text-stone-500">Design your public website without coding. Choose the appearance, arrange sections and add your institution&apos;s content.</p>
+              <div className="rounded-md bg-stone-50 p-4 border border-border">
+                <p className="text-xs font-medium text-stone-700 mb-2">Features included:</p>
+                <ul className="text-xs text-stone-500 space-y-1.5 list-disc pl-4">
+                  <li>Six themes, brand colors, fonts and hero layouts</li>
+                  <li>Reorder, hide and rename homepage sections</li>
+                  <li>Custom galleries, videos, FAQs and content blocks</li>
+                  <li>Desktop, tablet and phone previews</li>
+                </ul>
+              </div>
+            </div>
+            <div>
+              <Link href="/institution/settings/public-website" prefetch={false} className="inline-flex w-full sm:w-auto h-10 items-center justify-center gap-2 rounded-sm border border-brand-950 bg-brand-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:border-brand-800 hover:bg-brand-800">Manage Public Website<ArrowRight className="h-4 w-4" /></Link>
+            </div>
+          </CardContent>
+        </Card>}
+
+        <Card>
+          <CardHeader className="border-b border-border bg-stone-50/50"><CardTitle className="flex items-center gap-2 text-lg"><Shield className="h-5 w-5 text-brand-600" />Academic & Staff Controls</CardTitle></CardHeader>
+          <CardContent className="space-y-3 p-5 sm:p-6 pt-6 sm:pt-8">
+            <Link href="/institution/settings/grading" prefetch={false} className={settingsLinkClass}><p className="font-medium text-brand-950">Grading Scale</p><p className="mt-1 text-sm leading-6 text-stone-500">Set passing percentage and grade ranges for promotion results.</p></Link>
+            <Link href="/institution/settings/roles" prefetch={false} className={settingsLinkClass}><p className="font-medium text-brand-950">Staff Roles</p><p className="mt-1 text-sm leading-6 text-stone-500">Create job roles such as Teacher, Clerk, and Vice Principal.</p></Link>
+          </CardContent>
+        </Card>
+
+        {session.role === "INSTITUTION" && (<Card>
+          <CardHeader className="border-b border-border bg-stone-50/50"><CardTitle className="flex items-center gap-2 text-lg"><GraduationCap className="h-5 w-5 text-brand-600" />Graduated Students</CardTitle></CardHeader>
+          <CardContent className="p-5 sm:p-6 pt-6 sm:pt-8"><GraduatedStudentAccessClient allowGraduatedStudentAccess={profile.allowGraduatedStudentAccess} /></CardContent>
+        </Card>)}
+
+        {session.role === "INSTITUTION" && (<Card>
+          <CardHeader className="border-b border-border bg-stone-50/50"><CardTitle className="flex items-center gap-2 text-lg"><Database className="h-5 w-5 text-brand-600" />Data Management</CardTitle></CardHeader>
+          <CardContent className="space-y-5 p-5 sm:p-6 pt-6 sm:pt-8">
+            <p className="text-sm leading-6 text-stone-500">Download a complete archive of your institution&apos;s students, staff, classes, and sections in CSV format.</p>
+            <a href="/api/institution/export" download className="inline-flex h-10 items-center justify-center rounded-sm bg-brand-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-900">Download All Data (.zip)</a>
+          </CardContent>
+        </Card>)}
+
+        {session.role === "INSTITUTION" && (<Card className="self-start">
+          <CardHeader className="border-b border-border bg-stone-50/50"><CardTitle className="flex items-center gap-2 text-lg"><HardDrive className="h-5 w-5 text-brand-600" />Google Drive Backup</CardTitle></CardHeader>
+          <CardContent className="p-5 sm:p-6 pt-6 sm:pt-8">
+            <GoogleDriveBackupSettings />
+          </CardContent>
+        </Card>)}
+
+        <div className="space-y-6 h-fit">
           <Card>
-            <CardHeader className="border-b border-border bg-stone-50/50">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Shield className="h-5 w-5 text-brand-600" />
-                Security Settings
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <form className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Current Password</label>
-                  <input
-                    type="password"
-                    className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">New Password</label>
-                  <input
-                    type="password"
-                    className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Confirm New Password</label>
-                  <input
-                    type="password"
-                    className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="bg-brand-800 text-white rounded-md px-4 py-2 text-sm font-medium opacity-50 cursor-not-allowed"
-                  disabled
-                >
-                  Update Password (Coming Soon)
-                </button>
+            <CardHeader className="border-b border-border bg-stone-50/50"><CardTitle className="flex items-center gap-2 text-lg"><LockKeyhole className="h-5 w-5 text-brand-600" />Security Settings</CardTitle></CardHeader>
+            <CardContent className="p-5 sm:p-6 pt-6 sm:pt-8">
+              <form className="space-y-5">
+                <div><label className="mb-2 block text-sm font-medium text-stone-700">Current Password</label><input type="password" className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
+                <div><label className="mb-2 block text-sm font-medium text-stone-700">New Password</label><input type="password" className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
+                <div><label className="mb-2 block text-sm font-medium text-stone-700">Confirm New Password</label><input type="password" className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
+                <button type="button" className="cursor-not-allowed rounded-md bg-brand-800 px-4 py-2 text-sm font-medium text-white opacity-50" disabled>Update Password (Coming Soon)</button>
               </form>
             </CardContent>
           </Card>
 
-          {/* Data Management */}
           <Card>
-            <CardHeader className="border-b border-border bg-stone-50/50">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Data Management
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <p className="text-stone-500 text-sm mb-4">Download a complete archive of your institution's records (Students, Staff, Classes, Sections) in CSV format.</p>
-              <div className="flex flex-col sm:flex-row gap-3 mt-4">
-                <a href="/api/institution/export" download>
-                  <button className="bg-brand-800 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-brand-900 transition-colors w-full sm:w-auto">
-                    Download All Data (.zip)
-                  </button>
-                </a>
-              </div>
+            <CardHeader className="border-b border-border bg-stone-50/50"><CardTitle className="flex items-center gap-2 text-lg"><Shield className="h-5 w-5 text-brand-600" />Reset User Password</CardTitle></CardHeader>
+            <CardContent className="space-y-5 p-5 sm:p-6 pt-6 sm:pt-8">
+              <div className="space-y-2 text-sm leading-6 text-stone-500"><p><strong className="text-stone-700">For requested resets only.</strong></p><p>This creates a temporary password without changing the user&apos;s personal information.</p></div>
+              <Link href="/institution/reset-password-panel" className="inline-flex h-10 items-center justify-center gap-2 rounded-sm bg-stone-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-900"><Shield className="h-4 w-4" />Open Password Reset</Link>
             </CardContent>
           </Card>
-
-          {/* Reset Password */}
-          <Card>
-            <CardHeader className="border-b border-border bg-stone-50/50">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Shield className="h-5 w-5 text-brand-600" />
-                Reset Password on request only
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div className="space-y-4">
-                <div className="text-sm text-stone-500 space-y-2">
-                  <p><strong>Note:</strong> This is only for on-request actions.</p>
-                  <p>Please do not try to reset anyone's personal data like this.</p>
-                  <p>This will just reset the user's password to a temporary credential.</p>
-                </div>
-                <a href="/institution/reset-password-panel" className="inline-block mt-2">
-                  <button className="bg-stone-800 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-stone-900 transition-colors w-full sm:w-auto flex items-center justify-center gap-2">
-                    <Shield className="h-4 w-4" />
-                    Reset User Password
-                  </button>
-                </a>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Danger Zone */}
-          <DangerZone />
         </div>
+
+        {existingReview && (
+          <Card>
+            <CardHeader className="border-b border-border bg-brand-50/50"><CardTitle className="flex items-center gap-2 text-lg text-brand-800"><Star className="h-5 w-5 fill-brand-600 text-brand-600" />Your Platform Review</CardTitle></CardHeader>
+            <CardContent className="p-5 sm:p-6 pt-6 sm:pt-8"><p className="mb-5 text-sm leading-6 text-stone-500">Update the review featured on the Nisaab360 homepage.</p><PlatformReviewForm defaultRating={existingReview.rating} defaultContent={existingReview.content} isUpdate /></CardContent>
+          </Card>
+        )}
+
       </div>
     </div>
   );

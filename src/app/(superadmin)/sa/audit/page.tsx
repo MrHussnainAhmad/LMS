@@ -11,7 +11,7 @@ import { redirect } from "next/navigation";
 
 export default async function SAAuditLogsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const session = await getSession();
-  if (!session || session.role !== "SUPER_ADMIN" || !session.isSuperAdmin) {
+  if (!session || session.role !== "SUPER_ADMIN") {
     redirect("/sa/dashboard");
   }
 
@@ -32,12 +32,6 @@ export default async function SAAuditLogsPage({ searchParams }: { searchParams: 
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-brand-950">Audit Logs</h1>
-          <p className="text-stone-500 mt-1">Review system-wide activities and security events.</p>
-        </div>
-      </div>
 
       <Card>
         <CardHeader className="border-b border-border bg-stone-50/50">
@@ -73,7 +67,7 @@ export default async function SAAuditLogsPage({ searchParams }: { searchParams: 
               <tbody className="divide-y divide-border">
                 {allLogs.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-stone-500">
+                    <td colSpan={6} className="px-6 py-4 sm:py-8 text-center text-stone-500">
                       No audit logs recorded yet.
                     </td>
                   </tr>
@@ -105,15 +99,16 @@ export default async function SAAuditLogsPage({ searchParams }: { searchParams: 
               </tbody>
             </table>
           </div>
-          
+
           {/* Pagination Controls */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-stone-50/30">
+          <div className="flex flex-col gap-3 border-t border-border bg-stone-50/30 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div className="text-sm text-stone-500">
               Showing page {page}
             </div>
             <div className="flex gap-2">
               <Link 
                 href={`/sa/audit?page=${page > 1 ? page - 1 : 1}`}
+                prefetch={false}
                 className={`flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md border ${page <= 1 ? 'border-border text-stone-300 pointer-events-none' : 'border-stone-300 text-stone-700 hover:bg-stone-100 transition-colors'}`}
                 aria-disabled={page <= 1}
               >
@@ -122,6 +117,7 @@ export default async function SAAuditLogsPage({ searchParams }: { searchParams: 
               </Link>
               <Link 
                 href={`/sa/audit?page=${page + 1}`}
+                prefetch={false}
                 className={`flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md border ${!hasNextPage ? 'border-border text-stone-300 pointer-events-none' : 'border-stone-300 text-stone-700 hover:bg-stone-100 transition-colors'}`}
                 aria-disabled={!hasNextPage}
               >

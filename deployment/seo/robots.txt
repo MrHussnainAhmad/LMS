@@ -1,0 +1,14 @@
+User-Agent: *
+Allow: /
+Disallow: /admin
+Disallow: /sa
+Disallow: /super-admin
+Disallow: /superadmin
+Disallow: /employee
+Disallow: /student
+Disallow: /institution
+Disallow: /staff
+Disallow: /parent
+Disallow: /login
+
+Sitemap: https://nisaab360.app/sitemap.xml

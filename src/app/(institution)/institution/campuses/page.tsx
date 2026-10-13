@@ -1,125 +1,48 @@
-import { db } from "@/db";
-import { campuses } from "@/db/schema";
-import { eq, desc, isNull } from "drizzle-orm";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { MapPin, Plus } from "lucide-react";
-import { getSession } from "@/lib/auth";
-import { redirect } from "next/navigation";
-import { createCampusAction } from "@/app/actions/institution-actions";
-import { SubmitButton } from "@/components/ui/submit-button";
+import { redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth';
+import { canManageCampuses, listInstitutionCampuses } from '@/lib/campus-workspaces';
+import { CampusLoginForm } from '@/components/institution/CampusLoginForm';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { db } from '@/db';
+import { institutions } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { getPricingPlan } from '@/lib/pricing';
 
 export default async function InstitutionCampusesPage() {
   const session = await getSession();
-  if (!session || session.role !== "INSTITUTION") {
-    redirect("/login");
-  }
+  if (!session || !['INSTITUTION', 'INSTITUTION_ADMIN'].includes(session.role)) redirect('/institution-login');
+  const [campuses, roots] = await Promise.all([
+    listInstitutionCampuses(session),
+    db.select({ pricingPlan: institutions.pricingPlan }).from(institutions).where(eq(institutions.id, session.rootInstitutionId ?? session.institutionId!)).limit(1),
+  ]);
+  const plan = getPricingPlan(roots[0]?.pricingPlan) ?? getPricingPlan('BASIC')!;
+  const canManage = canManageCampuses(session) && plan.id !== 'ENTERPRISE';
+  const canSetUp = canManage && plan.campusLimit !== null && campuses.length <= plan.campusLimit;
+  const canAdd = canManage && plan.campusLimit !== null && campuses.length < plan.campusLimit;
+  return <div className="space-y-8">
 
-  const institutionId = session.userId;
-
-  const allCampuses = await db.select()
-    .from(campuses)
-    .where(eq(campuses.institutionId, institutionId))
-    .orderBy(desc(campuses.createdAt));
-
-  async function createCampus(formData: FormData) {
-    "use server";
-    await createCampusAction(formData);
-    redirect("/institution/campuses");
-  }
-
-  return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-brand-950">Campuses</h1>
-          <p className="text-stone-500 mt-1">Manage physical locations and branch campuses.</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader className="border-b border-border bg-stone-50/50">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MapPin className="h-5 w-5 text-brand-600" />
-                Active Campuses
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-stone-500 uppercase bg-stone-50 border-b border-border">
-                    <tr>
-                      <th className="px-6 py-4 font-medium">Campus Name</th>
-                      <th className="px-6 py-4 font-medium">Address</th>
-                      <th className="px-6 py-4 font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {allCampuses.length === 0 && (
-                      <tr>
-                        <td colSpan={3} className="px-6 py-8 text-center text-stone-500">
-                          No campuses added yet.
-                        </td>
-                      </tr>
-                    )}
-                    {allCampuses.map((campus) => (
-                      <tr key={campus.id} className="hover:bg-stone-50/50 transition-colors">
-                        <td className="px-6 py-4 font-semibold text-brand-950">{campus.name}</td>
-                        <td className="px-6 py-4 text-stone-600 truncate max-w-[200px]">{campus.address || "N/A"}</td>
-                        <td className="px-6 py-4">
-                          <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-success/20 text-emerald-700">
-                            Active
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div>
-          <Card>
-            <CardHeader className="border-b border-border bg-stone-50/50">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Plus className="h-5 w-5 text-brand-600" />
-                Add New Campus
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <form action={createCampus} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Campus Name</label>
-                  <input
-                    type="text"
-                    name="name"
-                    required
-                    className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    placeholder="e.g. North Campus"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Physical Address</label>
-                  <textarea
-                    name="address"
-                    rows={3}
-                    className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    placeholder="123 Education St."
-                  />
-                </div>
-                <SubmitButton
-                  className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors"
-                >
-                  Create Campus
-                </SubmitButton>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+    <div className="grid gap-6 lg:grid-cols-3">
+      <Card className="lg:col-span-2"><CardHeader><CardTitle>Campus List</CardTitle></CardHeader><CardContent className="space-y-4">
+        {campuses.map((campus) => {
+          const hasLogin = campus.name === campus.workspaceName;
+          const isMain = campus.workspaceId === session.rootInstitutionId && hasLogin;
+          return <div key={campus.id} className="border border-stone-200 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2"><div><h2 className="font-semibold">{campus.name}</h2><p className="text-sm text-stone-500">{campus.address ?? 'Address not provided'}</p></div>
+              <span className="text-xs font-medium text-brand-700">{isMain ? 'Main campus' : hasLogin ? 'Campus login enabled' : 'Login not set up'}</span>
+            </div>
+            {hasLogin ? <p className="mt-3 text-sm">Login email: <span className="font-medium">{campus.loginEmail}</span></p>
+              : canSetUp ? <details className="mt-3"><summary className="cursor-pointer text-sm font-semibold text-brand-700">Set up login</summary><div className="mt-4"><CampusLoginForm existingCampus={campus} /></div></details>
+              : <p className="mt-3 text-sm text-stone-500">Contact the platform team to arrange this campus’s login.</p>}
+          </div>;
+        })}
+      </CardContent></Card>
+      <Card><CardHeader><CardTitle>{plan.name} campus access</CardTitle></CardHeader><CardContent className="space-y-4">
+        <p className="text-sm">{plan.campusDetail}.</p>
+        <p className="text-sm font-medium">{campuses.length} {plan.campusLimit === null ? 'campuses' : `of ${plan.campusLimit} campuses`} in use, including Main.</p>
+        {plan.id === 'ENTERPRISE' ? <p className="text-sm text-stone-500">Contact a platform admin or employee to add a campus or set up its login.</p>
+          : plan.campusLimit !== null && campuses.length >= plan.campusLimit ? <p className="text-sm text-stone-500">Your campus limit has been reached. Contact the platform team to change your plan.</p> : null}
+        {canManage && <div>{canAdd && <h2 className="mb-4 font-semibold">Add New Campus</h2>}<CampusLoginForm allowCreate={canAdd} /></div>}
+      </CardContent></Card>
     </div>
-  );
+  </div>;
 }

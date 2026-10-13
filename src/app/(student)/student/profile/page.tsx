@@ -32,19 +32,26 @@ export default async function StudentProfilePage() {
     sectionId: students.sectionId,
     className: classes.name,
     sectionName: sections.name,
+    academicStatus: students.academicStatus,
     institutionId: students.institutionId,
   })
     .from(students)
-    .innerJoin(classes, eq(students.classId, classes.id))
-    .innerJoin(sections, eq(students.sectionId, sections.id))
+    .leftJoin(classes, eq(students.classId, classes.id))
+    .leftJoin(sections, eq(students.sectionId, sections.id))
     .where(eq(students.id, session.userId))
     .limit(1);
 
   if (!studentRow) redirect("/login");
 
+  const isGraduated = studentRow.academicStatus === "GRADUATED";
+
   const [allClasses, allSections, requests] = await Promise.all([
-    db.select({ id: classes.id, name: classes.name }).from(classes).where(eq(classes.institutionId, studentRow.institutionId)),
-    db.select({ id: sections.id, name: sections.name, classId: sections.classId }).from(sections).where(eq(sections.institutionId, studentRow.institutionId)),
+    isGraduated
+      ? Promise.resolve([] as { id: number; name: string }[])
+      : db.select({ id: classes.id, name: classes.name }).from(classes).where(eq(classes.institutionId, studentRow.institutionId)),
+    isGraduated
+      ? Promise.resolve([] as { id: number; name: string; classId: number }[])
+      : db.select({ id: sections.id, name: sections.name, classId: sections.classId }).from(sections).where(eq(sections.institutionId, studentRow.institutionId)),
     db.select()
       .from(studentProfileChangeRequests)
       .where(and(
@@ -59,6 +66,8 @@ export default async function StudentProfilePage() {
     <StudentProfileClient
       student={{
         ...studentRow,
+        className: studentRow.className || "Graduated",
+        sectionName: studentRow.sectionName || "Graduated",
         ...splitName(studentRow.name),
       }}
       classes={allClasses}

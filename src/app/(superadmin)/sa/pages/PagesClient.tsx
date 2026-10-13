@@ -1,4 +1,6 @@
 "use client";
+import { responseErrorMessage, apiErrorMessage } from '@/lib/validation-errors';
+
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
@@ -26,21 +28,32 @@ const DEFAULT_PAGES = [
   { slug: "terms-of-service", title: "Terms of Service" },
   { slug: "security", title: "Security" },
   { slug: "gdpr", title: "GDPR" },
+  { slug: "pricing", title: "Pricing" },
 ];
 
-export default function PagesClient() {
-  const [pages, setPages] = useState<PageData[]>([]);
-  const [selectedSlug, setSelectedSlug] = useState<string>(DEFAULT_PAGES[0].slug);
+export default function PagesClient({
+  role,
+  initialPages,
+}: {
+  role?: string;
+  initialPages?: PageData[];
+}) {
+  const availablePages = DEFAULT_PAGES.filter(p => p.slug !== "pricing" || role !== "EMPLOYEE");
+  const seededFromServer = initialPages !== undefined;
+  
+  const [pages, setPages] = useState<PageData[]>(initialPages ?? []);
+  const [selectedSlug, setSelectedSlug] = useState<string>(availablePages[0].slug);
   const [content, setContent] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(!seededFromServer);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
-  const currentDefaultPage = DEFAULT_PAGES.find(p => p.slug === selectedSlug);
+  const currentDefaultPage = availablePages.find(p => p.slug === selectedSlug);
 
   useEffect(() => {
+    if (seededFromServer) return;
     fetchPages();
-  }, []);
+  }, [seededFromServer]);
 
   useEffect(() => {
     // When selected page changes, update the content in the editor
@@ -90,7 +103,7 @@ export default function PagesClient() {
       }
 
       if (!res.ok) {
-        throw new Error("Failed to save");
+        throw new Error(await responseErrorMessage(res));
       }
 
       toast({
@@ -101,7 +114,7 @@ export default function PagesClient() {
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to save the page.",
+        description: apiErrorMessage(error),
         variant: "destructive",
       });
     } finally {
@@ -111,7 +124,7 @@ export default function PagesClient() {
 
   if (isLoading && pages.length === 0) {
     return (
-      <div className="flex items-center justify-center p-12">
+      <div className="flex items-center justify-center p-6 sm:p-12">
         <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
       </div>
     );
@@ -127,7 +140,7 @@ export default function PagesClient() {
             value={selectedSlug}
             onChange={(e) => setSelectedSlug(e.target.value)}
           >
-            {DEFAULT_PAGES.map((p) => (
+            {availablePages.map((p) => (
               <option key={p.slug} value={p.slug}>
                 {p.title}
               </option>

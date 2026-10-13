@@ -1,5 +1,7 @@
 "use client";
 
+import { showError } from "@/lib/show-error";
+
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ export function PublishResultsForm({
   subjects: SubjectType[];
 }) {
   const [title, setTitle] = useState("");
+  const [type, setType] = useState("FINAL");
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
   const [maxMarks, setMaxMarks] = useState("100");
@@ -91,7 +94,7 @@ export function PublishResultsForm({
       link.click();
       document.body.removeChild(link);
     } catch (err: any) {
-      alert(err.message);
+      showError(err.message);
     } finally {
       setIsDownloadingTemplate(false);
     }
@@ -177,6 +180,7 @@ export function PublishResultsForm({
     try {
       const payload = {
         title,
+        type,
         classId: Number(classId),
         sectionId: sectionId ? Number(sectionId) : undefined,
         subjects: detectedSubjects.map(s => ({
@@ -248,6 +252,13 @@ export function PublishResultsForm({
               onChange={e => setMaxMarks(e.target.value)}
             />
           </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-stone-700">Result Type *</label>
+            <select className="w-full rounded-md border border-border px-3 py-2 text-sm bg-transparent" value={type} onChange={e => setType(e.target.value)}>
+              <option value="MONTHLY">Monthly</option><option value="MID">Mid Term</option><option value="FINAL">Final Term</option><option value="PROMOTION">Promotion</option>
+            </select>
+            {type === "PROMOTION" && <p className="text-xs text-brand-700">Students will be auto-promoted after every subject teacher publishes their results.</p>}
+          </div>
           
           <div className="space-y-2">
             <label className="text-sm font-medium text-stone-700">Class *</label>
@@ -305,7 +316,7 @@ export function PublishResultsForm({
           </div>
           
           <p className="text-xs text-stone-500 mt-2">
-            CSV must contain a column named "Roll Number". Other columns should exactly match subject names or codes.
+	            CSV must contain a column named &quot;Roll Number&quot;. Other columns should exactly match subject names or codes.
           </p>
         </div>
 

@@ -1,42 +1,150 @@
+import { ARCHIVED_ADMISSION_MESSAGE, isArchivedAdmissionError } from "./admission-archive-error";
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromRequest, UserRole, JWTPayload } from './auth';
+import { getSessionFromRequest, getLightSessionFromRequest, getWarmSessionFromRequest, UserRole, JWTPayload } from './auth';
+import { DEFAULT_MAX_BODY_BYTES, bodyTooLargeResponse, exceedsDeclaredBodyLimit } from './http';
+import { withRateLimit } from './rate-limit';
+import { measurePerformancePhase } from './performance';
+import { withApiPolicy } from './api-policy';
+import { stripSessionHeaders } from './session-header';
+import { applyCorsHeaders } from './cors';
+import { inputErrorResponse } from './input-error-response';
+import type { NativeJsonResponse } from './native-json-response';
+import { campusMutationBlocked, CAMPUS_READ_ONLY_ERROR } from './campus-view';
+import { authorizeSecurityPermission, type SecurityPermission } from './security-permissions';
 
 type RouteHandler = (
   req: NextRequest,
   context: { params: any; session: JWTPayload },
-) => Promise<NextResponse> | NextResponse;
+) => Promise<Response> | Response;
+
+type RequireRoleOptions = {
+  permission?: SecurityPermission;
+  allowCampusSwitch?: boolean;
+  /** OAuth callbacks and similar GET endpoints still change configuration. */
+  mutatesOnRead?: boolean;
+  allowPasswordChangeRequired?: boolean;
+  /** Skip Redis/DB user validity + student enrich — for heartbeat/unread only. */
+  light?: boolean;
+  /** Override the request-body ceiling for routes with genuinely larger payloads. */
+  maxBodyBytes?: number;
+  /** Only a synchronous read of already-valid cached data; null means ordinary GET. */
+  nativeWarm?: (req: NextRequest, context: { session: JWTPayload }) => NativeJsonResponse | null;
+  /** Standalone-only response optimization AFTER the ordinary fresh auth guards. */
+  nativeAuthenticated?: boolean;
+};
+
+function enforceSessionGuards(
+  req: NextRequest,
+  session: JWTPayload,
+  allowedRoles: UserRole[],
+  options?: RequireRoleOptions,
+): NextResponse | null {
+  if (!allowedRoles.includes(session.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  if (campusMutationBlocked(session, options?.mutatesOnRead ? 'POST' : req.method, options?.allowCampusSwitch)) {
+    return NextResponse.json({ error: CAMPUS_READ_ONLY_ERROR }, { status: 403 });
+  }
+
+  if (session.mustChangePassword && !options?.allowPasswordChangeRequired) {
+    return NextResponse.json(
+      { error: 'PASSWORD_CHANGE_REQUIRED' },
+      { status: 403 }
+    );
+  }
+
+  if (session.role === 'STUDENT' && session.studentAcademicStatus === 'GRADUATED') {
+    const allowedGraduateApiPaths = [
+      '/api/student/profile',
+      '/api/student/transcripts',
+      '/api/student/attendance',
+      '/api/student/dashboard',
+      '/api/student/promotion-result',
+    ];
+    const isAllowedGraduateApi = allowedGraduateApiPaths.some((path) => (
+      req.nextUrl.pathname === path || req.nextUrl.pathname.startsWith(`${path}/`)
+    ));
+    if (!isAllowedGraduateApi) {
+      return NextResponse.json({ error: 'Graduate access is limited to profile, transcripts, and attendance.' }, { status: 403 });
+    }
+  }
+
+  return null;
+}
 
 export function requireRole(
   allowedRoles: UserRole[],
   handler: RouteHandler,
-  options?: { allowPasswordChangeRequired?: boolean }
+  options?: RequireRoleOptions
 ) {
-  return async (req: NextRequest, context: any) => {
-    try {
-      const session = await getSessionFromRequest(req);
-      if (!session) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
+  function createGuarded(native: false): (req: NextRequest, context: any) => Promise<Response>;
+  function createGuarded(native: true): (req: NextRequest, context: any) => Promise<Response | NativeJsonResponse>;
+  function createGuarded(native: boolean) {
+    return withApiPolicy(async (req: NextRequest, context: any) => {
+      try {
+        // Cheapest possible rejection: refuse an oversized body before spending any
+        // work on it. Covers every requireRole-wrapped handler without touching them.
+        if (exceedsDeclaredBodyLimit(req, options?.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES)) {
+          return bodyTooLargeResponse();
+        }
 
-      if (!allowedRoles.includes(session.role)) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
+        const session = await measurePerformancePhase('auth', () => options?.light
+          ? getLightSessionFromRequest(req)
+          : getSessionFromRequest(req));
+        if (!session) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
 
-      if (session.mustChangePassword && !options?.allowPasswordChangeRequired) {
-        return NextResponse.json(
-          { error: 'PASSWORD_CHANGE_REQUIRED' },
-          { status: 403 }
-        );
-      }
+        const guard = enforceSessionGuards(req, session, allowedRoles, options);
+        if (guard) return guard;
+        if (options?.permission && !await authorizeSecurityPermission(session, options.permission)) {
+          return NextResponse.json({ error: 'Forbidden: this action is outside your role permissions.' }, { status: 403 });
+        }
 
-      // Add session to context for the handler
-      const enhancedContext = { ...context, session };
-      return await handler(req, enhancedContext as any);
-    } catch (err) {
-      console.error('RBAC Error:', err);
-      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-    }
-  };
+        if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+          const limited = await withRateLimit(req, 'api', `${session.role}:${session.userId}`);
+          if (!limited.success) {
+            return NextResponse.json(
+              { error: 'Too many requests. Please wait and try again.' },
+              { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } },
+            );
+          }
+        }
+
+        const enhancedContext = { ...context, session };
+        return await measurePerformancePhase('handler', async () => {
+          if (native && req.method === 'GET' && options?.nativeWarm) {
+            const response = options.nativeWarm(req, { session });
+            if (response?.status === 200) return response;
+          }
+          return handler(req, enhancedContext as any);
+        });
+      } catch (err) {
+        const inputError = inputErrorResponse(err);
+        if (inputError) return NextResponse.json(inputError.body, { status: inputError.status });
+        if (err instanceof SyntaxError && /JSON/i.test(err.message)) return NextResponse.json({ error: 'The request could not be read. Please check the entered values and try again.' }, { status: 400 });
+        if (isArchivedAdmissionError(err)) return NextResponse.json({ error: ARCHIVED_ADMISSION_MESSAGE }, { status: 409 });
+        console.error('RBAC Error:', err);
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+      }
+    });
+  }
+  const guarded = createGuarded(false);
+  if (options?.nativeAuthenticated && options.nativeWarm) Object.defineProperty(guarded, Symbol.for('nisaab360.native-authenticated-get'), {
+    value: createGuarded(true),
+  });
+  if (options?.nativeWarm && !options.nativeAuthenticated) Object.defineProperty(guarded, Symbol.for('nisaab360.native-warm-get'), {
+    value: (req: NextRequest): NativeJsonResponse | null => {
+      stripSessionHeaders(req.headers);
+      if (req.method !== 'GET' || exceedsDeclaredBodyLimit(req, options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES)) return null;
+      const session = getWarmSessionFromRequest(req);
+      if (!session || options?.permission || enforceSessionGuards(req, session, allowedRoles, options)) return null;
+      const response = options.nativeWarm!(req, { session });
+      return response?.status === 200 ? applyCorsHeaders(req, response) : null;
+    },
+  });
+  return guarded;
 }
 
 export function getTenantContext(session: JWTPayload): number {

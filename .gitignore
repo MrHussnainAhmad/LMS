@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-locked-*/
 /out/
 
 # production
@@ -27,6 +28,12 @@
 *.crt
 *.p12
 *.pfx
+*.p8
+*.jks
+*.keystore
+id_rsa
+id_ecdsa
+id_ed25519
 *.bak
 *.backup
 *.tmp
@@ -42,36 +49,88 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+*.env
 !.env.example
 .env*.local
+google_drive_setup_guide.md
 
-# local database and generated migration output
+# Local databases; versioned drizzle SQL and schema metadata stay publishable.
 *.db
 *.sqlite
 *.sqlite3
-/drizzle/*
-!/drizzle/0008_assignment_reference_files.sql
-!/drizzle/0006_login_lookup_indexes.sql
-!/drizzle/0007_push_preferences_default_enabled.sql
 
-# local-only operational database scripts
+# Local-only root repair/database scripts
 /check*.js
 /check*.ts
 /fix*.js
 /fix*.ts
 /migrate*.js
 /migrate*.ts
+/migrate*.mjs
 /run_*.js
 /run_*.ts
+/run_*.mjs
 /clear_*.js
 /clear_*.ts
-/scripts/wipe.ts
-/scripts/clear-assignments.ts
-/scripts/create-super-admin.ts
-/scripts/apply-online-tests-schema.mjs
-/scripts/*.local.*
-/scripts/migrate*.ts
-/scripts/apply-*.ts
+/clear_*.mjs
+# Scripts are local-only unless explicitly needed by runtime, release or checks.
+# Docker has a smaller build-input list; keep public package.json commands valid.
+/scripts/**
+!/scripts/audit-tenant-scope.mjs
+!/scripts/build.mjs
+!/scripts/build-release.mjs
+!/scripts/email-outbox-worker.ts
+!/scripts/hot-lane-request.cjs
+!/scripts/institution-restore-worker.ts
+!/scripts/migrate-production.mjs
+!/scripts/prepare-standalone.mjs
+!/scripts/push-receipt-worker.ts
+!/scripts/release-preflight.mjs
+!/scripts/restore-central-drive-backup.ts
+!/scripts/start-local.mjs
+!/scripts/verify-admission-campus.tsx
+!/scripts/verify-admissions.ts
+!/scripts/verify-billing-ui.cjs
+!/scripts/verify-cache-policy.ts
+!/scripts/verify-campus-workspaces.ts
+!/scripts/verify-employee-permissions.mjs
+!/scripts/verify-fee-billing.ts
+!/scripts/verify-first-login.ts
+!/scripts/verify-form-validation.ts
+!/scripts/verify-form-validation-ui.cjs
+!/scripts/verify-institution-admin-permissions.mjs
+!/scripts/verify-institution-restores.ts
+!/scripts/verify-local.mjs
+!/scripts/verify-qr-key-rotation.ts
+!/scripts/verify-public-site-builder.ts
+!/scripts/verify-public-site-builder-ui.cjs
+!/scripts/verify-request-costs.cjs
+!/scripts/verify-request-costs-ui.cjs
+!/scripts/verify-role-boundaries.ts
+!/scripts/verify-serialized-lane.ts
+!/scripts/standalone-server.cjs
+/seed-admin.ts
+/seed-data.ts
+/seed-sa.ts
+/seed*.ts
+/insert-sa.sql
+
+# local tooling and editor state
+/.agents/
+/.codex/
+/.vscode/
+/.idea/
+*.code-workspace
+
+# local Docker Compose overrides
+docker-compose.override.yml
+docker-compose.override.yaml
+docker-compose.local.yml
+docker-compose.local.yaml
+
+# generated test artifacts
+/playwright-report/
+/test-results/
 /src/db/migrate_*.ts
 /src/db/remove_*.ts
 
@@ -86,3 +145,93 @@ next-env.d.ts
 img.png
 *.screenshot.png
 screenshots/
+instituion_settings.png
+
+# local backups and scratchpads
+/k6/
+/run-cloud-test.ps1
+/run-cloud-profile.ps1
+/run-monitored-test.ps1
+/deployment/compose.diagnostics.yml
+/.phase2-diagnostics/
+/Caddyfile.k6
+/docker-compose.k6.yml
+/fix-log.md
+/SMOKE_TEST.md
+/CLOUDFLARE.md
+/DEPLOY.md
+
+# Unwanted AI/Local files
+CLAUDE.md
+guide.md
+reset-job.js
+tt template.jpeg
+scripts/reset-parent-password.ts
+
+# Local archives, database dumps, and generated worker bundles
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.dump
+*.sql.gz
+*.sql.enc
+*.dump.enc
+*.rdb
+*.aof
+*.cpuprofile
+*.heapprofile
+*.heapsnapshot
+/dist/
+/Results/
+
+# Runtime uploads and persistent service data
+/public/downloads/
+/public/uploads/
+/uploads/
+/backups/
+/postgres-data/
+/valkey-data/
+/caddy-data/
+/caddy-config/
+
+# Local task notes and diagnostic evidence (keep operational docs)
+/fixsfromcluade.md
+/docs/*-20??-??-??/
+/docs/performance-experiments/
+/docs/performance-diagnostic-evidence/
+/docs/performance-discrepancy-investigation.md
+/docs/performance-experiment-results.md
+/docs/server-performance-diagnostic-report.md
+/docs/queue-cost-optimization.md
+/docs/easypaisa-integration-findings.md
+/docs/payment-gateway-production-audit.md
+# Superseded deployment instructions; deployment/README.md is maintained.
+/deploy_guide.md
+/docs/*-probe.json
+/docs/performance-*.json
+
+# Local authentication and credential files
+# Local remote-load launcher and results never belong in Git.
+/run-server-tests.ps1
+/test-results/
+.npmrc
+.netrc
+_netrc
+.aws/
+.ssh/
+.gnupg/
+.kube/
+*.local.*
+credentials.json
+credentials-*.json
+service-account*.json
+service_account*.json
+client_secret*.json
+tokens.json
+tokens-*.json
+users.csv
+/deployment/release.env
+/deployment/releases/
