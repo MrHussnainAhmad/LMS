@@ -192,9 +192,11 @@ export async function clearAuthCookies() {
 export const getSession = cache(async (): Promise<JWTPayload | null> => {
   let session: JWTPayload | null = null;
   const headersList = await headers();
+  const bearerToken = headersList.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (bearerToken) session = await verifyAccessToken(bearerToken);
   const sessionHeader = headersList.get(SESSION_HEADER);
 
-  if (sessionHeader) {
+  if (!bearerToken && sessionHeader) {
     const signed = await verifySessionPayload(sessionHeader, headersList.get(SESSION_SIG_HEADER));
     if (signed) {
       try {
@@ -205,7 +207,7 @@ export const getSession = cache(async (): Promise<JWTPayload | null> => {
     }
   }
 
-  if (!session) {
+  if (!session && !bearerToken) {
     const cookieStore = await cookies();
     session = await getSessionEdge(cookieStore);
   }
@@ -216,7 +218,7 @@ export const getSession = cache(async (): Promise<JWTPayload | null> => {
   if (session.role === 'STUDENT' ? !student : !await verifyUserExistsFresh(session.role, session.userId, session.institutionId)) return null;
 
   const cookieStore = await cookies();
-  const scoped = await resolveCampusSession(session, cookieStore.get(CAMPUS_VIEW_COOKIE)?.value);
+  const scoped = await resolveCampusSession(session, headersList.get('x-campus-view') || cookieStore.get(CAMPUS_VIEW_COOKIE)?.value);
   if (scoped?.campusReadOnly && headersList.has('next-action')) throw new Error(CAMPUS_READ_ONLY_ERROR);
   return scoped ? enrichFreshStudentSession(scoped, student) : null;
 });
@@ -237,7 +239,7 @@ export async function getSessionFromRequest(req: NextRequest): Promise<JWTPayloa
     const exists = session.role === 'STUDENT' ? Boolean(student) : await verifyUserExistsFresh(session.role, session.userId, session.institutionId);
     if (!exists) return null;
     session = enrichFreshStudentSession(session, student);
-    session = await resolveCampusSession(session, req.cookies.get(CAMPUS_VIEW_COOKIE)?.value);
+    session = await resolveCampusSession(session, req.headers.get('x-campus-view') || req.cookies.get(CAMPUS_VIEW_COOKIE)?.value);
   }
 
   return session;
@@ -256,7 +258,7 @@ export async function getLightSessionFromRequest(req: NextRequest): Promise<JWTP
   const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
   const session = bearerToken ? await verifyAccessToken(bearerToken) : await getSessionEdge(req.cookies);
   if (!session || !await verifyUserExistsFresh(session.role, session.userId, session.institutionId)) return null;
-  return resolveCampusSession(session, req.cookies.get(CAMPUS_VIEW_COOKIE)?.value);
+  return resolveCampusSession(session, req.headers.get('x-campus-view') || req.cookies.get(CAMPUS_VIEW_COOKIE)?.value);
 }
 
 export async function setCampusViewCookie(token: string) {

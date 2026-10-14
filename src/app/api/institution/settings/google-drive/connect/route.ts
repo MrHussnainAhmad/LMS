@@ -7,8 +7,11 @@ import { encryptStreamingCredentials } from "@/lib/streaming-credentials";
 import { institutionGoogleDriveBackups } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-export const GET = requireRole(["INSTITUTION"], async (_req: NextRequest, { session }) => {
-  const state = await createGoogleDriveState(getTenantContext(session));
+export const GET = requireRole(["INSTITUTION"], async (req: NextRequest, { session }) => {
+  const rawPort = req.nextUrl.searchParams.get('desktopPort');
+  const desktopPort = rawPort === null ? undefined : Number(rawPort);
+  if (desktopPort !== undefined && (!Number.isInteger(desktopPort) || desktopPort < 1024 || desktopPort > 65535)) return NextResponse.json({ error: 'Invalid desktop callback' }, { status: 400 });
+  const state = await createGoogleDriveState(getTenantContext(session), desktopPort);
   return NextResponse.json({ authorizationUrl: googleDriveAuthorizationUrl(state) });
 }, { mutatesOnRead: true , permission: 'institution.security'});
 
@@ -28,5 +31,7 @@ export const POST = requireRole(["INSTITUTION"], async (req: NextRequest, { sess
     target: institutionGoogleDriveBackups.institutionId,
     set: { credentialsEncrypted: encrypted, folderId: folder.folderId, folderName: folder.folderName, updatedAt: new Date(), lastBackupError: null },
   });
-  return NextResponse.redirect(googleDriveSettingsRedirectUrl());
+  return req.headers.get('authorization')?.startsWith('Bearer ')
+    ? NextResponse.json({ success: true })
+    : NextResponse.redirect(googleDriveSettingsRedirectUrl());
 }, { permission: 'institution.security' });

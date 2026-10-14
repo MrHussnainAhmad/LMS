@@ -25,7 +25,8 @@
     "verify:request-costs": "node scripts/verify-request-costs.cjs",
     "verify:request-costs-ui": "node scripts/verify-request-costs-ui.cjs",
     "verify:website-builder": "node --import tsx scripts/verify-public-site-builder.ts",
-    "verify:website-builder-ui": "node scripts/verify-public-site-builder-ui.cjs"
+    "verify:website-builder-ui": "node scripts/verify-public-site-builder-ui.cjs",
+    "verify:mobile": "node --import tsx scripts/verify-mobile-parity.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",

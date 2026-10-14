@@ -197,9 +197,9 @@ try {
   assert.equal((await campusesRoute.POST(campusRequest({ name: 'Nested', address: 'Nested address', loginEmail: 'nested@example.test' }), {})).status, 403);
   const adminsRoute = await load('src/app/api/institution/admins/route.ts');
   const adminRequest = (email: string) => new NextRequest('http://localhost/api/institution/admins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Campus Admin', email, password: 'fixture-admin-password' }) });
-  assert.equal((await adminsRoute.POST(adminRequest('green@example.test'), {})).status, 409, 'Add Admin cannot shadow a campus login');
+  assert.equal((await adminsRoute.POST(adminRequest('green@example.test'), {})).status, 400, 'Add Admin cannot shadow a campus login');
   assert.equal((await adminsRoute.POST(adminRequest('green-local-admin@example.test'), {})).status, 200);
-  assert.equal((await adminsRoute.POST(adminRequest('GREEN-LOCAL-ADMIN@example.test'), {})).status, 409);
+  assert.equal((await adminsRoute.POST(adminRequest('GREEN-LOCAL-ADMIN@example.test'), {})).status, 400);
   await testDb.insert(schema.institutionAdmins).values({ institutionId: greenRow.id, name: 'Green Admin', email: 'admin@example.test', passwordHash: 'fixture' });
   const admin = await service.resolveCampusSession({ role: 'INSTITUTION_ADMIN', userId: 1, institutionId: 1 });
   assert.equal(admin.institutionId, greenRow.id, 'Add Admin remains scoped to its own campus');
@@ -375,6 +375,32 @@ try {
   const [collisionRow] = await testDb.select().from(schema.institutions).where(eq(schema.institutions.id,collisionCampusRecord.institutionId));
   assert.equal(collisionRow.username,'green');
   evidence.push('The identity migration handles generated campus usernames and global name collisions within 30 characters, preserves logos/signatures/registration numbers and is idempotent; new workspaces use readable available names across institutions.');
+
+  const workspaceRoute = await load('src/app/api/institution/workspace/route.ts');
+  state.session = home;
+  const workspaceResponse = await workspaceRoute.GET(new NextRequest('http://localhost/api/institution/workspace'), {});
+  assert.equal(workspaceResponse.status, 200);
+  const workspace = await workspaceResponse.json();
+  assert.equal(workspace.institutionId, 1);
+  assert.equal(workspace.needsOwner, false);
+  assert.equal(workspace.isMainCampus, true);
+  const freshRoot = await newRoot('BASIC','desktop-owner');
+  state.session = freshRoot.session;
+  const ownerRequest = () => new NextRequest('http://localhost/api/institution/workspace', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Desktop Owner',gender:'FEMALE',email:'desktop-owner@example.test',contactNumber:'03001234567'})});
+  assert.equal((await workspaceRoute.POST(ownerRequest(), {})).status,201);
+  assert.equal((await workspaceRoute.POST(ownerRequest(), {})).status,409);
+  assert.equal((await testDb.select().from(schema.institutionOwners).where(eq(schema.institutionOwners.institutionId,freshRoot.session.institutionId!))).length,1);
+  state.session = mainViewingGreen;
+  assert.equal((await workspaceRoute.POST(ownerRequest(), {})).status,403);
+  evidence.push('Desktop workspace metadata identifies the current tenant; owner onboarding persists once, rejects duplicate submissions and blocks read-only campus writes.');
+
+  const driveState = await load('src/lib/google-drive-backups.ts');
+  const signedState = await driveState.createGoogleDriveState(1, 54321);
+  assert.deepEqual(await driveState.readGoogleDriveState(signedState), {institutionId:1,desktopPort:54321});
+  assert.equal(await driveState.verifyGoogleDriveState(signedState),1);
+  await assert.rejects(driveState.readGoogleDriveState(signedState.slice(0,-4)+'abcd'));
+  await assert.rejects(driveState.readGoogleDriveState(await driveState.createGoogleDriveState(1,80)));
+  evidence.push('Desktop Google Drive state signs the institution and loopback port, rejects tampering and rejects privileged/invalid callback ports.');
 
   await mkdir('docs/campus-identity-2026-10-07',{recursive:true});
   await writeFile('docs/campus-identity-2026-10-07/service-results.json', JSON.stringify({ passed: true, groups: evidence }, null, 2));

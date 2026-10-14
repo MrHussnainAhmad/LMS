@@ -65,7 +65,7 @@ export function applyCorsHeaders<T extends { headers: Pick<Headers, 'set'> }>(re
   }
 
   res.headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Client-Type");
+  res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Client-Type, X-Campus-View");
   res.headers.set("Access-Control-Max-Age", "86400");
   return res;
 }

@@ -13,8 +13,9 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (_req
   const institutionId = getTenantContext(session);
   const requestedBatchIdParam = _req.nextUrl.searchParams.get("batchExamId");
   const requestedBatchId = requestedBatchIdParam === null ? null : Number(requestedBatchIdParam);
+  if (requestedBatchId !== null && (!Number.isSafeInteger(requestedBatchId) || requestedBatchId < 1)) return NextResponse.json({ error: 'Invalid promotion batch' }, { status: 400 });
   if (requestedBatchId !== null && Number.isInteger(requestedBatchId)) {
-    const rows = await db.select({ student: students.name, roll: students.classRollNumber, subject: subjects.name, marks: batchExamResults.marksObtained, maxMarks: batchExamSubjects.maxMarks })
+    const rows = await db.select({ studentId: students.id, student: students.name, roll: students.classRollNumber, subject: subjects.name, marks: batchExamResults.marksObtained, maxMarks: batchExamSubjects.maxMarks, isPublished: batchExamSubjects.isPublished })
       .from(batchExamResults).innerJoin(batchExamSubjects, eq(batchExamResults.batchExamSubjectId, batchExamSubjects.id)).innerJoin(batchExams, eq(batchExamSubjects.batchExamId, batchExams.id)).innerJoin(students, eq(batchExamResults.studentId, students.id)).innerJoin(subjects, eq(batchExamSubjects.subjectId, subjects.id))
       .where(and(eq(batchExams.id, requestedBatchId), eq(batchExams.institutionId, institutionId), eq(batchExams.type, "PROMOTION")));
     return NextResponse.json({ rows });

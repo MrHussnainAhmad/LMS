@@ -20,6 +20,7 @@ export const POST = requireRole(['INSTITUTION'], async (req: NextRequest, { sess
     'returnHome' in parsed.data ? campus.workspaceId === session.homeInstitutionId : campus.id === parsed.data.campusId
   ) && campus.name === campus.workspaceName);
   if (!selected) return NextResponse.json({ error: 'Campus not found.' }, { status: 404 });
-  await setCampusViewCookie(await createCampusViewToken(session, selected.workspaceId));
-  return NextResponse.json({ success: true, readOnly: selected.workspaceId !== session.homeInstitutionId });
+  const token = await createCampusViewToken(session, selected.workspaceId);
+  await setCampusViewCookie(token);
+  return NextResponse.json({ success: true, readOnly: selected.workspaceId !== session.homeInstitutionId, campusViewToken: token, campusName: selected.name });
 }, { allowCampusSwitch: true });

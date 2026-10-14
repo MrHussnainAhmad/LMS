@@ -1,3 +1,4 @@
+import { positiveInteger } from '@/lib/pagination';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
@@ -51,17 +52,23 @@ export const GET = withApiPolicy(async (req: NextRequest) => {
     }
 
     if (section === "results") {
-      const [rows, performance] = await Promise.all([
-        db.select({ id: marks.id, title: tests.title, type: tests.type, date: tests.date, subject: subjects.name, obtained: marks.marksObtained, total: marks.totalMarks }).from(marks).innerJoin(tests, eq(marks.testId, tests.id)).innerJoin(subjects, eq(tests.subjectId, subjects.id)).where(and(eq(marks.institutionId, institutionId), eq(marks.studentId, child.id), isNotNull(tests.resultsPublishedAt), gte(tests.date, period.from), lte(tests.date, period.to))).orderBy(desc(tests.date), desc(marks.id)).limit(50),
-        db.select({ subject: subjects.name, average: sql<number>`round(avg(case when ${marks.totalMarks} > 0 then ${marks.marksObtained} * 100.0 / ${marks.totalMarks} else null end))::int`, assessments: count() }).from(marks).innerJoin(tests, eq(marks.testId, tests.id)).innerJoin(subjects, eq(tests.subjectId, subjects.id)).where(and(eq(marks.institutionId, institutionId), eq(marks.studentId, child.id), isNotNull(tests.resultsPublishedAt), gte(tests.date, period.from), lte(tests.date, period.to))).groupBy(subjects.id, subjects.name).orderBy(asc(subjects.name)),
+      const type = req.nextUrl.searchParams.get('type') || 'ALL';
+      if (!['ALL','DAILY','WEEKLY','QUIZ','MONTHLY','MID','FINAL'].includes(type)) return NextResponse.json({error:'Invalid result type'}, {status:400});
+      const page = positiveInteger(req.nextUrl.searchParams.get('page'));
+      const scope = and(eq(marks.institutionId, institutionId), eq(marks.studentId, child.id), isNotNull(tests.resultsPublishedAt), gte(tests.date, period.from), lte(tests.date, period.to));
+      const filtered = and(scope, type === 'ALL' ? undefined : eq(tests.type, type as typeof tests.$inferSelect.type));
+      const [rows, performance, totals] = await Promise.all([
+        db.select({ id: marks.id, title: tests.title, type: tests.type, date: tests.date, subject: subjects.name, obtained: marks.marksObtained, total: marks.totalMarks }).from(marks).innerJoin(tests, eq(marks.testId, tests.id)).innerJoin(subjects, eq(tests.subjectId, subjects.id)).where(filtered).orderBy(desc(tests.date), desc(marks.id)).limit(20).offset((page - 1) * 20),
+        db.select({ subject: subjects.name, average: sql<number>`round(avg(case when ${marks.totalMarks} > 0 then ${marks.marksObtained} * 100.0 / ${marks.totalMarks} else null end))::int`, highest: sql<number>`round(max(case when ${marks.totalMarks} > 0 then ${marks.marksObtained} * 100.0 / ${marks.totalMarks} else null end))::int`, assessments: count() }).from(marks).innerJoin(tests, eq(marks.testId, tests.id)).innerJoin(subjects, eq(tests.subjectId, subjects.id)).where(and(scope, inArray(tests.type, ["DAILY","WEEKLY","QUIZ","MONTHLY"]))).groupBy(subjects.id, subjects.name).orderBy(asc(subjects.name)),
+        db.select({total:count()}).from(marks).innerJoin(tests, eq(marks.testId, tests.id)).innerJoin(subjects, eq(tests.subjectId, subjects.id)).where(filtered),
       ]);
-      return NextResponse.json({ ...base, results: rows, performance });
+      return NextResponse.json({ ...base, results: rows, performance, pagination: {page, pages:Math.max(1,Math.ceil(totals[0].total / 20)),total:totals[0].total} });
     }
 
     if (section === "diary") {
       const [entries, homework] = await Promise.all([
         db.select({ id: diaries.id, date: diaries.date, content: diaries.content, subject: subjects.name, teacher: staff.name }).from(diaries).leftJoin(subjects, eq(diaries.subjectId, subjects.id)).innerJoin(staff, eq(diaries.staffId, staff.id)).where(and(eq(diaries.institutionId, institutionId), eq(diaries.classId, child.classId), gte(diaries.date, period.from), lte(diaries.date, period.to))).orderBy(desc(diaries.date), desc(diaries.id)).limit(40),
-        db.select({ id: assignments.id, title: assignments.title, description: assignments.description, dueAt: assignments.dueAt, subject: subjects.name, teacher: staff.name }).from(assignments).leftJoin(subjects, eq(assignments.subjectId, subjects.id)).innerJoin(staff, eq(assignments.staffId, staff.id)).where(and(eq(assignments.institutionId, institutionId), eq(assignments.classId, child.classId), or(eq(assignments.sectionId, child.sectionId), isNull(assignments.sectionId)), gte(assignments.dueAt, new Date(`${period.from}T00:00:00Z`)), lte(assignments.dueAt, new Date(`${period.to}T23:59:59Z`)))).orderBy(asc(assignments.dueAt)).limit(20),
+        db.select({ id: assignments.id, title: assignments.title, description: assignments.description, fileName: assignments.referenceFileName, dueAt: assignments.dueAt, subject: subjects.name, teacher: staff.name }).from(assignments).leftJoin(subjects, eq(assignments.subjectId, subjects.id)).innerJoin(staff, eq(assignments.staffId, staff.id)).where(and(eq(assignments.institutionId, institutionId), eq(assignments.classId, child.classId), or(eq(assignments.sectionId, child.sectionId), isNull(assignments.sectionId)), gte(assignments.dueAt, new Date(`${period.from}T00:00:00Z`)), lte(assignments.dueAt, new Date(`${period.to}T23:59:59Z`)))).orderBy(asc(assignments.dueAt)).limit(20),
       ]);
       return NextResponse.json({ ...base, diary: entries, homework });
     }

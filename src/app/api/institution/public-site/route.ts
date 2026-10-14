@@ -12,6 +12,7 @@ import { getTenantContext, requireRole } from '@/lib/rbac';
 import { institutionPublicContentPatchSchema, institutionPublicThemeSchema } from '@/lib/validators/institution-public-profile';
 import { getPublicSiteTheme } from '@/lib/public-site-themes';
 import { readJsonBody } from '@/lib/http';
+import { publicAdmissionsEnabledSql } from '@/lib/public-admissions-availability';
 
 export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
@@ -19,6 +20,11 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
   const [[institution], [profile], [platformSettings]] = await Promise.all([
     db.select({
       name: institutions.name,
+      type: institutions.type,
+      city: institutions.city,
+      country: institutions.country,
+      logoKey: institutions.logoKey,
+      admissionsEnabled: publicAdmissionsEnabledSql,
       publicSlug: institutions.publicSlug,
       publicSiteEnabled: institutions.publicSiteEnabled,
     }).from(institutions).where(eq(institutions.id, institutionId)).limit(1),

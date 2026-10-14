@@ -1,6 +1,6 @@
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { db } from "@/db";
-import { batchExamResults, batchExamSubjects, batchExams, subjects } from "@/db/schema";
+import { batchExamResults, batchExamSubjects, batchExams, subjects, students, institutions, classes, sections } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
@@ -14,6 +14,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
     const examId = Number(id);
+    if (!Number.isSafeInteger(examId) || examId <= 0) return NextResponse.json({error:"Invalid transcript"},{status:400});
 
     const rawResults = await db.select({
       examTitle: batchExams.title,
@@ -49,7 +50,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Transcript is pending review" }, { status: 400 });
     }
 
+    const [identity] = await db.select({
+      student: { name: students.name, fatherName: students.fatherName, phone: students.phone, emergencyContact: students.emergencyContact, profilePictureUrl: students.profilePictureUrl, loginRollNumber: students.loginRollNumber, classRollNumber: students.classRollNumber, className: classes.name, sectionName: sections.name },
+      institution: { name: institutions.name, logoKey: institutions.logoKey, signatureKey: institutions.signatureKey },
+    }).from(students).innerJoin(institutions, eq(students.institutionId, institutions.id)).innerJoin(classes, eq(students.classId, classes.id)).innerJoin(sections, eq(students.sectionId, sections.id)).where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId!))).limit(1);
+    if (!identity) return NextResponse.json({error:'Student record unavailable'}, {status:404});
     return NextResponse.json({
+      identity,
       examTitle: rawResults[0].examTitle,
       examType: rawResults[0].examType,
       examCreatedAt: rawResults[0].examCreatedAt,

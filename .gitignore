@@ -235,3 +235,6 @@ tokens-*.json
 users.csv
 /deployment/release.env
 /deployment/releases/
+
+# Reproducible mobile API regression checks
+!/scripts/verify-mobile-parity.ts

@@ -27,20 +27,27 @@ export function googleDriveSettingsRedirectUrl() {
   return new URL("/institution/settings?googleDrive=connected", required("GOOGLE_DRIVE_REDIRECT_URI"));
 }
 
-export async function createGoogleDriveState(institutionId: number) {
-  return new SignJWT({ institutionId, purpose: "institution-google-drive" })
+export async function createGoogleDriveState(institutionId: number, desktopPort?: number) {
+  return new SignJWT({ institutionId, purpose: "institution-google-drive", ...(desktopPort ? { desktopPort } : {}) })
     .setProtectedHeader({ alg: "HS256" })
+    .setJti(crypto.randomUUID())
     .setIssuedAt()
     .setExpirationTime("10m")
     .sign(getJwtSecret());
 }
 
 export async function verifyGoogleDriveState(state: string) {
+  return (await readGoogleDriveState(state)).institutionId;
+}
+
+export async function readGoogleDriveState(state: string) {
   const { payload } = await jwtVerify(state, getJwtSecret(), { algorithms: ["HS256"] });
   if (payload.purpose !== "institution-google-drive" || typeof payload.institutionId !== "number") {
     throw new Error("Invalid Google Drive authorization state");
   }
-  return payload.institutionId;
+  const desktopPort = payload.desktopPort;
+  if (desktopPort !== undefined && (typeof desktopPort !== 'number' || !Number.isInteger(desktopPort) || desktopPort < 1024 || desktopPort > 65535)) throw new Error('Invalid desktop callback');
+  return { institutionId: payload.institutionId, desktopPort: desktopPort as number | undefined };
 }
 
 export function googleDriveAuthorizationUrl(state: string) {

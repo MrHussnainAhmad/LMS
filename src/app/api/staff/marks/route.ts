@@ -52,7 +52,7 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
     }
     const scopedTests = await db.select({
       id: tests.id, title: tests.title, type: tests.type, maxMarks: tests.maxMarks, date: tests.date,
-      createdByRole: tests.createdByRole, staffId: tests.staffId, classId: tests.classId, sectionId: tests.sectionId,
+      resultsPublishedAt: tests.resultsPublishedAt, createdByRole: tests.createdByRole, staffId: tests.staffId, classId: tests.classId, sectionId: tests.sectionId,
       subjectId: tests.subjectId, className: classes.name, sectionName: sections.name, subjectName: subjects.name,
     }).from(tests)
       .innerJoin(classes, eq(tests.classId, classes.id))
