@@ -4,9 +4,10 @@ import { after } from "next/server";
 import { db } from "@/db";
 import { attendances, sections, students } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { eq, and, desc, inArray, gte, sql } from "drizzle-orm";
-import { staffAssignments, classes } from "@/db/schema";
+import { eq, and, desc, inArray, gte, isNull, sql } from "drizzle-orm";
+import { classes } from "@/db/schema";
 import { getCachedOrFetch } from "@/lib/redis";
+import { pakistanDateKey } from "@/lib/parent-period";
 
 async function getAssignedSections(staffId: number, institutionId: number) {
   // Only fetch sections where this staff member is explicitly set as the class incharge
@@ -35,7 +36,8 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
     }
 
     if (view === "mark") {
-      const cacheKey = `cache:staff:attendance:mark:${institutionId}:${staffId}:${sectionId ?? "auto"}`;
+      const todayStr = pakistanDateKey();
+      const cacheKey = `cache:staff:attendance:mark:${institutionId}:${staffId}:${sectionId ?? "auto"}:${todayStr}`;
       const data = await getCachedOrFetch(cacheKey, 30, async () => {
         const assignedSections = await getAssignedSections(staffId, institutionId);
         const targetSectionId = sectionId ?? assignedSections[0]?.id ?? null;
@@ -44,7 +46,6 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
           return { assignedSections, selectedSectionId: null, students: [], alreadyMarkedToday: false };
         }
 
-        const todayStr = new Date().toISOString().split("T")[0];
         const [sectionStudents, todayRecords] = await Promise.all([
           db.select({
             id: students.id,
@@ -53,22 +54,24 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
             sectionId: students.sectionId,
           })
             .from(students)
-            .where(and(eq(students.institutionId, institutionId), eq(students.sectionId, targetSectionId))),
-          db.select({ id: attendances.id })
+            .where(and(eq(students.institutionId, institutionId), eq(students.sectionId, targetSectionId),
+              eq(students.isActive, true), eq(students.academicStatus, 'ACTIVE'), isNull(students.deletedAt))),
+          db.select({ studentId: attendances.studentId, status: attendances.status })
             .from(attendances)
             .where(and(
               eq(attendances.institutionId, institutionId),
               eq(attendances.sectionId, targetSectionId),
               eq(attendances.date, todayStr),
-            ))
-            .limit(1),
+            )),
         ]);
 
+        const statuses = new Map(todayRecords.map(record => [record.studentId, record.status]));
         return {
           assignedSections,
           selectedSectionId: targetSectionId,
-          students: sectionStudents,
-          alreadyMarkedToday: todayRecords.length > 0,
+          students: sectionStudents.map(student => ({ ...student, status: statuses.get(student.id) ?? null })),
+          date: todayStr,
+          alreadyMarkedToday: sectionStudents.length > 0 && sectionStudents.every(student => statuses.has(student.id)),
         };
       });
 

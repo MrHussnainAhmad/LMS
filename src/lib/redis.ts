@@ -315,7 +315,9 @@ export async function invalidateAnnouncementReadCaches(institutionId: number) {
   ]);
 }
 
-export async function invalidateStudentAttendanceCaches(institutionId: number, studentIds: number[]) {
+type AttendanceCacheScope = { staffId: number; sectionId: number; date: string; campusId: number | null };
+
+export async function invalidateStudentAttendanceCaches(institutionId: number, studentIds: number[], scanScope?: AttendanceCacheScope) {
   if (redis.status !== 'ready') return;
   try {
     const unique = [...new Set(studentIds)];
@@ -333,12 +335,30 @@ export async function invalidateStudentAttendanceCaches(institutionId: number, s
         ...Array.from({ length: 7 }, (_, day) => `cache:student:dashboard:web:${id}:${institutionId}:${day}`),
       ]));
     }
-    await invalidateReadCachePatterns([
-      `cache:staff:attendance:mark:${institutionId}:*`,
-      `cache:staff:attendance:history:${institutionId}:*`,
-      `cache:dashboard:attendance:${institutionId}:*`,
-      `cache:dashboard:today-attendance:${institutionId}:*`,
-    ]);
+    if (scanScope) {
+      // Scanning is frequent. Enumerate the affected teacher/date/campus keys
+      // instead of SCANning the entire Redis keyspace for every student card.
+      const { staffId, sectionId, date, campusId } = scanScope;
+      const utcToday = new Date().toISOString().slice(0, 10);
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - 6);
+      await invalidateReadCacheKeys([
+        ...['auto', sectionId].map(section => `cache:staff:attendance:mark:${institutionId}:${staffId}:${section}:${date}`),
+        ...['all', sectionId].flatMap(section => [
+          `cache:staff:attendance:history:${institutionId}:${staffId}:${date}:${section}`,
+          `cache:staff:attendance:history:${institutionId}:${staffId}:${section}`,
+        ]),
+        ...new Set([date, utcToday].map(day => `cache:dashboard:today-attendance:${institutionId}:${day}`)),
+        ...new Set(['all', campusId ?? 'all'].map(campus => `cache:dashboard:attendance:${institutionId}:${weekStart.toISOString().slice(0, 10)}:${campus}`)),
+      ]);
+    } else {
+      await invalidateReadCachePatterns([
+        `cache:staff:attendance:mark:${institutionId}:*`,
+        `cache:staff:attendance:history:${institutionId}:*`,
+        `cache:dashboard:attendance:${institutionId}:*`,
+        `cache:dashboard:today-attendance:${institutionId}:*`,
+      ]);
+    }
   } catch (error) { console.warn('Attendance cache invalidation failed:', error); }
 }
 
