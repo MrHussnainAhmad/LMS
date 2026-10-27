@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import styles from "./ModelScene.module.css";
 
 type ScenePreset = "laptop" | "building" | "phone" | "cap";
 
@@ -342,7 +343,7 @@ export function ModelScene({ model, preset, label, eager = false, preloadNext }:
   }, [model, preloadNext, preset, shouldMount]);
 
   return (
-    <div ref={hostRef} className="absolute inset-0">
+    <div ref={hostRef} className={`absolute inset-0 ${styles.host}`}>
       <div className={`absolute inset-0 grid place-items-center transition-opacity duration-500 ${loaded ? "pointer-events-none opacity-0" : "opacity-100"}`} aria-hidden="true">
         <span className="text-[10px] font-bold uppercase tracking-[0.18em] opacity-35">{label}</span>
       </div>
