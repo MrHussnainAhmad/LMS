@@ -1,8 +1,12 @@
 # Nisaab360
 
-A full-stack, multi-tenant school and learning-management application built with Next.js, React, TypeScript, PostgreSQL/Drizzle and Valkey. It includes institution, staff, student, parent and platform portals, public institution websites and admissions.
+Nisaab360 is my personal, proprietary school and learning-management platform, owned and maintained by [Hussnain Ahmad](https://github.com/MrHussnainAhmad).
 
-Contributors and coding agents should read [AGENTS.md](AGENTS.md).
+Built with Next.js, React, TypeScript, PostgreSQL/Drizzle and Valkey, it supports multiple institutions with institution, staff, student, parent and platform portals, public institution websites and admissions.
+
+This repository is not an open-source project and is not accepting public contributions. Access to the source code does not grant permission to copy, modify, redistribute, sell or deploy it. Any such use requires my explicit permission. All rights reserved for the original project code and assets; third-party dependencies and bundled fonts remain subject to their respective licenses.
+
+The documentation below is for my own maintenance and for collaborators I authorize. Authorized collaborators and coding agents should read [AGENTS.md](AGENTS.md) before making changes.
 
 Use [.env.example](.env.example) for configuration names and [deployment/README.md](deployment/README.md) for release instructions. `npm run verify:local` runs the maintained checks. `npm run build` creates a production build; `npm start` starts local dependencies, runs migrations and launches the application and email worker. Never copy private environment values or access tokens into documentation.
 
