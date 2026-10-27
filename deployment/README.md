@@ -65,6 +65,35 @@ certificate issuance. Caddy state volumes must persist across releases.
 
 Reference: [Caddy on-demand TLS](https://caddyserver.com/docs/automatic-https#on-demand-tls).
 
+## Cloudinary uploads
+
+The web containers need `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` and either
+`CLOUDINARY_CLOUD_NAME` or the existing `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` in
+their runtime environment. Server upload signing and SDK calls read the runtime
+cloud name, including when the image was built without a public cloud name.
+Compose forwards the same credentials to both `app` and `app2`.
+
+Editing the host `.env` does not update an existing container. After deploying
+the updated image/configuration, recreate both replicas using your release files:
+
+```sh
+docker compose --env-file .env --env-file deployment/release.env \
+  -f docker-compose.yml -f deployment/compose.release.yml \
+  up -d --no-deps --force-recreate --wait app app2
+```
+
+Check each replica without printing credentials (repeat with `app2`):
+
+```sh
+docker compose --env-file .env --env-file deployment/release.env \
+  -f docker-compose.yml -f deployment/compose.release.yml exec -T app node -e \
+  'const e=process.env; console.log({cloudName:!!(e.CLOUDINARY_CLOUD_NAME||e.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME),apiKey:!!e.CLOUDINARY_API_KEY,apiSecret:!!e.CLOUDINARY_API_SECRET})'
+```
+
+All three fields must be `true`. A missing upload setting returns a 503 with
+the missing variable names; credential values are never included in the response.
+The CSS preload warning is separate from upload configuration errors.
+
 ## Printed-card keys
 
 Configure `STUDENT_QR_SIGNING_SECRET` with an independent random secret of at

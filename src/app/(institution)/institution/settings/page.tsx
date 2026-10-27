@@ -13,6 +13,7 @@ import { InstitutionLogoUploader } from "./InstitutionLogoUploader";
 import { InstitutionSignatureUploader } from "./InstitutionSignatureUploader";
 import { GoogleDriveBackupSettings } from "./GoogleDriveBackupSettings";
 import { CampusIdentityEditor } from './CampusIdentityEditor';
+import { ChangePasswordForm } from './ChangePasswordForm';
 
 import { PaymentAccountsSettings } from "@/components/PaymentAccountsSettings";
 
@@ -132,12 +133,7 @@ export default async function InstitutionSettingsPage() {
           <Card>
             <CardHeader className="border-b border-border bg-stone-50/50"><CardTitle className="flex items-center gap-2 text-lg"><LockKeyhole className="h-5 w-5 text-brand-600" />Security Settings</CardTitle></CardHeader>
             <CardContent className="p-5 sm:p-6 pt-6 sm:pt-8">
-              <form className="space-y-5">
-                <div><label className="mb-2 block text-sm font-medium text-stone-700">Current Password</label><input type="password" className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
-                <div><label className="mb-2 block text-sm font-medium text-stone-700">New Password</label><input type="password" className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
-                <div><label className="mb-2 block text-sm font-medium text-stone-700">Confirm New Password</label><input type="password" className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
-                <button type="button" className="cursor-not-allowed rounded-md bg-brand-800 px-4 py-2 text-sm font-medium text-white opacity-50" disabled>Update Password (Coming Soon)</button>
-              </form>
+              <ChangePasswordForm readOnly={session.campusReadOnly} />
             </CardContent>
           </Card>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, startTransition, useContext, useRef, useState, type ComponentProps } from 'react';
+import { unstable_rethrow } from 'next/navigation';
 import { ApiError } from '@/lib/api-client';
 import { apiErrorMessage } from '@/lib/validation-errors';
 import { toast } from './toaster';
@@ -37,6 +38,8 @@ export function ActionForm({ action, children, onSubmit, onChange, onFailure, ..
         if (result && typeof result === 'object' && 'ok' in result && result.ok === false) throw new ApiError(400, result);
         if (result && typeof result === 'object' && 'ok' in result && result.ok === true) form.reset();
       } catch (cause) {
+        // Let Next handle redirects and not-found responses from Server Actions.
+        unstable_rethrow(cause);
         const message = apiErrorMessage(cause);
         setError(message);
         if (cause instanceof ApiError) setFieldErrors(cause.fieldErrors);

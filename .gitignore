@@ -90,6 +90,11 @@ google_drive_setup_guide.md
 !/scripts/start-local.mjs
 !/scripts/verify-admission-campus.tsx
 !/scripts/verify-admissions.ts
+!/scripts/verify-agreement-routing.ts
+!/scripts/verify-action-form-navigation.cjs
+!/scripts/verify-cloudinary-runtime.cjs
+!/scripts/verify-settings-password.ts
+!/scripts/verify-settings-password-ui.cjs
 !/scripts/verify-billing-ui.cjs
 !/scripts/verify-cache-policy.ts
 !/scripts/verify-campus-workspaces.ts

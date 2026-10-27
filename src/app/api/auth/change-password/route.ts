@@ -1,7 +1,7 @@
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { employees, institutions, parentAccounts, staff, students } from '@/db/schema';
+import { employees, institutionAdmins, institutions, parentAccounts, staff, students } from '@/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
 import { hashPassword as hash, verifyPassword as verify } from '@/lib/argon2-pool';
 import { requireRole } from '@/lib/rbac';
@@ -15,6 +15,14 @@ import { AUTH_MAX_BODY_BYTES, readJsonBody } from '@/lib/http';
 async function getPasswordHashForSession(role: string, userId: number, institutionId?: number) {
   if (role === 'INSTITUTION') {
     const [user] = await db.select({ passwordHash: institutions.adminPasswordHash }).from(institutions).where(eq(institutions.id, userId)).limit(1);
+    return user;
+  }
+  if (role === 'INSTITUTION_ADMIN') {
+    if (!institutionId) return undefined;
+    const [user] = await db.select({ passwordHash: institutionAdmins.passwordHash }).from(institutionAdmins).where(and(
+      eq(institutionAdmins.id, userId),
+      eq(institutionAdmins.institutionId, institutionId),
+    )).limit(1);
     return user;
   }
   if (role === 'EMPLOYEE') {
@@ -52,6 +60,14 @@ async function updatePasswordForSession(role: string, userId: number, passwordHa
     await db.update(institutions).set({ adminPasswordHash: passwordHash, mustChangePassword: false }).where(eq(institutions.id, userId));
     return;
   }
+  if (role === 'INSTITUTION_ADMIN') {
+    if (!institutionId) return;
+    await db.update(institutionAdmins).set({ passwordHash }).where(and(
+      eq(institutionAdmins.id, userId),
+      eq(institutionAdmins.institutionId, institutionId),
+    ));
+    return;
+  }
   if (role === 'EMPLOYEE') {
     await db.update(employees)
       .set({ passwordHash, mustChangePassword: false })
@@ -86,7 +102,7 @@ async function updatePasswordForSession(role: string, userId: number, passwordHa
   }
 }
 
-export const POST = requireRole(['INSTITUTION', 'EMPLOYEE', 'STAFF', 'STUDENT', 'PARENT'], async (req: NextRequest, { session }) => {
+export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN', 'EMPLOYEE', 'STAFF', 'STUDENT', 'PARENT'], async (req: NextRequest, { session }) => {
   // Bounded read: two short passwords. Previously an un-caught `req.json()`,
   // which both buffered an unbounded body and turned malformed JSON into a 500.
   const bodyResult = await readJsonBody(req, AUTH_MAX_BODY_BYTES);

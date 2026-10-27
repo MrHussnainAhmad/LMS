@@ -33,7 +33,7 @@ export function validateProductionEnvironment() {
     required('CRON_SECRET', 32),
     required('NEXT_PUBLIC_APP_DOMAIN'),
     required('PUBLIC_SITE_BASE_DOMAIN'),
-    required('NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME'),
+    required(process.env.CLOUDINARY_CLOUD_NAME?.trim() ? 'CLOUDINARY_CLOUD_NAME' : 'NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME'),
     required('CLOUDINARY_API_KEY'),
     required('CLOUDINARY_API_SECRET', 16),
     required('GMAIL_USER'),

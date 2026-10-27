@@ -1,6 +1,7 @@
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextResponse } from 'next/server';
 import cloudinary from '@/lib/cloudinary';
+import { getCloudinaryConfig } from '@/lib/cloudinary-config';
 import { requireRole } from '@/lib/rbac';
 import { withRateLimit } from '@/lib/rate-limit';
 import { bodyTooLargeResponse, readJsonBody } from '@/lib/http';
@@ -30,14 +31,17 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'INSTITUTION
       return NextResponse.json({ error: 'Too many upload requests. Please try again in a moment.' }, { status: 429 });
     }
 
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+    const { cloudName, apiKey, apiSecret } = getCloudinaryConfig();
 
     if (!cloudName || !apiKey || !apiSecret) {
+      const missing = [
+        !cloudName && 'CLOUDINARY_CLOUD_NAME (or NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME)',
+        !apiKey && 'CLOUDINARY_API_KEY',
+        !apiSecret && 'CLOUDINARY_API_SECRET',
+      ].filter(Boolean);
       return NextResponse.json(
-        { error: 'Cloudinary is not configured on the server' },
-        { status: 500 }
+        { error: `Cloudinary is not configured on the server. Missing: ${missing.join(', ')}. Update the server environment and restart the application.` },
+        { status: 503, headers: { 'Cache-Control': 'no-store' } }
       );
     }
 

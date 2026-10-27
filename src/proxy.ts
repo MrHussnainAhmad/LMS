@@ -70,6 +70,8 @@ export async function proxy(request: NextRequest) {
   let rewritePath: string | null = null;
   const isStaticOrApi = path.match(/\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf)$/i) || path.startsWith('/api') || path.startsWith('/payments/');
   const isAuthPath = path === '/login' || path === '/institution-login' || path === '/employee-login' || path === '/parent-login' || path === '/login/super-admin' || path === '/force-password-change';
+  // Institution detail pages open this shared document on the current portal host.
+  const isAgreementPath = path === '/agreement-nisaab360';
 
   if (!isStaticOrApi) {
     if (hostname === 'blog.nisaab360.app' || hostname.startsWith('blog.localhost')) {
@@ -83,9 +85,9 @@ export async function proxy(request: NextRequest) {
     } else if (hostname === 'institution.nisaab360.app' || hostname.startsWith('institution.localhost')) {
       if (!isAuthPath && !path.startsWith('/institution')) rewritePath = `/institution${path === '/' ? '' : path}`;
     } else if (hostname === 'employee.nisaab360.app' || hostname.startsWith('employee.localhost')) {
-      if (!isAuthPath && !path.startsWith('/employee')) rewritePath = `/employee${path === '/' ? '' : path}`;
+      if (!isAuthPath && !isAgreementPath && !path.startsWith('/employee')) rewritePath = `/employee${path === '/' ? '' : path}`;
     } else if (hostname === 'sa.nisaab360.app' || hostname === 'superadmin.nisaab360.app' || hostname.startsWith('sa.localhost')) {
-      if (!isAuthPath && !path.startsWith('/sa')) rewritePath = `/sa${path === '/' ? '' : path}`;
+      if (!isAuthPath && !isAgreementPath && !path.startsWith('/sa')) rewritePath = `/sa${path === '/' ? '' : path}`;
     } else {
       const parsedHostname = parseInstitutionHostname(request.headers.get('host') || '', await getPublicSiteBaseDomain());
       if (parsedHostname.kind === 'institution') {
