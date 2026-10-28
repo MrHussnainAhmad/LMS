@@ -12,7 +12,8 @@ import * as schema from '../src/db/schema';
 async function main() {
   process.env.JWT_SECRET = 'mobile-parity-isolated-test-secret-at-least-32-characters';
   const memory = await PGlite.create();
-  const db = drizzle(memory);
+  const readQueries: string[] = [];
+  const db = drizzle(memory, { logger: { logQuery(query) { if (/^select\b/i.test(query)) readQueries.push(query); } } });
   const state: any = {
     db,
     session: null,
@@ -21,6 +22,7 @@ async function main() {
     cookieToken: null,
     notified: [],
     invalidated: [],
+    refreshedKeys: [],
   };
   (globalThis as any).__mobileParity = state;
   const mocks: Record<string, string> = {
@@ -35,7 +37,7 @@ async function main() {
     'campus-workspaces': 'export const resolveCampusSession=async session=>session;',
     user: 'export const verifyUserExistsFresh=async()=>globalThis.__mobileParity.valid;export const getFreshStudent=async()=>globalThis.__mobileParity.valid?{academicStatus:"ACTIVE"}:null;export const getUserCreatedAt=async()=>new Date("2020-01-01");',
     redis:
-      'export const invalidateStudentMarksCaches=async(...args)=>globalThis.__mobileParity.invalidated.push(args);export const invalidateInstitutionRosterCaches=async()=>{};export const invalidateAnnouncementReadCaches=async()=>{};export const getCachedOrFetch=async(_key,_ttl,fn)=>fn();',
+      'export const invalidateStudentMarksCaches=async(...args)=>globalThis.__mobileParity.invalidated.push(args);export const invalidateInstitutionRosterCaches=async()=>{};export const invalidateAnnouncementReadCaches=async()=>{};export const getCachedOrFetch=async(key,_ttl,fn,_decode,force)=>{if(force)globalThis.__mobileParity.refreshedKeys.push(key);return fn()};',
     notifications:
       'export const createAttendanceNotifications=async()=>{};export const createBulkNotifications=async()=>{};export const processAnnouncementNotification=async id=>globalThis.__mobileParity.notified.push(id);',
     cloudinary:
@@ -80,13 +82,13 @@ async function main() {
         },
       ],
     });
-    const module = { exports: {} as any };
+    const loadedModule = { exports: {} as any };
     new Function('require', 'module', 'exports', result.outputFiles[0].text)(
       createRequire(path.resolve('package.json')),
-      module,
-      module.exports,
+      loadedModule,
+      loadedModule.exports,
     );
-    return module.exports;
+    return loadedModule.exports;
   }
   const checks: string[] = [];
   const check = (label: string) => {
@@ -99,10 +101,17 @@ async function main() {
       schema.assignments,
       schema.submissions,
       schema.institutions,
+      schema.institutionPaymentGateways,
+      schema.gatewayPaymentAttempts,
       schema.classes,
       schema.sections,
       schema.subjects,
       schema.students,
+      schema.staff,
+      schema.attendances,
+      schema.diaries,
+      schema.leaveRequests,
+      schema.tickets,
       schema.staffAssignments,
       schema.tests,
       schema.marks,
@@ -310,6 +319,41 @@ async function main() {
     await seed(schema.parentStudents, { id: 1, institutionId: 1, parentId: 1, studentId: 1 });
     const portal = await load('src/app/api/parent/portal/route.ts');
     state.session = { role: 'PARENT', userId: 1, institutionId: 1 };
+    const freshNotices = await portal.GET(new NextRequest('http://localhost/api/parent/portal?section=notices&student=1&_refresh=fixture'));
+    assert.equal(freshNotices.status, 200);
+    assert.match(freshNotices.headers.get('Cache-Control') || '', /no-store/);
+    assert.ok(state.refreshedKeys.includes('cache:announcements:visible:1:STUDENT:1:30'));
+    const forcedReads = state.refreshedKeys.length;
+    await portal.GET(new NextRequest('http://localhost/api/parent/portal?section=notices&student=1'));
+    assert.equal(state.refreshedKeys.length, forcedReads, 'Ordinary navigation retains normal server caching');
+    assert.equal((await portal.GET(new NextRequest('http://localhost/api/parent/portal?section=notices&student=2&_refresh=fixture'))).status, 404);
+    assert.equal(state.refreshedKeys.length, forcedReads, 'An unlinked child cannot invalidate another audience cache');
+    check('Parent refresh uses private non-cacheable responses and forces only authorized announcement reads');
+    readQueries.length = 0;
+    const lightweightAccount = await (await portal.GET(new NextRequest('http://localhost/api/parent/portal?section=account&view=overview&student=1'))).json();
+    assert.equal(lightweightAccount.profile, null);
+    assert.ok(!readQueries.some(query => /leave_requests|tickets|father_name/.test(query)), 'Closed student records must not query profile/history');
+    readQueries.length = 0;
+    const profileOnly = await (await portal.GET(new NextRequest('http://localhost/api/parent/portal?section=profile&student=1'))).json();
+    assert.ok(profileOnly.profile);
+    assert.ok(!readQueries.some(query => /leave_requests|tickets/.test(query)));
+    readQueries.length = 0;
+    const requestsOnly = await (await portal.GET(new NextRequest('http://localhost/api/parent/portal?section=requests&student=1'))).json();
+    assert.ok(Array.isArray(requestsOnly.leaves) && Array.isArray(requestsOnly.support));
+    assert.ok(!readQueries.some(query => /father_name/.test(query)));
+    readQueries.length = 0;
+    const homeOverviewResponse = await portal.GET(new NextRequest('http://localhost/api/parent/portal?section=home&view=overview&student=1&_refresh=fixture'));
+    assert.equal(homeOverviewResponse.status, 200);
+    const homeOverview = await homeOverviewResponse.json();
+    assert.ok(homeOverview.summary);
+    assert.deepEqual(homeOverview.announcements, []);
+    assert.deepEqual(homeOverview.diary, []);
+    assert.deepEqual(homeOverview.upcomingTests, []);
+    assert.equal(readQueries.length, 2, 'Home overview uses one authorized context read and one aggregate read in this auth fixture');
+    assert.ok(!readQueries.some(query => /diaries|announcements/.test(query)));
+    const legacyAccount = await (await portal.GET(new NextRequest('http://localhost/api/parent/portal?section=account&student=1'))).json();
+    assert.ok(legacyAccount.profile && Array.isArray(legacyAccount.leaves) && Array.isArray(legacyAccount.support));
+    check('Lightweight Home/More omit secondary SQL; profile and support load separately and legacy clients remain compatible');
     for (let id = 2; id <= 25; id++) {
       await seed(schema.tests, {
         id,
@@ -448,6 +492,12 @@ async function main() {
     assert.equal(savedProof.submittedByRole, 'PARENT');
     assert.equal(savedProof.amount, 300);
     assert.equal((savedProof.paymentAccount as any).id, 'bank1');
+    for (let id = 23; id <= 30; id++) await seed(schema.feeInvoices, {
+      id, institutionId: 1, studentId: 1, status: 'DUE', totalAmount: 1000, paidAmount: 0,
+      billingMonth: '2026-10', dueDate: '2026-10-31',
+    });
+    const aggregateHome = await (await portal.GET(new NextRequest('http://localhost/api/parent/portal?section=home&view=overview&student=1'))).json();
+    assert.equal(aggregateHome.summary.outstandingFees, 30000, 'Overview totals aggregate all invoices without loading or truncating a list');
     check(
       'Parent fee global totals, invoice and detail pagination, selected account, partial payment and unauthorized child/overpayment rejection',
     );

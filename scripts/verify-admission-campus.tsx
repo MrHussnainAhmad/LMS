@@ -56,7 +56,7 @@ async function main() {
   }
   try {
     const dialect = new PgDialect();
-    for (const table of [schema.institutions, schema.campuses, schema.admissionCycles, schema.admissionOfferings, schema.admissionApplicantAccounts, schema.admissionApplications, schema.admissionDocumentRequests, schema.admissionAppointments, schema.admissionApplicationEvents, schema.admissionFeePayments, schema.admissionEnrollments, schema.students, schema.classes, schema.sections, schema.studentAdmissionCounters, schema.auditLogs, schema.admissionFeeProofs, schema.feePaymentSubmissions, schema.feeInvoices]) {
+    for (const table of [schema.institutions, schema.campuses, schema.admissionCycles, schema.admissionOfferings, schema.admissionApplicantAccounts, schema.admissionApplications, schema.admissionDocumentRequests, schema.admissionAppointments, schema.admissionApplicationEvents, schema.admissionFeePayments, schema.admissionEnrollments, schema.students, schema.classes, schema.sections, schema.studentAdmissionCounters, schema.auditLogs, schema.admissionFeeProofs, schema.feePaymentSubmissions, schema.feeInvoices, schema.institutionPaymentGateways, schema.gatewayPaymentAttempts]) {
       const config = getTableConfig(table);
       const columns = config.columns.filter(column => config.name !== 'admission_applications' || !['intake_institution_id', 'campus_id', 'campus_name'].includes(column.name)).map(column => {
         const type = column.columnType === 'PgEnumColumn' ? 'text' : column.getSQLType();

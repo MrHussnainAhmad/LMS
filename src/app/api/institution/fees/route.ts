@@ -469,6 +469,7 @@ export const POST = requireRole(
               eq(feeInvoices.institutionId, institutionId),
             ),
           );
+        await (await import('@/lib/notification-delivery')).createNotification({institutionId,userRole:'STUDENT',userId:invoice.studentId,type:'PAYMENT',title:'Payment confirmed',message:'Your fee payment has been recorded.',referenceId:invoice.id,eventKey:`payment:${createdPayment.id}`},tx);
         return {
           payment: createdPayment,
           invoice: {

@@ -13,6 +13,8 @@
     "verify:admission-campuses": "node --import tsx scripts/verify-admission-campus.tsx",
     "verify:campuses": "node --import tsx scripts/verify-campus-workspaces.ts",
     "verify:restores": "node --import tsx --test scripts/verify-institution-restores.ts",
+    "verify:central-backups": "node --import tsx --test scripts/verify-central-backups.ts",
+    "verify:payments": "node --import tsx --test scripts/verify-online-payments.ts",
     "db:migrate:production": "node --env-file=.env scripts/migrate-production.mjs --apply",
     "verify:cache-policy": "node --import tsx scripts/verify-cache-policy.ts",
     "verify:roles": "node --import tsx scripts/verify-role-boundaries.ts",
@@ -27,7 +29,10 @@
     "verify:website-builder": "node --import tsx scripts/verify-public-site-builder.ts",
     "verify:website-builder-ui": "node scripts/verify-public-site-builder-ui.cjs",
     "verify:mobile": "node --import tsx scripts/verify-mobile-parity.ts",
-    "verify:qr-attendance": "node --import tsx scripts/verify-qr-attendance.ts"
+    "verify:qr-attendance": "node --import tsx scripts/verify-qr-attendance.ts",
+    "verify:qr-login": "node --import tsx scripts/verify-qr-login.ts",
+    "verify:notifications": "node --import tsx scripts/verify-mobile-notifications.ts",
+    "verify:institution-apps": "node --import tsx --test scripts/verify-institution-apps.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",

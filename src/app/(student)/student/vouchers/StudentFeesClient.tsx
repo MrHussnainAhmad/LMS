@@ -1,6 +1,7 @@
 "use client";
 
-import { ManualPaymentForm } from "@/components/ManualPaymentForm";
+import { FeePaymentForm } from "@/components/FeePaymentForm";
+import { PaymentHistory } from "@/components/PaymentHistory";
 import type { StudentFeeAccount, StudentFeeDetails } from "@/lib/student-fees";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -298,6 +299,7 @@ export function StudentFeesClient({ studentId, initialData }: { studentId?: numb
         <CardContent className="divide-y p-0">{rows(paid, true)}</CardContent>
         {pager(feeData.paidPagination, setPaidPage)}
       </Card>
+      <PaymentHistory studentId={studentId}/>
       {paying && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-950/55 p-4 backdrop-blur-sm">
           <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
@@ -317,7 +319,7 @@ export function StudentFeesClient({ studentId, initialData }: { studentId?: numb
               </Button>
             </CardHeader>
             <CardContent className="p-6 pt-7 text-left">
-              <ManualPaymentForm endpoint={endpoint} invoiceId={paying.id} amount={paying.totalAmount - paying.paidAmount} allowPartial paymentAccounts={feeData.paymentAccounts} onSubmitted={() => { setPaying(null); setDetails({}); void load(); }} />
+              <FeePaymentForm endpoint={endpoint} invoiceId={paying.id} amount={paying.totalAmount - paying.paidAmount} allowPartial paymentAccounts={feeData.paymentAccounts} onSubmitted={() => { setPaying(null); setDetails({}); void load(); }} />
             </CardContent>
           </Card>
         </div>

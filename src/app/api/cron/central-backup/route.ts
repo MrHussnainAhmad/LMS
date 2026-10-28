@@ -1,291 +1,199 @@
-import { inputErrorResponse } from '@/lib/input-error-response';
-import { NextRequest, NextResponse } from "next/server";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { createReadStream } from "node:fs";
-import { createCipheriv, randomBytes, scryptSync } from "node:crypto";
-import { readFile, stat, unlink, writeFile } from "node:fs/promises";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { centralBackupSettings, centralDatabaseBackups } from "@/db/schema";
-import { timingSafeEqual } from "@/lib/auth";
-import { decryptStreamingCredentials } from "@/lib/streaming-credentials";
-import {
-  uploadCentralBackupFile,
-  verifyCentralDriveFile,
-  applyCentralDriveRetention,
-  centralDriveFolderId,
-} from "@/lib/central-drive-backups";
+import { NextRequest, NextResponse } from 'next/server';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { createReadStream } from 'node:fs';
+import { lstat, realpath, unlink } from 'node:fs/promises';
+import { timingSafeEqual } from '@/lib/auth';
+import { decryptStreamingCredentials } from '@/lib/streaming-credentials';
+import { BackupBusyError, withCentralBackupLock } from '@/lib/central-backup-lock';
+import { backupFileSha256, encryptCentralDump } from '@/lib/central-backup-crypto';
+import { uploadCentralBackupFile, verifyCentralDriveFile, reserveCentralDriveFileId,
+  applyCentralDriveRetention, centralDriveFolderId } from '@/lib/central-drive-backups';
 
-async function encryptDatabaseDump(inputPath: string, outputPath: string): Promise<void> {
-  const [settings] = await db.select({ encrypted: centralBackupSettings.databasePasswordEncrypted }).from(centralBackupSettings).where(eq(centralBackupSettings.id, 1)).limit(1);
-  const password = decryptStreamingCredentials(settings?.encrypted)?.password;
-  if (!password) throw new Error("Central database backup password is not configured by a super-admin");
-  const salt = randomBytes(16);
-  const iv = randomBytes(12);
-  const key = scryptSync(password, salt, 32, { N: 16384, r: 8, p: 1 });
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const ciphertext = Buffer.concat([cipher.update(await readFile(inputPath)), cipher.final()]);
-  await writeFile(outputPath, Buffer.concat([Buffer.from("N360GCM1"), salt, iv, cipher.getAuthTag(), ciphertext]), { mode: 0o600 });
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+class RequestError extends Error {
+  constructor(message: string, readonly status = 400) { super(message); }
+}
+type BackupRow = {
+  status: string; drive_file_id: string | null; b2_status: string | null;
+  source_sha256: string | null; source_size_bytes: string | null;
+  sha256: string | null; file_size_bytes: string | null; file_name: string;
+};
+
+function errorCode(error: unknown): string {
+  const candidate = error as { code?: unknown; status?: unknown; name?: string; cause?: { code?: unknown } } | null;
+  const code = candidate?.cause?.code ?? candidate?.code;
+  if (candidate?.name === 'AbortError' || candidate?.name === 'TimeoutError') return 'ABORTED';
+  if (typeof candidate?.status === 'number' && candidate.status >= 400 && candidate.status <= 599) return `HTTP_${candidate.status}`;
+  return typeof code === 'string' && /^[A-Z0-9_]{1,32}$/.test(code) ? code : 'BACKUP_FAILED';
+}
+function retentionCount(value: string | undefined, fallback: number) {
+  if (value === undefined || value === '') return fallback;
+  const count = Number(value);
+  if (!Number.isSafeInteger(count) || count < 1 || count > 3650) throw new Error('Invalid retention configuration');
+  return count;
 }
 
-// ---------------------------------------------------------------------------
-// Authentication
-// ---------------------------------------------------------------------------
-
-function isAuthorized(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    console.error("[central-backup] CRON_SECRET is not configured; rejecting request");
-    return false;
-  }
-  const authHeader = req.headers.get("authorization");
-  const cronHeader = req.headers.get("x-cron-secret");
-  return (
-    (authHeader !== null && timingSafeEqual(authHeader, `Bearer ${secret}`)) ||
-    (cronHeader !== null && timingSafeEqual(cronHeader, secret))
-  );
-}
-
-// ---------------------------------------------------------------------------
-// B2 secondary upload (best-effort — must never throw)
-// ---------------------------------------------------------------------------
-
-async function tryB2Upload(
-  filePath: string,
-  fileName: string,
-  fileSize: number,
-): Promise<"UPLOADED" | "SKIPPED" | "FAILED"> {
-  const region = process.env.B2_REGION?.trim();
-  const keyId = process.env.B2_APPLICATION_KEY_ID?.trim();
-  const key = process.env.B2_APPLICATION_KEY?.trim();
-  const bucket = process.env.B2_BUCKET_NAME?.trim();
-
-  if (!region || !keyId || !key || !bucket) {
-    console.warn("[central-backup] B2 credentials not configured; skipping secondary B2 upload");
-    return "SKIPPED";
-  }
-
+async function tryB2Upload(filePath: string, fileName: string, fileSize: number, signal: AbortSignal) {
+  const region = process.env.B2_REGION?.trim(), keyId = process.env.B2_APPLICATION_KEY_ID?.trim();
+  const key = process.env.B2_APPLICATION_KEY?.trim(), bucket = process.env.B2_BUCKET_NAME?.trim();
+  if (!region || !keyId || !key || !bucket) return 'SKIPPED';
+  const client = new S3Client({ region, endpoint: `https://s3.${region}.backblazeb2.com`, forcePathStyle: true,
+    credentials: { accessKeyId: keyId, secretAccessKey: key } });
+  const stream = createReadStream(filePath);
   try {
-    const client = new S3Client({
-      region,
-      endpoint: `https://s3.${region}.backblazeb2.com`,
-      forcePathStyle: true,
-      credentials: { accessKeyId: keyId, secretAccessKey: key },
-    });
-
-    const stream = createReadStream(filePath);
-    await client.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: `central-database-backups/${fileName}`,
-        Body: stream,
-        ContentLength: fileSize,
-        ContentType: "application/octet-stream",
-      }),
-    );
-    console.log(`[central-backup] B2 secondary upload succeeded: ${fileName}`);
-    return "UPLOADED";
-  } catch (err) {
-    console.error(
-      "[central-backup] B2 secondary upload failed (non-fatal):",
-      err instanceof Error ? err.message : String(err),
-    );
-    return "FAILED";
-  }
+    await client.send(new PutObjectCommand({ Bucket: bucket, Key: `central-database-backups/${fileName}`,
+      Body: stream, ContentLength: fileSize, ContentType: 'application/octet-stream' }), { abortSignal: signal });
+    return 'UPLOADED';
+  } catch {
+    console.error('[central-backup] Secondary encrypted B2 upload failed');
+    return 'FAILED';
+  } finally { stream.destroy(); client.destroy(); }
 }
 
-// ---------------------------------------------------------------------------
-// POST /api/cron/central-backup
-//
-// Called by backup/backup.sh after the dump is encrypted and written to disk.
-// Body:
-//   {
-//     runId:        string  – idempotency key, e.g. "central-2026-09-21-00-00-a1b2c3d4"
-//     fileName:     string  – e.g. "database-2026-09-21-00-00.sql.gz.enc"
-//     filePath:     string  – absolute path on the shared volume, e.g. "/backups/..."
-//     fileSizeBytes: number
-//     sha256:       string  – hex SHA-256 of the encrypted file
-//   }
-// ---------------------------------------------------------------------------
-
+// Metadata describes the validated RAW dump. The persisted size/hash/filename
+// describe the ENCRYPTED remote artifact; source_* binds retries to the raw dump.
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  if (!isAuthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const secret = process.env.CRON_SECRET;
+  if (!secret || !(timingSafeEqual(req.headers.get('authorization') ?? '', `Bearer ${secret}`)
+    || timingSafeEqual(req.headers.get('x-cron-secret') ?? '', secret))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  let body: unknown;
+  let body: Record<string, unknown>;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }); }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  const { runId, fileName, filePath, fileSizeBytes, sha256 } = body;
+  if (typeof runId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(runId)
+    || typeof fileName !== 'string' || !/^database-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}(?:-[0-9a-f]{16})?\.dump$/.test(fileName)
+    || typeof filePath !== 'string' || !/^\/backups\/backup-[A-Za-z0-9_-]+\.dump$/.test(filePath)
+    || typeof fileSizeBytes !== 'number' || !Number.isSafeInteger(fileSizeBytes) || fileSizeBytes <= 0
+    || typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256)) {
+    return NextResponse.json({ error: 'Missing or invalid required fields' }, { status: 400 });
+  }
+  const encryptedPath = `${filePath}.enc`, encryptedFileName = `${fileName}.enc`;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+    return await withCentralBackupLock(async (client, signal) => {
+      let tracked = false, outputOwned = false, rawOwned = false, completed = false;
+      let stage = 'database lookup';
+      try {
+        // An active uploader holds this same global lock. Old UPLOADING rows
+        // therefore represent interrupted workers, not another live replica.
+        await client.query(`UPDATE central_database_backups SET status='FAILED',
+          error='Backup worker was interrupted before completion',completed_at=now()
+          WHERE status='UPLOADING' AND started_at < now() - interval '2 hours' AND run_id <> $1`, [runId]);
+        const { rows: [existing] } = await client.query<BackupRow>(
+          'SELECT status, drive_file_id, b2_status, source_sha256, source_size_bytes, sha256, file_size_bytes, file_name FROM central_database_backups WHERE run_id=$1', [runId]);
+        if (existing?.source_sha256 && (existing.source_sha256 !== sha256 || Number(existing.source_size_bytes) !== fileSizeBytes
+          || existing.file_name !== encryptedFileName)) throw new RequestError('Run ID already belongs to a different backup', 409);
+        if (existing?.status === 'COMPLETED') return NextResponse.json({ success: true, runId,
+          driveFileId: existing.drive_file_id, b2Status: existing.b2_status, idempotent: true });
+        tracked = existing !== undefined;
 
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
-  }
-
-  const {
-    runId,
-    fileName,
-    filePath,
-    fileSizeBytes,
-    sha256,
-  } = body as Record<string, unknown>;
-
-  if (
-    typeof runId !== "string" || !runId ||
-    typeof fileName !== "string" || !fileName ||
-    typeof filePath !== "string" || !filePath ||
-    typeof fileSizeBytes !== "number" || fileSizeBytes <= 0 ||
-    typeof sha256 !== "string" || sha256.length !== 64
-  ) {
-    return NextResponse.json({ error: "Missing or invalid required fields" }, { status: 400 });
-  }
-
-  // Sanitize filePath: must be under /backups/ to prevent path traversal.
-  if (!filePath.startsWith("/backups/") || filePath.includes("..")) {
-    return NextResponse.json({ error: "Invalid filePath" }, { status: 400 });
-  }
-  const encryptedPath = `${filePath}.enc`;
-  const encryptedFileName = fileName.replace(/\.dump$/, ".dump.enc");
-
-  // -------------------------------------------------------------------------
-  // Idempotency: if this run already completed, return success immediately.
-  // -------------------------------------------------------------------------
-  const [existing] = await db
-    .select({ id: centralDatabaseBackups.id, status: centralDatabaseBackups.status, driveFileId: centralDatabaseBackups.driveFileId, b2Status: centralDatabaseBackups.b2Status })
-    .from(centralDatabaseBackups)
-    .where(eq(centralDatabaseBackups.runId, runId))
-    .limit(1);
-
-  if (existing?.status === "COMPLETED") {
-    console.log(`[central-backup] run ${runId} already completed; returning cached result`);
-    return NextResponse.json({
-      success: true,
-      runId,
-      driveFileId: existing.driveFileId,
-      b2Status: existing.b2Status,
-      idempotent: true,
+        const folderId = centralDriveFolderId();
+        let driveFileId = existing?.drive_file_id;
+        let encryptedSize = existing?.file_size_bytes ? Number(existing.file_size_bytes) : 0;
+        let encryptedSha256 = existing?.sha256;
+        let remoteVerified = false;
+        // Recover a crash/timeout after upload but before the COMPLETED update.
+        if (driveFileId && encryptedSha256 && existing?.file_name.endsWith('.enc')) {
+          stage = 'remote retry verification';
+          try {
+            remoteVerified = await verifyCentralDriveFile({ driveFileId, expectedSize: encryptedSize,
+              expectedSha256: encryptedSha256, folderId, signal });
+            if (!remoteVerified) throw new Error('Remote backup integrity mismatch');
+          } catch (error) {
+            if ((error as { status?: number }).status !== 404) throw error;
+          }
+        }
+        let b2Status = existing?.b2_status ?? 'SKIPPED';
+        if (!remoteVerified) {
+          stage = 'source validation';
+          const reuse = Boolean(existing?.source_sha256 && driveFileId && encryptedSha256 && existing.file_name.endsWith('.enc'));
+          if (reuse) {
+            // Reuse identical ciphertext while a prior timed-out upload may still
+            // commit. A new salt would change the expected digest for that ID.
+            const info = await lstat(encryptedPath).catch(() => { throw new Error('Encrypted retry artifact is unavailable'); });
+            if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || await realpath(encryptedPath) !== encryptedPath
+              || info.size !== encryptedSize || await backupFileSha256(encryptedPath, signal) !== encryptedSha256) {
+              throw new Error('Encrypted retry artifact does not match the reserved upload');
+            }
+            outputOwned = true;
+          } else {
+            const info = await lstat(filePath).catch(() => { throw new RequestError('Backup source not found'); });
+            if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || (await realpath(filePath)) !== filePath
+              || info.size !== fileSizeBytes) throw new RequestError('Invalid backup source');
+            if (await backupFileSha256(filePath, signal) !== sha256) throw new RequestError('Backup source checksum mismatch');
+            rawOwned = true;
+          }
+          retentionCount(process.env.CENTRAL_DATABASE_BACKUP_KEEP_DAILY, 30);
+          retentionCount(process.env.CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY, 12);
+          await client.query(`INSERT INTO central_database_backups(run_id,file_name,source_size_bytes,source_sha256,status)
+            VALUES($1,$2,$3,$4,'UPLOADING') ON CONFLICT(run_id) DO UPDATE
+            SET status='UPLOADING',error=NULL,completed_at=NULL,source_size_bytes=$3,source_sha256=$4,started_at=now()`,
+          [runId, encryptedFileName, fileSizeBytes, sha256]);
+          tracked = true;
+          if (!reuse) {
+            stage = 'password configuration';
+            const { rows: [settings] } = await client.query('SELECT database_password_encrypted FROM central_backup_settings WHERE id=1');
+            const password = decryptStreamingCredentials(settings?.database_password_encrypted)?.password;
+            if (!password) throw new Error('Central backup password is not configured');
+            const stale = await lstat(encryptedPath).catch(() => null);
+            if (stale) {
+              if (!stale.isFile() || stale.isSymbolicLink() || stale.nlink !== 1) throw new RequestError('Invalid encrypted output');
+              await unlink(encryptedPath);
+            }
+            stage = 'encryption';
+            await encryptCentralDump(filePath, encryptedPath, password, signal);
+            outputOwned = true;
+            encryptedSize = (await lstat(encryptedPath)).size;
+            encryptedSha256 = await backupFileSha256(encryptedPath, signal);
+          }
+          stage = 'remote ID allocation';
+          driveFileId ||= await reserveCentralDriveFileId(signal);
+          // Persist the reserved ID and encrypted digest BEFORE network upload.
+          await client.query('UPDATE central_database_backups SET drive_file_id=$2,file_size_bytes=$3,sha256=$4,file_name=$5 WHERE run_id=$1',
+            [runId, driveFileId, encryptedSize, encryptedSha256, encryptedFileName]);
+          signal.throwIfAborted();
+          stage = 'Drive upload';
+          await uploadCentralBackupFile({ filePath: encryptedPath, fileName: encryptedFileName, folderId, driveFileId, signal });
+          stage = 'Drive checksum verification';
+          if (!await verifyCentralDriveFile({ driveFileId, expectedSize: encryptedSize, expectedSha256: encryptedSha256!, folderId, signal })) {
+            throw new Error('Remote backup integrity mismatch');
+          }
+          b2Status = await tryB2Upload(encryptedPath, encryptedFileName, encryptedSize, signal);
+        }
+        signal.throwIfAborted();
+        stage = 'completion record';
+        await client.query("UPDATE central_database_backups SET status='COMPLETED',b2_status=$2,error=NULL,completed_at=now() WHERE run_id=$1", [runId, b2Status]);
+        completed = true;
+        try {
+          const { rows } = await client.query("SELECT drive_file_id FROM central_database_backups WHERE status='COMPLETED' AND drive_file_id IS NOT NULL");
+          const retention = await applyCentralDriveRetention(folderId,
+            retentionCount(process.env.CENTRAL_DATABASE_BACKUP_KEEP_DAILY, 30), retentionCount(process.env.CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY, 12),
+            new Set(rows.map(row => row.drive_file_id as string)), signal);
+          console.log(`[central-backup] retention kept=${retention.kept} deleted=${retention.deleted} errors=${retention.errors}`);
+        } catch { console.error('[central-backup] Retention failed; verified backup remains completed'); }
+        console.log(`[central-backup] run ${runId} completed; encrypted upload verified`);
+        return NextResponse.json({ success: true, runId, fileName: encryptedFileName, driveFileId, b2Status });
+      } catch (error) {
+        if (!(error instanceof RequestError)) console.error(`[central-backup] ${stage} failed (${errorCode(error)})`);
+        if (tracked) await client.query("UPDATE central_database_backups SET status='FAILED',error=$2,completed_at=now() WHERE run_id=$1 AND status <> 'COMPLETED'",
+          [runId, `Backup failed during ${stage} (${errorCode(error)}). Check backup service health and configuration.`]).catch(() => {
+          console.error('[central-backup] Could not persist failure status');
+        });
+        throw error;
+      } finally {
+        if (completed && outputOwned) await unlink(encryptedPath).catch(() => console.error('[central-backup] Encrypted temporary file cleanup failed'));
+        // Failed raw sources remain only for the worker's bounded retry window.
+        // The worker removes them on every exit and reaps crash leftovers.
+        if (completed && rawOwned) await unlink(filePath).catch(() => undefined);
+      }
     });
+  } catch (error) {
+    if (error instanceof BackupBusyError) return NextResponse.json({ error: 'A central backup is already running' }, { status: 409, headers: { 'Retry-After': '60' } });
+    if (error instanceof RequestError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error(`[central-backup] Backup request failed (${errorCode(error)})`);
+    return NextResponse.json({ error: 'Central backup failed. Check backup configuration and service health.' }, { status: 500 });
   }
-
-  // -------------------------------------------------------------------------
-  // Verify the file exists on disk (prevents uploading a missing file).
-  // -------------------------------------------------------------------------
-  try {
-    const fileStat = await stat(filePath);
-    if (fileStat.size !== fileSizeBytes) {
-      return NextResponse.json(
-        { error: `File size mismatch: expected ${fileSizeBytes}, found ${fileStat.size}` },
-        { status: 400 },
-      );
-    }
-  } catch {
-    return NextResponse.json({ error: `File not found at path: ${filePath}` }, { status: 400 });
-  }
-
-  // -------------------------------------------------------------------------
-  // Upsert row as UPLOADING.
-  // -------------------------------------------------------------------------
-  await db
-    .insert(centralDatabaseBackups)
-    .values({
-      runId,
-      fileName,
-      fileSizeBytes,
-      sha256,
-      status: "UPLOADING",
-    })
-    .onConflictDoUpdate({
-      target: centralDatabaseBackups.runId,
-      set: { status: "UPLOADING", error: null },
-    });
-
-  // -------------------------------------------------------------------------
-  // Upload to Google Drive (primary destination).
-  // -------------------------------------------------------------------------
-  let driveFileId: string;
-  let encryptedSize = 0;
-  try {
-    const folderId = centralDriveFolderId();
-    await encryptDatabaseDump(filePath, encryptedPath);
-    encryptedSize = (await stat(encryptedPath)).size;
-    const result = await uploadCentralBackupFile({ filePath: encryptedPath, fileName: encryptedFileName, folderId });
-    driveFileId = result.driveFileId;
-
-    // Verify the uploaded file.
-    const valid = await verifyCentralDriveFile({
-      driveFileId,
-      expectedSize: encryptedSize,
-    });
-    if (!valid) {
-      throw new Error("Post-upload Drive file verification failed: size mismatch");
-    }
-
-    console.log(`[central-backup] Google Drive upload verified: ${encryptedFileName} (${driveFileId})`);
-  } catch (err) {
-    const publicInputError = inputErrorResponse(err);
-    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
-
-    const message = err instanceof Error ? err.message.slice(0, 2000) : "Unknown upload failure";
-    console.error(`[central-backup] Google Drive upload FAILED for run ${runId}:`, message);
-    await db
-      .update(centralDatabaseBackups)
-      .set({ status: "FAILED", error: message, completedAt: new Date() })
-      .where(eq(centralDatabaseBackups.runId, runId));
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-
-  // -------------------------------------------------------------------------
-  // Secondary B2 upload (best-effort; failure does NOT affect Drive status).
-  // -------------------------------------------------------------------------
-  const b2Status = await tryB2Upload(encryptedPath, encryptedFileName, encryptedSize);
-
-  // -------------------------------------------------------------------------
-  // Mark COMPLETED.
-  // -------------------------------------------------------------------------
-  await db
-    .update(centralDatabaseBackups)
-    .set({
-      status: "COMPLETED",
-      driveFileId,
-      fileSizeBytes: encryptedSize,
-      fileName: encryptedFileName,
-      b2Status,
-      completedAt: new Date(),
-      error: null,
-    })
-    .where(eq(centralDatabaseBackups.runId, runId));
-
-  // -------------------------------------------------------------------------
-  // Apply retention policy (non-fatal on error).
-  // -------------------------------------------------------------------------
-  const keepDaily = Math.max(1, Number(process.env.CENTRAL_DATABASE_BACKUP_KEEP_DAILY ?? 30) || 30);
-  const keepMonthly = Math.max(1, Number(process.env.CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY ?? 12) || 12);
-
-  try {
-    const folderId = centralDriveFolderId();
-    const retention = await applyCentralDriveRetention(folderId, keepDaily, keepMonthly);
-    console.log(
-      `[central-backup] retention: kept=${retention.kept} deleted=${retention.deleted} errors=${retention.errors}`,
-    );
-  } catch (err) {
-    // Retention failure must not cause the whole backup to appear failed.
-    console.error(
-      "[central-backup] retention policy application failed (non-fatal):",
-      err instanceof Error ? err.message : String(err),
-    );
-  }
-
-  console.log(`[central-backup] run ${runId} completed successfully`);
-  await unlink(encryptedPath).catch(() => undefined);
-  await unlink(filePath).catch(() => undefined);
-
-  return NextResponse.json({
-    success: true,
-    runId,
-    fileName: encryptedFileName,
-    driveFileId,
-    b2Status,
-  });
 }

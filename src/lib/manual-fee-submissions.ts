@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { feeInvoices, feePaymentSubmissions, feePayments } from '@/db/schema';
 import { assertPaymentReferenceUnused, resolvePaymentAccount } from './manual-payment-accounts';
+import { assertManualPayment } from './payments/manual-mode';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export async function submitStudentFeeProof(tx: Transaction, input: {
@@ -9,6 +10,7 @@ export async function submitStudentFeeProof(tx: Transaction, input: {
   paymentAccountId: string; transactionId: string; sourceBankName: string; proofFileKey: string;
   submittedByRole: string; submittedById: number;
 }) {
+  await assertManualPayment(tx,input.institutionId,{invoiceId:input.invoiceId});
   const [invoice] = await tx.select().from(feeInvoices).where(and(eq(feeInvoices.id, input.invoiceId),
     eq(feeInvoices.institutionId, input.institutionId), eq(feeInvoices.studentId, input.studentId))).limit(1).for('update');
   if (!invoice || !['DUE', 'PARTIAL'].includes(invoice.status)) throw new Error('INVOICE_NOT_PAYABLE');
@@ -47,6 +49,7 @@ export async function reviewStudentFeeProof(tx: Transaction, input: { institutio
         updatedAt: new Date(),
       })
       .where(eq(feePaymentSubmissions.id, submission.id));
+    await (await import('./notification-delivery')).createNotification({institutionId:input.institutionId,userRole:'STUDENT',userId:submission.studentId,type:'PAYMENT',title:'Payment proof rejected',message:input.note?.trim() || 'Your payment proof was rejected. Contact the institution for the reason.',referenceId:submission.invoiceId,eventKey:`payment-rejected:${submission.id}:${submission.submittedAt.toISOString()}`},tx);
     return { status: "REJECTED" as const };
   }
   await tx.execute(
@@ -102,6 +105,7 @@ export async function reviewStudentFeeProof(tx: Transaction, input: { institutio
       updatedAt: new Date(),
     })
     .where(eq(feePaymentSubmissions.id, submission.id));
+  await (await import('./notification-delivery')).createNotification({institutionId:input.institutionId,userRole:'STUDENT',userId:invoice.studentId,type:'PAYMENT',title:'Payment confirmed',message:'Your fee payment has been verified and recorded.',referenceId:invoice.id,eventKey:`payment:${payment.id}`},tx);
   return { status: "VERIFIED" as const, payment };
 
 }

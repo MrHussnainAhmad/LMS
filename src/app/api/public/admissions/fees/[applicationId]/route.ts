@@ -21,6 +21,7 @@ import { parseInstitutionHostname } from "@/lib/institution-domain";
 import { getPublicSiteBaseDomain } from "@/lib/public-site-domain";
 import { withRateLimit } from "@/lib/rate-limit";
 import { getPaymentAccounts } from "@/lib/manual-payment-accounts";
+import { readPaymentConfig,PaymentError } from '@/lib/payments/config';
 
 const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 const ALLOWED_PROOF_FORMATS = new Set(["jpg", "jpeg", "png", "webp", "pdf"]);
@@ -104,6 +105,7 @@ export const POST = withApiPolicy(async (
       { error: "Applicant session required" },
       { status: 401 },
     );
+  if((await readPaymentConfig(authorized.payment.institutionId)).mode!=='MANUAL')return NextResponse.json({error:'Manual payments are disabled. Use Online checkout.'},{status:409});
   if (authorized.archivedAt) return NextResponse.json({ error: "Restore this archived admission cycle before changing its records." }, { status: 409 });
   if (
     authorized.applicationStatus !== "FEE_PENDING" ||
@@ -229,6 +231,7 @@ export const POST = withApiPolicy(async (
 
   let submitted;
   try { submitted = await db.transaction(tx => submitAdmissionFeeProof(tx, { institutionId: authorized.payment.institutionId, applicationId, paymentId: authorized.payment.id, expectedStatus: authorized.payment.status, paymentAccountId: String("paymentAccountId" in body ? body.paymentAccountId : ""), transactionId: payerReference, sourceBankName: payerSourceBank, proofFileKey: encodeAdmissionFileAsset(asset) })); } catch (error) {
+    if(error instanceof PaymentError)return NextResponse.json({error:error.message},{status:error.status});
     if (error instanceof Error && error.message === "PAYMENT_ACCOUNT_UNAVAILABLE") return NextResponse.json({ error: "Payment account was removed. Refresh and select a current account." }, { status: 409 });
     if (error instanceof Error && error.message === "PAYMENT_REFERENCE_USED") return NextResponse.json({ error: "This transaction ID has already been submitted for this payment account." }, { status: 409 });
     throw error;

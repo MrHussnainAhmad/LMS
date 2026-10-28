@@ -200,6 +200,7 @@ services:
       # Explicit DB pool max limit per replica
       DB_POOL_MAX: ${DB_POOL_MAX:-15}
       # Shared auth secret
+      EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       STUDENT_QR_SIGNING_SECRET: ${STUDENT_QR_SIGNING_SECRET:-}
       STUDENT_QR_KEY_ID: ${STUDENT_QR_KEY_ID:-v1}
@@ -211,6 +212,14 @@ services:
       STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:-}
       # Required for the authenticated/manual push-receipt endpoint.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
+      PAYMENT_PUBLIC_ORIGIN: ${PAYMENT_PUBLIC_ORIGIN:-https://nisaab360.app}
+      PAYMENT_VERIFIED_GATEWAYS: ${PAYMENT_VERIFIED_GATEWAYS:-}
+      JAZZCASH_SANDBOX_CHECKOUT_URL: ${JAZZCASH_SANDBOX_CHECKOUT_URL:-}
+      JAZZCASH_CHECKOUT_URL: ${JAZZCASH_CHECKOUT_URL:-}
+      EASYPAISA_SANDBOX_INITIATE_URL: ${EASYPAISA_SANDBOX_INITIATE_URL:-}
+      EASYPAISA_SANDBOX_INQUIRY_URL: ${EASYPAISA_SANDBOX_INQUIRY_URL:-}
+      EASYPAISA_INITIATE_URL: ${EASYPAISA_INITIATE_URL:-}
+      EASYPAISA_INQUIRY_URL: ${EASYPAISA_INQUIRY_URL:-}
       GOOGLE_DRIVE_CENTRAL_CLIENT_ID: ${GOOGLE_DRIVE_CENTRAL_CLIENT_ID:-}
       GOOGLE_DRIVE_CENTRAL_CLIENT_SECRET: ${GOOGLE_DRIVE_CENTRAL_CLIENT_SECRET:-}
       GOOGLE_DRIVE_CENTRAL_REDIRECT_URI: ${GOOGLE_DRIVE_CENTRAL_REDIRECT_URI:-}
@@ -232,6 +241,8 @@ services:
       B2_BUCKET_NAME: ${B2_BUCKET_NAME:-}
       NEXT_PUBLIC_APP_DOMAIN: ${NEXT_PUBLIC_APP_DOMAIN:-nisaab360.app}
       PUBLIC_SITE_BASE_DOMAIN: ${PUBLIC_SITE_BASE_DOMAIN:-nisaab360.app}
+      CENTRAL_DATABASE_BACKUP_KEEP_DAILY: ${CENTRAL_DATABASE_BACKUP_KEEP_DAILY:-30}
+      CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY: ${CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY:-12}
       APP_DOMAIN: ${APP_DOMAIN:-nisaab360.app}
       GMAIL_USER: ${GMAIL_USER:?GMAIL_USER must be set}
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:?GMAIL_APP_PASSWORD must be set}
@@ -244,6 +255,8 @@ services:
       valkey:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      backup-volume-init:
         condition: service_completed_successfully
     networks:
       - appnet
@@ -284,6 +297,7 @@ services:
       # Explicit DB pool max limit per replica
       DB_POOL_MAX: ${DB_POOL_MAX:-15}
       # Shared auth secret
+      EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       STUDENT_QR_SIGNING_SECRET: ${STUDENT_QR_SIGNING_SECRET:-}
       STUDENT_QR_KEY_ID: ${STUDENT_QR_KEY_ID:-v1}
@@ -293,6 +307,14 @@ services:
       STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:-}
       # Required for the authenticated/manual push-receipt endpoint.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
+      PAYMENT_PUBLIC_ORIGIN: ${PAYMENT_PUBLIC_ORIGIN:-https://nisaab360.app}
+      PAYMENT_VERIFIED_GATEWAYS: ${PAYMENT_VERIFIED_GATEWAYS:-}
+      JAZZCASH_SANDBOX_CHECKOUT_URL: ${JAZZCASH_SANDBOX_CHECKOUT_URL:-}
+      JAZZCASH_CHECKOUT_URL: ${JAZZCASH_CHECKOUT_URL:-}
+      EASYPAISA_SANDBOX_INITIATE_URL: ${EASYPAISA_SANDBOX_INITIATE_URL:-}
+      EASYPAISA_SANDBOX_INQUIRY_URL: ${EASYPAISA_SANDBOX_INQUIRY_URL:-}
+      EASYPAISA_INITIATE_URL: ${EASYPAISA_INITIATE_URL:-}
+      EASYPAISA_INQUIRY_URL: ${EASYPAISA_INQUIRY_URL:-}
       GOOGLE_DRIVE_CENTRAL_CLIENT_ID: ${GOOGLE_DRIVE_CENTRAL_CLIENT_ID:-}
       GOOGLE_DRIVE_CENTRAL_CLIENT_SECRET: ${GOOGLE_DRIVE_CENTRAL_CLIENT_SECRET:-}
       GOOGLE_DRIVE_CENTRAL_REDIRECT_URI: ${GOOGLE_DRIVE_CENTRAL_REDIRECT_URI:-}
@@ -315,6 +337,8 @@ services:
       NEXT_PUBLIC_APP_DOMAIN: ${NEXT_PUBLIC_APP_DOMAIN:-nisaab360.app}
       PUBLIC_SITE_BASE_DOMAIN: ${PUBLIC_SITE_BASE_DOMAIN:-nisaab360.app}
       APP_DOMAIN: ${APP_DOMAIN:-nisaab360.app}
+      CENTRAL_DATABASE_BACKUP_KEEP_DAILY: ${CENTRAL_DATABASE_BACKUP_KEEP_DAILY:-30}
+      CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY: ${CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY:-12}
       GMAIL_USER: ${GMAIL_USER:?GMAIL_USER must be set}
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:?GMAIL_APP_PASSWORD must be set}
       API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-https://nisaab360.app}
@@ -324,6 +348,8 @@ services:
       valkey:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      backup-volume-init:
         condition: service_completed_successfully
     networks:
       - appnet
@@ -368,6 +394,7 @@ services:
       # Receipt processing is intentionally low-concurrency and must not add a
       # second five-connection application pool behind PgBouncer.
       DB_POOL_MAX: 1
+      EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       STUDENT_QR_SIGNING_SECRET: ${STUDENT_QR_SIGNING_SECRET:-}
       STUDENT_QR_KEY_ID: ${STUDENT_QR_KEY_ID:-v1}
@@ -462,13 +489,49 @@ services:
       retries: 3
       start_period: 10s
 
-  # Verified custom-format PostgreSQL backups are retained locally and uploaded
-  # to a private Backblaze B2 bucket. The container also verifies each dump's
-  # catalog and the uploaded object before updating its health marker.
+  payment-reconciliation-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: push-receipt-worker
+    command: ["node", "dist/payment-reconciliation-worker.cjs"]
+    init: true
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=128
+      CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - appnet
+
+  # Initialize fresh and existing named volumes before either web replica starts.
+  # Uses the same backup artifact, no credentials or network, and exits once.
+  backup-volume-init:
+    build: ./backup
+    user: "0:0"
+    command: ["--init-volume"]
+    restart: "no"
+    network_mode: none
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+    volumes:
+      - postgres_backup:/backups
+
+  # Cron is privileged only to switch identity. /backup.sh always runs as
+  # 1001:1001; it sends plaintext to neither Drive nor B2.
   postgres-backup:
     build: ./backup
     init: true
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID"]
     volumes:
       - postgres_backup:/backups
     environment:
@@ -477,34 +540,30 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       # Run a verified backup on startup and daily at midnight UTC.
-      SCHEDULE: "0 0 * * *"
-      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+      SCHEDULE: ${SCHEDULE:-0 0 * * *}
       BACKUP_ON_STARTUP: ${BACKUP_ON_STARTUP:-true}
-      # S3 Upload (Backblaze B2)
-      S3_ENDPOINT: "${B2_REGION:+https://s3.${B2_REGION}.backblazeb2.com}"
-      S3_ACCESS_KEY_ID: ${B2_APPLICATION_KEY_ID:-}
-      S3_SECRET_ACCESS_KEY: ${B2_APPLICATION_KEY:-}
-      S3_BUCKET: ${B2_BUCKET_NAME:-}
-      # Keep full-database retention isolated from per-institution retention.
-      S3_PREFIX: "postgres-backups/disaster-recovery"
-      S3_REGION: ${B2_REGION:-}
-      # Central Google Drive backup (primary destination).
-      # Set these to enable Drive uploads after completing the one-time OAuth setup.
-      # Leave unset to skip Drive uploads and continue B2-only operation.
+      TZ: UTC
+      BACKUP_HEALTH_MAX_AGE_SECONDS: ${BACKUP_HEALTH_MAX_AGE_SECONDS:-129600}
+      # Start only after central OAuth and the UI encryption password are ready.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
       CENTRAL_DATABASE_BACKUP_DRIVE_FOLDER_ID: ${CENTRAL_DATABASE_BACKUP_DRIVE_FOLDER_ID:-}
-      CENTRAL_DATABASE_BACKUP_ENCRYPTION_KEY: ${CENTRAL_DATABASE_BACKUP_ENCRYPTION_KEY:-}
       CENTRAL_DATABASE_BACKUP_KEEP_DAILY: ${CENTRAL_DATABASE_BACKUP_KEEP_DAILY:-30}
       CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY: ${CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY:-12}
     depends_on:
       postgres:
         condition: service_healthy
+      app:
+        condition: service_healthy
+      app2:
+        condition: service_healthy
+      backup-volume-init:
+        condition: service_completed_successfully
     networks:
       - backend
       - appnet
     healthcheck:
-      test: ["CMD-SHELL", "test -f /backups/last-success && test $$(($$(date +%s) - $$(cat /backups/last-success))) -lt 129600"]
-      interval: 1h
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 1m
       timeout: 5s
       retries: 2
       start_period: 10m

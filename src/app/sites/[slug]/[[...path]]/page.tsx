@@ -37,6 +37,7 @@ import { ApplicantChangePasswordForm } from "./ApplicantChangePasswordForm";
 import { ApplicantLogoutButton } from "./ApplicantLogoutButton";
 import { ApplicantDocumentUpload } from "./ApplicantDocumentUpload";
 import { ApplicantFeePayment } from "./ApplicantFeePayment";
+import { PaymentHistory } from '@/components/PaymentHistory';
 import { InstitutionHomepage } from "./InstitutionHomepage";
 import { admissionCalendarDate, admissionCalendarDateSql } from "@/lib/admission-calendar";
 import { PublicEventPage } from "./PublicEventPage";
@@ -1390,14 +1391,15 @@ async function ApplicantPortalPage({
                               (feePayment.status === "PENDING" || feePayment.status === "REJECTED") && (
                                 <div className="border-t border-slate-100 pt-4">
                                   <p className="text-xs font-bold text-slate-800 mb-2">
-                                    Submit Payment for Verification:
+                                    Pay admission fee:
                                   </p>
                                   <ApplicantFeePayment
                                     applicationId={application.id}
                                     amount={feePayment.amount}
-                                  />
-                                </div>
-                              )}
+                                    />
+                                  </div>
+                                )}
+                            <PaymentHistory applicationId={application.id}/>
                           </section>
                         )
                       ) : (application.status === "TEST_SCHEDULED" ||

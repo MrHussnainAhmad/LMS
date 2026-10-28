@@ -10,7 +10,7 @@ const adapter = source.slice(source.indexOf('async function handleLane('), sourc
 assert.ok(adapter.length > 0);
 const settings = { env: { HOT_PATH_JSON_BODY: '1' } };
 const handle = runInNewContext(`(${adapter})`, {
-  NextRequest, Response, Headers, Buffer, process: settings, console,
+  NextRequest, Response, Headers, Buffer, performance, process: settings, console,
   NATIVE_WARM_ENABLED: false, LIGHT_REQUEST_ENABLED: false,
   createHotLaneRequest: (req: {url:string}) => new NextRequest("http://localhost" + req.url),
 });

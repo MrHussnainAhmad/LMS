@@ -14,6 +14,7 @@ import { getCachedOrFetch } from "@/lib/redis";
 
 import { StudentLeaveRequestButton } from "./StudentLeaveRequestButton";
 import { PromotionResultDialog } from "./PromotionResultDialog";
+import { QrLoginButton } from "@/components/auth/QrLoginButton";
 
 /**
  * Student web dashboard — only initially visible cards/schedule/announcements.
@@ -54,6 +55,8 @@ export default async function StudentDashboard() {
     return (
       <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
         <PromotionResultDialog />
+
+        <div className="flex justify-end"><QrLoginButton /></div>
 
         <div className="grid gap-4 sm:grid-cols-3">
           <Link href="/student/transcripts" prefetch={false} className="block h-full">
@@ -169,6 +172,8 @@ export default async function StudentDashboard() {
   return (
     <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
       <PromotionResultDialog />
+
+      <div className="flex justify-end"><QrLoginButton /></div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-gradient-to-br from-brand-800 to-brand-950 text-white border-none shadow-md">

@@ -127,7 +127,7 @@ export default function PricingPage() {
             {pricingPlans.map((plan) => (
               <div key={plan.id}>
                 <span>{plan.name}</span>
-                <p>{plan.monthly} per month — {plan.scale}.</p>
+                <p>{plan.monthly} {plan.id === "ENTERPRISE" ? plan.monthlyDetail : "per month"} — {plan.scale}.</p>
               </div>
             ))}
           </div>

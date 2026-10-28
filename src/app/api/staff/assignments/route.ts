@@ -182,17 +182,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
       dueAt: new Date(dueAt),
     }).returning({ id: assignments.id });
 
-    const sectionStudents = await db.select({ id: students.id }).from(students).where(eq(students.sectionId, sectionId));
-    const { createBulkNotifications } = await import("@/lib/notifications");
-    await createBulkNotifications(sectionStudents.map((s) => ({
-      institutionId: session.institutionId!,
-      userRole: "STUDENT",
-      userId: s.id,
-      type: "ASSIGNMENT",
-      title: "New Assignment",
-      message: `A new assignment "${title}" has been posted. Due: ${new Date(dueAt).toLocaleDateString()}`,
-      referenceId: insertedAssignment.id,
-    })));
+    await (await import('@/lib/notification-events')).notifyAssignment(session.institutionId!,insertedAssignment.id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -8,6 +8,9 @@ export const dynamic = 'force-dynamic';
 export const GET = withApiPolicy(async () => {
   try {
     await readinessPool.query('select 1');
+    // Fail readiness on migration drift before accepting backup jobs/traffic.
+    await readinessPool.query('select b2_status, error, source_sha256, source_size_bytes, started_at from central_database_backups where false');
+    await readinessPool.query('select database_password_encrypted, updated_by_employee from central_backup_settings where false');
     let cache: 'ready' | 'degraded' = 'degraded';
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {

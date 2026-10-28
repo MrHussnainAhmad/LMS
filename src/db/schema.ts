@@ -114,6 +114,12 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "GENERAL",
   "LEAVE_REQUEST",
   "DIARY",
+  "TIMETABLE",
+  "FEE_VOUCHER",
+  "FEE_OVERDUE",
+  "PAYMENT",
+  "SECURITY",
+  "ASSIGNMENT_REMINDER",
 ]);
 export const leaveRequestStatusEnum = pgEnum("leave_request_status", [
   "PENDING",
@@ -242,6 +248,7 @@ export const institutions = pgTable(
     username: varchar("username", { length: 30 }).notNull().unique(),
     publicSlug: varchar("public_slug", { length: 30 }),
     publicSiteEnabled: boolean("public_site_enabled").default(false).notNull(),
+    appsEnabled: boolean("apps_enabled").default(true).notNull(),
     admissionsEnabled: boolean("admissions_enabled").default(false).notNull(),
     logoKey: varchar("logo_key", { length: 255 }).notNull(),
     signatureKey: varchar("signature_key", { length: 255 }),
@@ -1082,6 +1089,7 @@ export const parentAccounts = pgTable(
       .default("PENDING_ACTIVATION")
       .notNull(),
     mustChangePassword: boolean("must_change_password").default(true).notNull(),
+    announcementPushNotificationsEnabled: boolean("announcement_push_notifications_enabled").default(true).notNull(),
     sessionVersion: integer("session_version").default(0).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1399,6 +1407,7 @@ export const assignments = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => ({
+    dueReminderIndex: index("assignments_due_reminder_idx").on(t.dueAt,t.id),
     institutionStaffCreatedIndex: index(
       "assignments_institution_staff_created_idx",
     ).on(t.institutionId, t.staffId, t.createdAt),
@@ -1673,6 +1682,24 @@ export const announcementReads = pgTable(
   }),
 );
 
+export const notificationRollout = pgTable("notification_rollout", {
+  id: boolean("id").primaryKey().default(true), activatedAt: timestamp("activated_at", {withTimezone:true}).defaultNow().notNull(),
+});
+
+export const pushDevices = pgTable("push_devices", {
+  id: serial("id").primaryKey(),
+  institutionId: integer("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  userRole: roleEnum("user_role").notNull(), userId: integer("user_id").notNull(),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  sessionTokenHash: varchar("session_token_hash", { length: 64 }).notNull(),
+  deviceName: varchar("device_name", { length: 120 }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, t => ({ ownerIndex: index("push_devices_owner_idx").on(t.institutionId, t.userRole, t.userId),
+  sessionIndex: index("push_devices_session_idx").on(t.sessionTokenHash),
+  roleCheck: check("push_devices_role_check", sql`${t.userRole} IN ('STUDENT','STAFF','PARENT')`) }));
+
 // --- NOTIFICATIONS ---
 export const notifications = pgTable(
   "notifications",
@@ -1684,6 +1711,9 @@ export const notifications = pgTable(
     userRole: roleEnum("user_role").notNull(),
     userId: integer("user_id").notNull(),
     type: notificationTypeEnum("type").notNull(),
+    eventKey: varchar("event_key", { length: 128 }),
+    studentId: integer("student_id").references(() => students.id, { onDelete: "cascade" }),
+    data: jsonb("data").$type<Record<string, unknown>>(),
     title: varchar("title", { length: 255 }).notNull(),
     message: text("message").notNull(),
     isRead: boolean("is_read").default(false).notNull(),
@@ -1691,6 +1721,7 @@ export const notifications = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => ({
+    eventUnique: unique("notifications_event_unique").on(t.institutionId, t.userRole, t.userId, t.eventKey),
     institutionUserCreatedIndex: index(
       "notifications_institution_user_created_idx",
     ).on(t.institutionId, t.userRole, t.userId, t.createdAt),
@@ -1774,14 +1805,31 @@ export const auditLogs = pgTable(
   }),
 );
 
+// QR-created mobile sessions have a fixed 30-day lifetime across token rotation.
+export const qrLoginSessions = pgTable("qr_login_sessions", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  userRole: roleEnum("user_role").notNull(),
+  userId: integer("user_id").notNull(),
+  institutionId: integer("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  deviceName: varchar("device_name", { length: 120 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, t => ({
+  ownerIndex: index("qr_login_sessions_owner_idx").on(t.userRole, t.userId, t.institutionId, t.createdAt),
+  roleCheck: check("qr_login_sessions_role_check", sql`${t.userRole} IN ('STUDENT', 'STAFF')`),
+}));
+
 // --- REFRESH TOKENS ---
 export const refreshTokens = pgTable(
   "refresh_tokens",
   {
+    clientType: varchar("client_type", { length: 8 }).$type<"WEB" | "MOBILE">().default("WEB").notNull(),
     id: serial("id").primaryKey(),
     userRole: roleEnum("user_role").notNull(),
     userId: integer("user_id").notNull(),
     tokenHash: text("token_hash").notNull().unique(),
+    qrSessionId: varchar("qr_session_id", { length: 36 }).references(() => qrLoginSessions.id),
     expiresAt: timestamp("expires_at").notNull(),
     revokedAt: timestamp("revoked_at"),
     replacedByHash: text("replaced_by_hash"),
@@ -1789,6 +1837,7 @@ export const refreshTokens = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => ({
+    qrSessionIndex: index("refresh_tokens_qr_session_idx").on(t.qrSessionId),
     userIndex: index("refresh_tokens_user_idx").on(t.userRole, t.userId),
     activeUserIndex: index("refresh_tokens_active_user_idx")
       .on(t.userRole, t.userId)
@@ -1802,6 +1851,26 @@ export const refreshTokens = pgTable(
 );
 
 // --- ACCOUNT LOCKOUTS ---
+// QR login uses the existing refresh-token session as its revocable web owner.
+export const qrLoginChallenges = pgTable("qr_login_challenges", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  secretHash: varchar("secret_hash", { length: 64 }).notNull(),
+  userRole: roleEnum("user_role").notNull(),
+  userId: integer("user_id").notNull(),
+  institutionId: integer("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  sourceRefreshTokenId: integer("source_refresh_token_id").notNull().references(() => refreshTokens.id, { onDelete: "cascade" }),
+  accountFingerprint: varchar("account_fingerprint", { length: 64 }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  roleCheck: check("qr_login_challenges_role_check", sql`${t.userRole} IN ('STUDENT', 'STAFF')`),
+  terminalCheck: check("qr_login_challenges_terminal_check", sql`${t.consumedAt} IS NULL OR ${t.revokedAt} IS NULL`),
+  sourceIndex: index("qr_login_challenges_source_idx").on(t.sourceRefreshTokenId),
+  expiryIndex: index("qr_login_challenges_expiry_idx").on(t.expiresAt),
+}));
+
 export const accountLockouts = pgTable(
   "account_lockouts",
   {
@@ -2031,6 +2100,7 @@ export const feeInvoices = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (t) => ({
+    reminderIndex: index("fee_invoices_reminder_idx").on(t.dueDate,t.id).where(sql`${t.status} IN ('DUE','PARTIAL')`),
     institutionStudentMonthUnique: unique(
       "fee_invoices_institution_student_billing_unique",
     ).on(t.institutionId, t.studentId, t.billingMonth, t.billingKey),
@@ -2107,8 +2177,9 @@ export const feePayments = pgTable(
 export const institutionPaymentGateways = pgTable("institution_payment_gateways", {
   institutionId: integer("institution_id").primaryKey().references(() => institutions.id, { onDelete: "cascade" }),
   credentialsEncrypted: text("credentials_encrypted").notNull(),
+  mode: varchar("mode", { length: 16 }).$type<"MANUAL" | "ONLINE">().notNull().default("MANUAL"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, t=>({modeCheck:check('institution_payment_gateways_mode_check',sql`${t.mode} IN ('MANUAL','ONLINE')`)}));
 
 export const gatewayPaymentAttempts = pgTable("gateway_payment_attempts", {
   id: varchar("id", { length: 20 }).primaryKey(),
@@ -2131,6 +2202,9 @@ export const gatewayPaymentAttempts = pgTable("gateway_payment_attempts", {
   providerResponseCode: varchar("provider_response_code", { length: 20 }),
   evidenceDigest: varchar("evidence_digest", { length: 64 }),
   qrImage: text("qr_image"),
+  initiationStartedAt: timestamp("initiation_started_at"),
+  closedAt: timestamp("closed_at"),
+  portalOrigin: text("portal_origin"),
   lastCheckedAt: timestamp("last_checked_at"),
   verifiedAt: timestamp("verified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -2139,6 +2213,8 @@ export const gatewayPaymentAttempts = pgTable("gateway_payment_attempts", {
   invoiceIdx: index("gateway_attempts_invoice_idx").on(t.institutionId, t.invoiceId, t.createdAt),
   applicationIdx: index("gateway_attempts_application_idx").on(t.institutionId, t.applicationId, t.createdAt),
   statusIdx: index("gateway_attempts_status_idx").on(t.institutionId, t.status, t.createdAt),
+  referenceUnique:uniqueIndex('gateway_attempts_verified_reference_uidx').on(t.gateway,t.environment,t.merchantId,t.providerReference)
+    .where(sql`${t.environment}='production' AND ${t.status} IN ('PAID','REVIEW') AND ${t.providerReference} IS NOT NULL`),
 }));
 
 export const feePaymentSubmissions = pgTable(
@@ -2559,7 +2635,10 @@ export const institutionBackups = pgTable(
   (t) => ({
     institutionCreatedIndex: index(
       "institution_backups_institution_created_idx",
-    ).on(t.institutionId, t.createdAt),
+    ).on(t.institutionId, t.createdAt.desc()),
+    pendingIndex: index("institution_backups_pending_idx").on(t.createdAt, t.id).where(sql`${t.status} = 'PENDING'`),
+    typeCheck: check("institution_backups_type_check", sql`${t.backupType} IN ('DAILY','MONTHLY','MANUAL','EXPORT')`),
+    statusCheck: check("institution_backups_status_check", sql`${t.status} IN ('PENDING','RUNNING','COMPLETED','FAILED')`),
     periodUnique: unique("institution_backups_period_unique").on(
       t.institutionId,
       t.backupType,
@@ -2687,16 +2766,18 @@ export const centralDatabaseBackups = pgTable(
   "central_database_backups",
   {
     id: serial("id").primaryKey(),
-    // Deterministic idempotency key: "central-YYYY-MM-DD-HH-MM-<uuid-slice>".
+    // Timestamp/random run identity, reused unchanged across HTTP retries.
     // Used to deduplicate retried curl calls from the backup container.
-    runId: varchar("run_id", { length: 128 }).notNull().unique(),
-    // Dated filename: database-2026-09-21-00-00.sql.gz.enc
-    fileName: varchar("file_name", { length: 255 }).notNull(),
-    driveFileId: varchar("drive_file_id", { length: 255 }),
+    runId: text("run_id").notNull(),
+    // Dated encrypted artifact: database-YYYY-MM-DD-HH-mm-<nonce>.dump.enc
+    fileName: text("file_name").notNull(),
+    driveFileId: text("drive_file_id"),
     fileSizeBytes: bigint("file_size_bytes", { mode: "number" }),
     // SHA-256 hex of the encrypted file computed locally before upload.
-    sha256: varchar("sha256", { length: 64 }),
-    status: varchar("status", { length: 16 })
+    sha256: text("sha256"),
+    sourceSha256: varchar("source_sha256", { length: 64 }),
+    sourceSizeBytes: bigint("source_size_bytes", { mode: "number" }),
+    status: text("status")
       .$type<"PENDING" | "UPLOADING" | "COMPLETED" | "FAILED">()
       .notNull()
       .default("PENDING"),
@@ -2704,12 +2785,18 @@ export const centralDatabaseBackups = pgTable(
     b2Status: varchar("b2_status", { length: 16 })
       .$type<"SKIPPED" | "UPLOADED" | "FAILED">(),
     error: text("error"),
+    // Retained for older deployments and historical error preservation.
+    errorMessage: text("error_message"),
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },
   (t) => ({
     statusCreatedIndex: index("central_database_backups_status_created_idx").on(t.status, t.createdAt),
+    statusIndex: index("central_database_backups_status_idx").on(t.status),
     runIdIndex: uniqueIndex("central_database_backups_run_id_idx").on(t.runId),
+    statusCheck: check("central_database_backups_status_check", sql`${t.status} IN ('PENDING','UPLOADING','COMPLETED','FAILED')`),
+    b2StatusCheck: check("central_database_backups_b2_status_check", sql`${t.b2Status} IN ('SKIPPED','UPLOADED','FAILED')`),
   }),
 );
 

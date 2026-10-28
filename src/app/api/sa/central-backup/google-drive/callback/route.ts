@@ -10,9 +10,7 @@ import { requireRole } from '@/lib/rbac';
  * The refresh token is never written to the database or logs. It is displayed
  * once in the setup response so the administrator can put it in a secret.
  *
- * SECURITY: This callback requires an authenticated Root administrator; previously it was publicly reachable (Google cannot authenticate the
- * admin before redirecting). It is protected by the signed short-lived state JWT.
- * No authentication middleware wraps this handler so Google's redirect works.
+ * Requires both the authenticated administrator and signed short-lived state.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
@@ -43,7 +41,7 @@ const SUCCESS_HTML = (refreshToken: string) => `<!DOCTYPE html>
     <ol>
       <li>Copy the token below and set it as <code>GOOGLE_DRIVE_CENTRAL_REFRESH_TOKEN</code> in your server environment.</li>
       <li>Restart the application container so the new environment variable takes effect.</li>
-      <li>Rotate or delete the token from your log storage once it is saved securely.</li>
+      <li>Close this page after saving the token securely. Do not share it.</li>
     </ol>
   </div>
   <p><code>${refreshToken.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c] ?? c))}</code></p>
@@ -76,7 +74,7 @@ export const GET = requireRole(['SUPER_ADMIN'], async (req: NextRequest, { sessi
 
   // Handle user denial at the consent screen.
   if (error) {
-    console.warn(`[central-backup-setup] OAuth consent denied: ${error}`);
+    console.warn('[central-backup-setup] OAuth consent was denied');
     return new NextResponse(ERROR_HTML(`Google OAuth error: ${error}`), {
       status: 400,
       headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -110,7 +108,7 @@ export const GET = requireRole(['SUPER_ADMIN'], async (req: NextRequest, { sessi
     refreshToken = result.refreshToken;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Token exchange failed";
-    console.error(`[central-backup-setup] token exchange failed: ${message}`);
+    console.error('[central-backup-setup] Token exchange failed');
     return new NextResponse(ERROR_HTML(message), {
       status: 500,
       headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -119,6 +117,6 @@ export const GET = requireRole(['SUPER_ADMIN'], async (req: NextRequest, { sessi
 
   return new NextResponse(SUCCESS_HTML(refreshToken), {
     status: 200,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
   });
 }, { permission: 'platform.security', mutatesOnRead: true });

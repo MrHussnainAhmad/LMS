@@ -17,17 +17,18 @@ async function main(){
   async function load(entry:string){
     const result=await build({entryPoints:[entry],bundle:true,jsx:'automatic',write:false,platform:'node',format:'cjs',packages:'external',plugins:[{name:'db',setup(b){
       b.onResolve({filter:/^@\/db$/},()=>({path:'db',namespace:'fixture'}));
+      b.onResolve({filter:/notification-delivery$/},()=>({path:'notification-delivery',namespace:'fixture'}));
       b.onResolve({filter:/manual-payment-accounts$/},()=>({path:'accounts',namespace:'fixture'}));
       b.onResolve({filter:/^@\/lib\/auth$/},()=>({path:'auth',namespace:'fixture'}));
       b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'fixture'}));
       b.onResolve({filter:/StudentsPageTabs$/},()=>({path:'tabs',namespace:'fixture'}));
       b.onResolve({filter:/public-site-domain$/},()=>({path:'domain',namespace:'fixture'}));
-      b.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='db'?'export const db=globalThis.__billingDb;':args.path==='accounts'?'export const getPaymentAccounts=async()=>[];':args.path==='auth'?'export const getSession=async()=>globalThis.__directorySession;':args.path==='navigation'?'export const redirect=url=>{throw Error(url)};':args.path==='tabs'?'export const StudentsPageTabs=()=>null;':'export const getPublicSiteBaseDomain=async()=>"example.test";'}));
+      b.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='notification-delivery'?'export const createBulkNotifications=async()=>[];export const createNotification=async()=>undefined;':args.path==='db'?'export const db=globalThis.__billingDb;':args.path==='accounts'?'export const getPaymentAccounts=async()=>[];':args.path==='auth'?'export const getSession=async()=>globalThis.__directorySession;':args.path==='navigation'?'export const redirect=url=>{throw Error(url)};':args.path==='tabs'?'export const StudentsPageTabs=()=>null;':'export const getPublicSiteBaseDomain=async()=>"example.test";'}));
     }}]});
     const file=path.resolve(dir+'/'+path.basename(entry)+'.cjs');await writeFile(file,result.outputFiles[0].text);const require=createRequire(file);delete require.cache[file];return require(file);
   }
   try {
-    for(const table of [schema.institutions,schema.classes,schema.sections,schema.students,schema.feeHeads,schema.classFeeItems,schema.feeInvoices,schema.feeInvoiceItems,schema.studentFeeAdjustments,schema.feeBillingBatches,schema.feePayments,schema.feePaymentSubmissions]){
+    for(const table of [schema.institutions,schema.classes,schema.sections,schema.students,schema.feeHeads,schema.classFeeItems,schema.feeInvoices,schema.feeInvoiceItems,schema.studentFeeAdjustments,schema.feeBillingBatches,schema.feePayments,schema.feePaymentSubmissions,schema.institutionPaymentGateways,schema.gatewayPaymentAttempts]){
       const config=getTableConfig(table);
       const columns=config.columns.map(column=>{
         let value='';if(column.default!==undefined){const item=column.default;value=' DEFAULT '+(item instanceof SQL?dialect.sqlToQuery(item).sql:typeof item==='string'?`'${item.replaceAll("'","''")}'`:typeof item==='object'?`'${JSON.stringify(item)}'::jsonb`:String(item));}

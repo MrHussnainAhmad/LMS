@@ -83,6 +83,7 @@ export const PATCH = requireRole(["STAFF"], async (req: NextRequest, { params, s
       });
     }
 
+    if (status === 'APPROVED' && leave.userRole === 'STUDENT') await (await import('@/lib/notification-events')).notifyApprovedStudentLeave(institutionId,leave.userId,leave.id);
     return NextResponse.json({ success: true });
   } catch (err) {
     const publicInputError = inputErrorResponse(err);

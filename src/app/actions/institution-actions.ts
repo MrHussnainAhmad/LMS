@@ -498,6 +498,7 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   });
 
   await invalidateTimetableReadCaches(institutionId, sectionId!, staffId);
+  await (await import('@/lib/notification-events')).notifyTimetable(institutionId,sectionId!,staffId);
 
   revalidatePath("/institution/timetable");
   revalidatePath("/institution/timetable/overview");

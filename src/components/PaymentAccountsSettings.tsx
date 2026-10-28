@@ -53,7 +53,7 @@ export function PaymentAccountsSettings() {
       if (!response.ok) throw new Error(result.error);
       setAccounts(current => [...current, result.account]);
       form.reset(); setImageName(""); setShowForm(false);
-      setNotice({ text: "Payment gateway added. It is now available to your payers.", error: false });
+      setNotice({ text: "Payment account added. It is now available to your payers.", error: false });
     } catch (error) { setNotice({ text: error instanceof Error ? error.message : "Could not save payment account.", error: true }); }
     finally { setBusy(false); }
   }
@@ -65,26 +65,26 @@ export function PaymentAccountsSettings() {
       const response = await fetch(`${endpoint}?id=${encodeURIComponent(account.id)}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await responseErrorMessage(response));
       setAccounts(current => current.filter(row => row.id !== account.id));
-      setNotice({ text: "Payment gateway removed. Previous payment records are preserved.", error: false });
+      setNotice({ text: "Payment account removed. Previous payment records are preserved.", error: false });
     } catch (error) { setNotice({ text: error instanceof Error ? error.message : "Could not delete account.", error: true }); }
     finally { setBusy(false); }
   }
 
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><p className="text-sm font-semibold text-brand-950">Your payment accounts</p><p className="mt-1 text-xs text-stone-500">{loading ? "Loading accounts…" : `${accounts.length} ${accounts.length === 1 ? "gateway" : "gateways"} available`}</p></div>
-      {!showForm && <Button type="button" size="sm" disabled={busy || loading} onClick={() => { setShowForm(true); setNotice(null); }}><Plus className="mr-2 h-4 w-4" />Add gateway</Button>}
+      <div><p className="text-sm font-semibold text-brand-950">Manual payment accounts</p><p className="mt-1 text-xs text-stone-500">{loading ? "Loading accounts…" : `${accounts.length} ${accounts.length === 1 ? "account" : "accounts"} available`}</p></div>
+      {!showForm && <Button type="button" size="sm" disabled={busy || loading} onClick={() => { setShowForm(true); setNotice(null); }}><Plus className="mr-2 h-4 w-4" />Add account</Button>}
     </div>
     {notice && <div role={notice.error ? "alert" : "status"} className={`flex items-start gap-2 rounded-md border px-3 py-3 text-sm ${notice.error ? "border-red-200 bg-red-50 text-red-800" : "border-teal-200 bg-teal-50 text-teal-900"}`}>
       {!notice.error && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}<span>{notice.text}</span>
       {notice.error && !loading && !accounts.length && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={async () => { setBusy(true); try { await load(); setNotice(null); } catch { /* Keep the load error visible. */ } finally { setBusy(false); } }}>Retry</Button>}
     </div>}
-    {loading ? <div className="flex items-center justify-center gap-2 rounded-md border border-border bg-stone-50 py-10 text-sm text-stone-500"><Loader2 className="h-4 w-4 animate-spin" />Loading payment gateways</div> : accounts.length > 0 ? <div className="grid gap-3 md:grid-cols-2">
+    {loading ? <div className="flex items-center justify-center gap-2 rounded-md border border-border bg-stone-50 py-10 text-sm text-stone-500"><Loader2 className="h-4 w-4 animate-spin" />Loading payment accounts</div> : accounts.length > 0 ? <div className="grid gap-3 md:grid-cols-2">
       {accounts.map(account => <article key={account.id} className="min-w-0 overflow-hidden rounded-lg border border-border bg-white">
         <div className="flex items-center gap-3 border-b border-border bg-stone-50/70 px-4 py-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-brand-100 bg-white text-brand-700"><Building2 className="h-4 w-4" /></span>
           <p className="min-w-0 flex-1 break-words text-sm font-semibold text-brand-950">{account.providerName}</p>
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-stone-400 hover:bg-red-50 hover:text-red-700" disabled={busy} aria-label={`Delete ${account.providerName}`} title="Delete gateway" onClick={() => void remove(account)}><Trash2 className="h-4 w-4" /></Button>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-stone-400 hover:bg-red-50 hover:text-red-700" disabled={busy} aria-label={`Delete ${account.providerName}`} title="Delete account" onClick={() => void remove(account)}><Trash2 className="h-4 w-4" /></Button>
         </div>
         <div className="flex items-start gap-4 p-4">
           <dl className="min-w-0 flex-1 space-y-4">
@@ -99,16 +99,16 @@ export function PaymentAccountsSettings() {
       </article>)}
     </div> : !showForm && !notice?.error && <div className="flex min-w-0 flex-col items-center rounded-lg border border-dashed border-stone-300 bg-stone-50/60 px-4 py-6 sm:px-5 sm:py-9">
       <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-border bg-white text-brand-700"><Building2 className="h-5 w-5" /></span>
-      <p className="mt-3 w-full max-w-sm text-center! text-sm font-semibold break-words text-brand-950">Add your first payment gateway</p>
+      <p className="mt-3 w-full max-w-sm text-center! text-sm font-semibold break-words text-brand-950">Add your first payment account</p>
       <p className="mt-1 w-full max-w-sm text-center! text-sm leading-6 break-words text-stone-500">Add a bank or wallet account where students, parents, and applicants can send their fees.</p>
     </div>}
     {showForm && <form onSubmit={add} className="overflow-hidden rounded-lg border border-brand-200 bg-stone-50/50">
       <div className="flex items-center justify-between border-b border-brand-100 px-4 py-3 sm:px-5">
-        <p className="text-sm font-semibold text-brand-950">New payment gateway</p>
-        <Button type="button" size="icon" variant="ghost" className="h-8 w-8" disabled={busy} aria-label="Close add gateway form" onClick={() => { setShowForm(false); setImageName(""); }}><X className="h-4 w-4" /></Button>
+        <p className="text-sm font-semibold text-brand-950">New manual payment account</p>
+        <Button type="button" size="icon" variant="ghost" className="h-8 w-8" disabled={busy} aria-label="Close add account form" onClick={() => { setShowForm(false); setImageName(""); }}><X className="h-4 w-4" /></Button>
       </div>
       <fieldset disabled={busy} className="grid gap-5 p-4 sm:grid-cols-2 sm:p-5">
-        <label className="text-xs font-medium text-stone-700">Payment gateway name<input name="providerName" required minLength={2} maxLength={120} placeholder="e.g. Meezan Bank or JazzCash" className={inputClass} /></label>
+        <label className="text-xs font-medium text-stone-700">Payment provider / bank name<input name="providerName" required minLength={2} maxLength={120} placeholder="e.g. Meezan Bank or JazzCash" className={inputClass} /></label>
         <label className="text-xs font-medium text-stone-700">Account name<input name="accountTitle" required minLength={2} maxLength={160} placeholder="Name registered on the account" className={inputClass} /></label>
         <label className="text-xs font-medium text-stone-700 sm:col-span-2">Account number / IBAN<input name="accountNumber" required minLength={2} maxLength={160} placeholder="Enter the full account number or IBAN" className={inputClass + " font-mono"} /></label>
         <label className="block sm:col-span-2">
@@ -122,7 +122,7 @@ export function PaymentAccountsSettings() {
       </fieldset>
       <div className="flex flex-wrap justify-end gap-2 border-t border-brand-100 bg-white px-4 py-3 sm:px-5">
         <Button type="button" variant="outline" disabled={busy} onClick={() => { setShowForm(false); setImageName(""); }}>Cancel</Button>
-        <Button type="submit" disabled={busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}{busy ? "Saving gateway…" : "Save gateway"}</Button>
+        <Button type="submit" disabled={busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}{busy ? "Saving account…" : "Save account"}</Button>
       </div>
     </form>}
     <div className="flex items-start gap-2 text-xs leading-5 text-stone-500"><QrCode className="mt-0.5 h-4 w-4 shrink-0" /><p>Payers choose an account and submit a screenshot and transaction ID. You review each payment before it is confirmed.</p></div>

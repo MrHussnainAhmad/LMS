@@ -5,6 +5,8 @@ const checks=[
   ['node_modules/eslint/bin/eslint.js','.'],
   ['node_modules/typescript/bin/tsc','--noEmit'],
   ['scripts/audit-tenant-scope.mjs'],
+  ['--import','tsx','--test','scripts/verify-central-backups.ts'],
+  ['--import','tsx','--test','scripts/verify-online-payments.ts'],
   ['scripts/verify-request-costs.cjs'],
   ['--import','tsx','scripts/verify-form-validation.ts'],
   ['--import','tsx','scripts/verify-public-site-builder.ts'],
@@ -12,6 +14,9 @@ const checks=[
   ['--import','tsx','scripts/verify-admission-campus.tsx'],
   ['--import','tsx','scripts/verify-fee-billing.ts'],
   ['--import','tsx','scripts/verify-qr-key-rotation.ts'],
+  ['--import','tsx','scripts/verify-qr-login.ts'],
+  ['--import','tsx','scripts/verify-institution-apps.ts'],
+  ['--import','tsx','scripts/verify-mobile-notifications.ts'],
   ['--import','tsx','scripts/verify-serialized-lane.ts'],
 ];
 for(const args of checks){

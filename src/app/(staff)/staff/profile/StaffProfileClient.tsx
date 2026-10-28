@@ -1,4 +1,5 @@
 "use client";
+import { QrLoginButton } from "@/components/auth/QrLoginButton";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -126,6 +127,7 @@ export function StaffProfileClient({
 
   return (
     <div className="flex min-w-0 flex-col gap-6 animate-fade-in">
+      <div className="flex justify-end"><QrLoginButton /></div>
 
       <Card className="min-w-0 overflow-hidden">
         <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">

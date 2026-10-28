@@ -3,9 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { notifications } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { eq, and, desc, inArray, gte, count } from "drizzle-orm";
+import { eq, and, desc, inArray, gte, count, sql } from "drizzle-orm";
 import { resolveUserCreatedAt } from "@/lib/user";
-import { getRawCachedOrFetch, redis } from "@/lib/redis";
+import { getRawCachedOrFetch, redis, invalidateReadCacheKeys } from "@/lib/redis";
 import type { JWTPayload } from "@/lib/auth-types";
 
 const NOTIFICATIONS_CACHE_TTL_SECONDS = 20;
@@ -28,19 +28,22 @@ async function invalidateNotificationCaches(session: JWTPayload) {
   }
 }
 
-export const GET = requireRole(["STUDENT", "STAFF", "INSTITUTION", "INSTITUTION_ADMIN", "EMPLOYEE", "SUPER_ADMIN"], async (req: NextRequest, { session }) => {
+export const GET = requireRole(["STUDENT", "STAFF", "PARENT", "INSTITUTION", "INSTITUTION_ADMIN", "EMPLOYEE", "SUPER_ADMIN"], async (req: NextRequest, { session }) => {
   try {
     // Raw passthrough: this route hands the cached payload straight back, so
     // parsing it into 50 objects only to re-serialise them is pure waste on
     // every hit. The stored value is byte-identical to what getCachedOrFetch
     // wrote, so existing cache entries stay valid.
-    const payload = await getRawCachedOrFetch(notificationsCacheKey(session), NOTIFICATIONS_CACHE_TTL_SECONDS, async () => {
+    if(req.nextUrl.searchParams.get('fresh')==='1')await invalidateReadCacheKeys([notificationsCacheKey(session),unreadCountCacheKey(session)]);
+    const fetchPayload = session.role === 'PARENT' ? async (_key:string,_ttl:number,load:()=>Promise<string>) => load() : getRawCachedOrFetch;
+    const payload = await fetchPayload(notificationsCacheKey(session), NOTIFICATIONS_CACHE_TTL_SECONDS, async () => {
       const userCreatedAt = await resolveUserCreatedAt(session);
 
       const notificationScope = and(
         session.institutionId ? eq(notifications.institutionId, session.institutionId) : undefined,
         eq(notifications.userRole, session.role),
         eq(notifications.userId, session.userId),
+        session.role==='PARENT' ? sql`(${notifications.studentId} IS NULL OR EXISTS (SELECT 1 FROM parent_students ps WHERE ps.parent_id=${session.userId} AND ps.institution_id=${session.institutionId} AND ps.student_id=${notifications.studentId}))` : undefined,
         gte(notifications.createdAt, userCreatedAt)
       );
 
@@ -52,6 +55,8 @@ export const GET = requireRole(["STUDENT", "STAFF", "INSTITUTION", "INSTITUTION_
           message: notifications.message,
           isRead: notifications.isRead,
           referenceId: notifications.referenceId,
+          studentId: notifications.studentId,
+          data: notifications.data,
           createdAt: notifications.createdAt,
         })
           .from(notifications)
@@ -69,7 +74,7 @@ export const GET = requireRole(["STUDENT", "STAFF", "INSTITUTION", "INSTITUTION_
       });
     });
 
-    return new NextResponse(payload, { headers: { "Content-Type": "application/json" } });
+    return new NextResponse(payload, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   } catch (error) {
     const publicInputError = inputErrorResponse(error);
     if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
@@ -80,7 +85,7 @@ export const GET = requireRole(["STUDENT", "STAFF", "INSTITUTION", "INSTITUTION_
 });
 
 // Mark specific notifications as read
-export const PATCH = requireRole(["STUDENT", "STAFF", "INSTITUTION", "INSTITUTION_ADMIN", "EMPLOYEE", "SUPER_ADMIN"], async (req: NextRequest, { session }) => {
+export const PATCH = requireRole(["STUDENT", "STAFF", "PARENT", "INSTITUTION", "INSTITUTION_ADMIN", "EMPLOYEE", "SUPER_ADMIN"], async (req: NextRequest, { session }) => {
   try {
     const body = await req.json();
     const { notificationIds } = body as { notificationIds: number[] };

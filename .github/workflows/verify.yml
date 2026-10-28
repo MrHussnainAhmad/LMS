@@ -27,6 +27,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379
       JWT_SECRET: disposable-ci-secret-at-least-32-characters
       CRON_SECRET: disposable-ci-cron-secret-at-least-32-characters
+      BACKUP_TEST_DATABASE_URL: postgres://app:disposable-ci-only@127.0.0.1:5432/app
       NEXT_PUBLIC_APP_DOMAIN: example.test
       APP_DOMAIN: example.test
       PUBLIC_SITE_BASE_DOMAIN: example.test
@@ -55,7 +56,15 @@ jobs:
       - name: Reject known production dependency vulnerabilities
         run: npm audit --omit=dev --audit-level=moderate
       - run: node scripts/migrate-production.mjs --apply
+      - name: Verify backup volume ownership without Docker
+        run: sudo sh scripts/verify-backup-volume.sh
       - run: npm run verify:local
+      - name: Verify QR login against concurrent PostgreSQL connections
+        env:
+          QR_LOGIN_TEST_DATABASE_URL: postgres://app:disposable-ci-only@127.0.0.1:5432/nisaab360_qr_login_test
+        run: |
+          node --input-type=module -e 'import pg from "pg"; const pool = new pg.Pool({ connectionString: process.env.DIRECT_URL }); try { await pool.query("CREATE DATABASE nisaab360_qr_login_test"); } finally { await pool.end(); }'
+          npm run verify:qr-login
       - run: npm run build
       - run: npm run verify:billing-ui
       - run: npm run verify:forms-ui

@@ -1,5 +1,9 @@
 # Release and tenant-host setup
 
+For the central-backup schema/volume repair, staging requirements, existing-server
+upgrade sequence and rollback, read
+[the production fix report](../CENTRAL_BACKUP_PRODUCTION_FIX_REPORT.md).
+
 The base Compose file remains usable for local builds. For AWS ARM64 releases,
 build the app once and use its same registry digest for `app` and `app2`.
 Receipt and restore workers share their worker artifact; migrations and backups
@@ -34,6 +38,12 @@ new privileges. Deployment commands below explicitly start services when run.
      -f docker-compose.yml -f deployment/compose.release.yml up -d --wait \
      postgres pgbouncer valkey app app2 caddy push-receipt-worker institution-restore-worker
    ```
+
+   Both web replicas automatically wait for the migrator and `backup-volume-init`.
+   The initializer and scheduler use the same `BACKUP_IMAGE` digest and establish
+   the shared volume's private UID/GID 1001:1001 ownership. For an existing-server
+   upgrade, stop backup jobs/web replicas and explicitly run the new migrator and
+   initializer before recreating the apps, as described in the report.
 
    Start the backup service only after central Google Drive OAuth, folders and
    the administrator encryption password are configured. Validate readiness,

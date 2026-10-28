@@ -52,7 +52,7 @@ async function load(entry: string) {
       if(args.kind==='entry-point') return;
       if(args.path==='next/cache') return {path:'next-cache',namespace:'fixture'};
       const absolute = args.path.startsWith('@/') ? path.resolve('src', args.path.slice(2)) : path.resolve(args.resolveDir, args.path);
-      const controls=['InstitutionLogoUploader','InstitutionSignatureUploader','PaymentAccountsSettings','GoogleDriveBackupSettings','CourseStreamingSettings','GraduatedStudentAccessClient','CentralDatabaseBackupSettings','InstitutionRestoreRequests','InstitutionBackupsClient'];
+      const controls=['InstitutionLogoUploader','InstitutionSignatureUploader','PaymentAccountsSettings','PaymentSettings','GoogleDriveBackupSettings','CourseStreamingSettings','GraduatedStudentAccessClient','CentralDatabaseBackupSettings','InstitutionRestoreRequests','InstitutionBackupsClient'];
       const name=path.basename(absolute).replace(/\.tsx?$/, '');
       if(controls.includes(name)) return {path:name,namespace:'ui-capability'};
       const key = absolute === path.resolve('src/db') ? 'db' : path.dirname(absolute) === path.resolve('src/lib') ? path.basename(absolute).replace(/\.ts$/, '') : '';
@@ -369,9 +369,9 @@ try {
   const settingsPage=await load('src/app/(institution)/institution/settings/page.tsx');
   state.session=owner;
   let html=renderToStaticMarkup(await settingsPage.default());
-  for(const label of ['Payment Gateways','Google Drive Backup','Data Management'])assert.ok(html.includes(label));
+  for(const label of ['PaymentSettings','Google Drive Backup','Data Management'])assert.ok(html.includes(label));
   state.session=delegated;html=renderToStaticMarkup(await settingsPage.default());
-  for(const label of ['Payment Gateways','Google Drive Backup','Data Management','InstitutionSignatureUploader','CourseStreamingSettings'])assert.ok(!html.includes(label),label+' must not be exposed to delegated admins');
+  for(const label of ['PaymentSettings','Google Drive Backup','Data Management','InstitutionSignatureUploader','CourseStreamingSettings'])assert.ok(!html.includes(label),label+' must not be exposed to delegated admins');
   assert.ok(!html.includes('DangerZone'));
   const backupsPage=await load('src/components/PlatformBackupsPage.tsx');
   state.session=employee;html=renderToStaticMarkup(await backupsPage.PlatformBackupsPage({basePath:'/employee/backups',searchParams:Promise.resolve({})}));

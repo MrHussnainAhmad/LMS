@@ -130,6 +130,7 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN', 'EMPLOYEE',
   await updatePasswordForSession(session.role, session.userId, passwordHash, session.institutionId);
   await invalidateUserValidity(session.role, session.userId);
   await revokeAllSessions(session.role, session.userId);
+  if(session.institutionId && ['STUDENT','STAFF','PARENT'].includes(session.role)) await (await import('@/lib/notification-events')).notifySecurity({institutionId:session.institutionId,userRole:session.role as 'STUDENT'|'STAFF'|'PARENT',userId:session.userId},'Your account password was changed. If this was not you, contact your institution.');
 
   await logAudit({
     institutionId: session.institutionId,
@@ -145,6 +146,7 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN', 'EMPLOYEE',
       ?? (await resolveUserCreatedAt(session)).toISOString();
     const { accessToken, refreshToken } = await createTokens({
       userId: session.userId,
+      clientType: ["STUDENT", "STAFF", "PARENT"].includes(session.role) ? "MOBILE" : session.clientType,
       role: session.role,
       institutionId: session.institutionId,
       campusId: session.campusId,

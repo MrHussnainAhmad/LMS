@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { employees, institutionAdmins, institutions, parentAccounts, staff, students, superAdmins } from '@/db/schema';
+import { employees, institutionAdmins, institutions, parentAccounts, staff, students, superAdmins, refreshTokens } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { clearAuthCookies, createAccessToken, revokeAllSessions, revokeRefreshToken, rotateRefreshToken, setAuthCookies } from '@/lib/auth';
 import type { JWTPayload, UserRole } from '@/lib/auth';
@@ -8,6 +9,7 @@ import { cookies } from 'next/headers';
 import { withRateLimit } from '@/lib/rate-limit';
 import { AUTH_MAX_BODY_BYTES, bodyTooLargeResponse, readJsonBody } from '@/lib/http';
 import { resolveCampusSession } from '@/lib/campus-workspaces';
+import { isMobileRole, mobileAppAccessAllowed, MOBILE_APPS_DISABLED } from '@/lib/mobile-app-access';
 
 async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPayload | null> {
   switch (role) {
@@ -164,6 +166,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Account is unavailable' }, { status: 401 });
   }
 
+  payload.clientType = rotation.clientType;
+  // Legacy native sessions had no stored type: body-based refresh upgrades them.
+  if (bodyRefreshToken && isMobileRole(payload.role)) payload.clientType = "MOBILE";
+  if (!await mobileAppAccessAllowed(payload)) {
+    await revokeRefreshToken(rotation.refreshToken);
+    return NextResponse.json(MOBILE_APPS_DISABLED, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
+  if (payload.clientType === "MOBILE" && rotation.clientType !== "MOBILE") {
+    await db.update(refreshTokens).set({ clientType: "MOBILE" }).where(eq(refreshTokens.tokenHash, createHash("sha256").update(rotation.refreshToken).digest("hex")));
+  }
+  if (rotation.qrSessionId) {
+    payload.qrSessionId = rotation.qrSessionId;
+    payload.qrSessionExpiresAt = rotation.qrSessionExpiresAt;
+    if (!await (await import('@/lib/qr-session')).isQrSessionActive(payload)) {
+      await revokeRefreshToken(rotation.refreshToken);
+      return NextResponse.json({ error: 'QR session expired or revoked' }, { status: 401 });
+    }
+  }
   const accessToken = await createAccessToken(payload);
   await setAuthCookies(accessToken, rotation.refreshToken);
 

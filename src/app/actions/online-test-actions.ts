@@ -247,6 +247,7 @@ async function saveStudentMark(institutionId: number, testId: number, studentId:
     target: [marks.testId, marks.studentId],
     set: { marksObtained, totalMarks },
   });
+  await (await import('@/lib/notification-events')).notifyPublishedResults(institutionId,testId,[studentId]);
 }
 
 function getAttemptExpiresAt(startedAt: Date, durationMinutes: number) {
@@ -386,6 +387,7 @@ export async function expireStaleOnlineSubmissions(institutionId: number) {
       totalMarks: sql`EXCLUDED.total_marks`,
     },
   });
+  for(const testId of new Set(failedRows.map(row=>row.testId)))await (await import('@/lib/notification-events')).notifyPublishedResults(institutionId,testId,failedRows.filter(row=>row.testId===testId).map(row=>row.studentId));
 }
 
 export async function startOnlineTestAttemptAction(onlineTestId: number) {

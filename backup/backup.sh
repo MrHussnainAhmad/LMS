@@ -1,102 +1,70 @@
 #!/bin/sh
 set -eu
+if [ "$(id -u)" = 0 ]; then exec su-exec 1001:1001 "$0" "$@"; fi
+test "$(id -u):$(id -g)" = '1001:1001' || { echo 'Incorrect backup worker identity' >&2; exit 1; }
+umask 077
+test -w /backups || { echo 'Backup volume initialization is missing' >&2; exit 1; }
+exec 9>/backups/.backup.lock
+flock -n 9 || { echo 'Backup job already running; skipping overlapping invocation'; exit 0; }
 
+# Reap only known temporary dump files older than two hours, under the same lock.
+# Cron runs this hourly even after a failed backup. Retained Drive backups and
+# records are never involved. The active job is protected by flock.
+find /backups -maxdepth 1 -type f \( -name 'backup-*.dump' -o -name 'backup-*.dump.partial' -o -name 'backup-*.dump.enc' \) -mmin +120 -delete
+if [ "${1:-}" = '--cleanup' ]; then exit 0; fi
+
+filepath=''
+success=false
+cleanup() {
+  if [ -n "${filepath}" ]; then rm -f "${filepath}" "${filepath}.partial" "${filepath}.enc"; fi
+  if [ "${success}" != true ]; then
+    date -u +%s > /backups/last-failure
+    echo 'Database backup failed; last-failure recorded for health monitoring' >&2
+  fi
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+date -u +%s > /backups/last-attempt
 : "${POSTGRES_HOST:?POSTGRES_HOST is required}"
 : "${POSTGRES_DATABASE:?POSTGRES_DATABASE is required}"
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+: "${CENTRAL_DATABASE_BACKUP_DRIVE_FOLDER_ID:?Central Drive backup folder is required}"
+: "${CRON_SECRET:?CRON_SECRET is required}"
 
-timestamp=$(date -u +"%Y-%m-%dT%H%M%SZ")
-filename="backup-${timestamp}.dump"
+timestamp=$(date -u +'%Y-%m-%dT%H%M%SZ')
+nonce=$(openssl rand -hex 8)
+filename="backup-${timestamp}-${nonce}.dump"
 filepath="/backups/${filename}"
-keep_days="${BACKUP_KEEP_DAYS:-30}"
-trap 'rm -f "${filepath}.partial"' EXIT
-
-mkdir -p /backups
 PGPASSWORD="${POSTGRES_PASSWORD}" pg_dump \
   --host="${POSTGRES_HOST}" --username="${POSTGRES_USER}" --dbname="${POSTGRES_DATABASE}" \
   --format=custom --compress=6 --no-owner --no-acl --file="${filepath}.partial"
 pg_restore --list "${filepath}.partial" >/dev/null
 mv "${filepath}.partial" "${filepath}"
-
-if [ -n "${S3_ENDPOINT:-}" ] && [ -n "${S3_ACCESS_KEY_ID:-}" ] && [ -n "${S3_SECRET_ACCESS_KEY:-}" ] && [ -n "${S3_BUCKET:-}" ]; then
-  # The standard image is Google Drive only. Legacy B2 deployments must supply
-  # their own image with the MinIO client installed.
-  if ! command -v mc >/dev/null 2>&1; then
-    echo "B2 is configured but this Google Drive backup image does not include the MinIO client." >&2
-    exit 1
-  fi
-  mc alias set b2 "${S3_ENDPOINT}" "${S3_ACCESS_KEY_ID}" "${S3_SECRET_ACCESS_KEY}" --api S3v4 >/dev/null
-  mc cp "${filepath}" "b2/${S3_BUCKET}/${S3_PREFIX}/${filename}"
-  mc stat "b2/${S3_BUCKET}/${S3_PREFIX}/${filename}" >/dev/null
-else
-  echo "B2 is not configured; continuing with central Google Drive backup only."
-fi
-
-find /backups -type f -name 'backup-*.dump' -mtime "+${keep_days}" -delete
-# Never let disaster-backup retention traverse tenant packages if the prefix is
-# misconfigured. Remote deletion is allowed only inside this exact namespace.
-if [ -n "${S3_BUCKET:-}" ] && [ "${S3_PREFIX:-}" = "postgres-backups/disaster-recovery" ]; then
-  mc rm --recursive --force --older-than "${keep_days}d" "b2/${S3_BUCKET}/${S3_PREFIX}/" >/dev/null 2>&1 || true
-else
-  echo "Skipping remote retention: unsafe S3_PREFIX=${S3_PREFIX:-}" >&2
-fi
+chmod 600 "${filepath}"
 echo "Verified database dump completed: ${filename}"
 
-# ---------------------------------------------------------------------------
-# Central Google Drive backup
-# Encrypt the dump and upload it via the Next.js app's cron endpoint.
-# A failure here causes this script to exit non-zero (the health check
-# detects it), but does NOT roll back the already-successful B2 upload.
-# ---------------------------------------------------------------------------
-central_enabled="${CENTRAL_DATABASE_BACKUP_DRIVE_FOLDER_ID:-}"
-cron_secret="${CRON_SECRET:-}"
-
-if [ -z "${central_enabled}" ] && [ -z "${S3_BUCKET:-}" ]; then
-  echo "No database backup destination is configured (Google Drive folder and B2 bucket are both empty)." >&2
-  exit 1
-fi
-
-if [ -z "${central_enabled}" ] || [ -z "${cron_secret}" ]; then
-  if [ -n "${central_enabled}" ]; then
-    echo "[central-backup] CRON_SECRET is required when central Google Drive backup is enabled." >&2
-    exit 1
-  fi
-  echo "[central-backup] Central Drive upload is disabled; using B2 if configured."
-else
-    # The application encrypts the dump using the password configured by a
-    # super-admin. The raw dump remains on the shared backup volume only for
-    # the duration of the authenticated internal request.
-    drive_date=$(date -u +"%Y-%m-%d-%H-%M")
-    drive_filename="database-${drive_date}.dump"
-
-    # Deterministic run ID: date + first 8 chars of dump filename hash.
-    run_id="central-${drive_date}-$(echo "${filename}" | sha256sum | cut -c1-8)"
-
-    raw_sha256=$(sha256sum "${filepath}" | cut -d' ' -f1)
-    raw_size=$(stat -c%s "${filepath}")
-
-    # Call the Next.js cron endpoint. The app must be reachable on the Docker
-    # network at http://app:3000. If the call fails, log and exit non-zero.
-    curl_result=0
-    curl -fsS \
-      --max-time 3600 \
-      -X POST "http://app:3000/api/cron/central-backup" \
-      -H "Authorization: Bearer ${cron_secret}" \
-      -H "Content-Type: application/json" \
-      -d "{\"runId\":\"${run_id}\",\"fileName\":\"${drive_filename}\",\"filePath\":\"${filepath}\",\"fileSizeBytes\":${raw_size},\"sha256\":\"${raw_sha256}\"}" \
-      || curl_result=$?
-
-    if [ "${curl_result}" -ne 0 ]; then
-      echo "[central-backup] ERROR: cron upload call failed (curl exit ${curl_result}). The encrypted file has been removed. The backup run will be retried at the next scheduled time." >&2
-      exit 1
-    fi
-
-    echo "[central-backup] central Drive upload triggered successfully: ${drive_filename} (runId=${run_id})"
-fi
-
-# This marker represents the primary configured backup path. It is written only
-# after the central Drive request succeeds; when Drive is disabled, B2 success is
-# sufficient for backward-compatible B2-only operation.
+drive_date=$(date -u +'%Y-%m-%d-%H-%M')
+drive_filename="database-${drive_date}-${nonce}.dump"
+run_id="central-${drive_date}-${nonce}"
+raw_sha256=$(sha256sum "${filepath}" | cut -d' ' -f1)
+raw_size=$(stat -c%s "${filepath}")
+# Use the same idempotency key for bounded retries. Never put CRON_SECRET on
+# curl's command line or print the response/provider error body to container logs.
+attempt=1
+while :; do
+  code=$(printf 'header = "Authorization: Bearer %s"\n' "${CRON_SECRET}" | curl -s \
+    --config - --connect-timeout 10 --max-time 3300 --output /dev/null --write-out '%{http_code}' \
+    -X POST 'http://app:3000/api/cron/central-backup' -H 'Content-Type: application/json' \
+    -d "{\"runId\":\"${run_id}\",\"fileName\":\"${drive_filename}\",\"filePath\":\"${filepath}\",\"fileSizeBytes\":${raw_size},\"sha256\":\"${raw_sha256}\"}") || code=000
+  if [ "${code}" = 200 ]; then break; fi
+  echo "Central backup attempt ${attempt} failed (HTTP ${code})" >&2
+  if [ "${attempt}" -ge 3 ]; then exit 1; fi
+  case "${code}" in 000|409|429|5??) ;; *) exit 1 ;; esac
+  attempt=$((attempt + 1))
+  sleep 30
+done
 date -u +%s > /backups/last-success
-echo "Database backup completed: ${filename}"
+rm -f /backups/last-failure
+success=true
+echo "Encrypted Google Drive backup completed: ${run_id}"

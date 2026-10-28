@@ -86,6 +86,11 @@ async function getLandingData() {
         .limit(3),
     ]);
     return { featuredLogos, latestReviews };
+  }).catch(() => {
+    // Logos and reviews are optional public content. Keep the landing page
+    // available during a database outage; failed fills are not cached.
+    console.error('[landing] Featured content unavailable; rendering the public page without it.');
+    return { featuredLogos: [], latestReviews: [] };
   });
 }
 

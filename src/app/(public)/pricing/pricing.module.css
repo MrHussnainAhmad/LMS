@@ -213,10 +213,11 @@
 }
 
 .monthlyPrice small {
-  min-height: 18px;
+  min-height: 4.5em;
   margin-top: 0.3rem;
   color: var(--muted);
   font-size: 0.6rem;
+  line-height: 1.5;
 }
 
 .setupPrice {

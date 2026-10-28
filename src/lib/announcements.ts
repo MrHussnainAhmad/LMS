@@ -342,7 +342,7 @@ export async function getVisibleAnnouncements(
   session: JWTPayload,
   limit = 4,
   studentInfo?: { campusId: number | null; classId: number; sectionId: number; createdAt: Date },
-  options?: { includeReadStatus?: boolean }
+  options?: { includeReadStatus?: boolean; forceRefresh?: boolean }
 ) {
   const institutionId = getSessionInstitutionId(session);
   if (!institutionId) return [];
@@ -421,7 +421,7 @@ export async function getVisibleAnnouncements(
         .limit(limit);
     }
     return rows;
-  });
+  }, JSON.parse, options?.forceRefresh === true);
 
   // Re-parse createdAt to Date objects since JSON stringifies them
   visibleRows = visibleRows.map(row => ({

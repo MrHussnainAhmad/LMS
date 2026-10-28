@@ -1,6 +1,7 @@
 import { db } from '@/db';
 import { refreshTokens } from '@/db/schema';
 import { sql } from 'drizzle-orm';
+import { pruneExpiredQrLoginChallenges } from './qr-login';
 
 /**
  * Retention for dead refresh tokens.
@@ -38,6 +39,7 @@ const MAX_BATCHES = 20;
  * token. The same bounded deletion clears both expired and historical rows.
  */
 export async function pruneExpiredRefreshTokens(): Promise<{ deleted: number; backlogRemaining: boolean }> {
+  await pruneExpiredQrLoginChallenges();
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
   let deleted = 0;
 

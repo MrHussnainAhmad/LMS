@@ -1,7 +1,7 @@
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { staff, students } from "@/db/schema";
+import { staff, students, parentAccounts } from "@/db/schema";
 import { getSessionFromRequest } from "@/lib/auth";
 import { and, eq } from "drizzle-orm";
 
@@ -32,6 +32,11 @@ export async function GET(req: NextRequest) {
         testNotifications: Boolean(student?.testNotifications),
         announcementNotifications: Boolean(student?.announcementNotifications),
       });
+    }
+
+    if (session.role === "PARENT") {
+      const [parent]=await db.select({enabled:parentAccounts.announcementPushNotificationsEnabled}).from(parentAccounts).where(and(eq(parentAccounts.id,session.userId),eq(parentAccounts.institutionId,session.institutionId!))).limit(1);
+      return NextResponse.json({testNotifications:false,announcementNotifications:Boolean(parent?.enabled)});
     }
 
     if (session.role === "STAFF") {
@@ -108,8 +113,11 @@ export async function PATCH(req: NextRequest) {
         eq(staff.id, session.userId),
         eq(staff.institutionId, session.institutionId),
       ));
+    } else if (session.role === "PARENT" && session.institutionId) {
+      if (announcementNotifications === undefined) return NextResponse.json({error:'Select announcement preferences'},{status:400});
+      await db.update(parentAccounts).set({announcementPushNotificationsEnabled:announcementNotifications}).where(and(eq(parentAccounts.id,session.userId),eq(parentAccounts.institutionId,session.institutionId)));
     } else {
-      return NextResponse.json({ error: "Only students and staff can manage push preferences" }, { status: 403 });
+      return NextResponse.json({ error: "Only students, staff and parents can manage push preferences" }, { status: 403 });
     }
 
     console.info("Push preferences updated", {

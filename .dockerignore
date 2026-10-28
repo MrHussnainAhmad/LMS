@@ -152,7 +152,7 @@ DEPLOY.md
 /clear_*.mjs
 /seed*.ts
 
-# Docker admits only six required build/runtime inputs; tests and local/release/
+# Docker admits only required build/runtime inputs; tests and local/release/
 /run-server-tests.ps1
 /test-results/
 # recovery tools stay outside the build context and production images.
@@ -160,6 +160,7 @@ DEPLOY.md
 !/scripts/build.mjs
 !/scripts/hot-lane-request.cjs
 !/scripts/institution-restore-worker.ts
+!/scripts/payment-reconciliation-worker.ts
 !/scripts/migrate-production.mjs
 !/scripts/push-receipt-worker.ts
 !/scripts/standalone-server.cjs

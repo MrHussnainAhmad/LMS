@@ -21,9 +21,17 @@ services:
     build: !reset null
     image: ${WORKER_IMAGE:?Use the same worker artifact}
     platform: linux/arm64
+  payment-reconciliation-worker:
+    build: !reset null
+    image: ${WORKER_IMAGE:?Use the same worker artifact}
+    platform: linux/arm64
   postgres-backup:
     build: !reset null
     image: ${BACKUP_IMAGE:?Set BACKUP_IMAGE for this release}
+    platform: linux/arm64
+  backup-volume-init:
+    build: !reset null
+    image: ${BACKUP_IMAGE:?Use the same backup artifact for initialization}
     platform: linux/arm64
   postgres:
     image: ${POSTGRES_IMAGE:?Pin the tested PostgreSQL image digest}

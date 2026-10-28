@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { getPricingPlan } from "@/lib/pricing";
 import { InstitutionEnterpriseCampuses } from "@/components/InstitutionEnterpriseCampuses";
+import { InstitutionAppsControl } from "@/components/InstitutionAppsControl";
 import { InstitutionPublicSiteControl } from "@/components/InstitutionPublicSiteControl";
 
 export default async function EmployeeInstitutionDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -34,6 +35,7 @@ export default async function EmployeeInstitutionDetailPage({ params }: { params
     registrationNumber: institutions.registrationNumber,
     publicSlug: institutions.publicSlug,
     publicSiteEnabled: institutions.publicSiteEnabled,
+    appsEnabled: institutions.appsEnabled,
     createdAt: institutions.createdAt,
   }).from(institutions).where(eq(institutions.id, institutionId)).limit(1);
   if (!institution) {
@@ -98,6 +100,8 @@ export default async function EmployeeInstitutionDetailPage({ params }: { params
       </div>
 
       {institution.pricingPlan === "ENTERPRISE" && institution.parentInstitutionId === null && institution.status === "APPROVED" && <InstitutionEnterpriseCampuses institutionId={institution.id} />}
+
+      <InstitutionAppsControl institutionId={institution.id} initialEnabled={institution.appsEnabled} />
 
       <InstitutionPublicSiteControl
         institutionId={institution.id}

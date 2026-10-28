@@ -182,7 +182,7 @@ export async function createStaffAssignmentAction(formData: FormData) {
     ? await verifyCloudinarySubmission(referenceFileKey, session)
     : null;
 
-  await db.insert(assignments).values({
+  const [createdAssignment] = await db.insert(assignments).values({
     institutionId: session.institutionId,
     staffId: session.userId,
     classId: section.classId,
@@ -193,7 +193,8 @@ export async function createStaffAssignmentAction(formData: FormData) {
     referenceFileUrl: referenceResource?.secure_url || null,
     referenceFileName: referenceResource ? referenceFileName : null,
     dueAt: new Date(dueAtRaw),
-  });
+  }).returning({id:assignments.id});
+  await (await import('@/lib/notification-events')).notifyAssignment(session.institutionId,createdAssignment.id);
 
   revalidatePath("/staff/assignments");
   revalidatePath("/student/submissions");
@@ -556,6 +557,7 @@ async function saveMarksForRecords(
   }
 
   await invalidateStudentMarksCaches(session.institutionId, studentIds);
+  await (await import('@/lib/notification-events')).notifyPublishedResults(session.institutionId,test.id,studentIds);
 
   revalidatePath("/staff/marks");
   revalidatePath("/student/marks");
@@ -642,6 +644,7 @@ export async function publishStaffAssessmentResultsAction(formData: FormData) {
     eq(tests.staffId, session.userId)
   ));
   await invalidateStudentMarksCaches(session.institutionId, resultRows.map((row) => row.studentId));
+  await (await import('@/lib/notification-events')).notifyPublishedResults(session.institutionId,testId);
   revalidatePath("/staff/marks");
   revalidatePath("/student/marks");
   revalidatePath("/parent/dashboard");

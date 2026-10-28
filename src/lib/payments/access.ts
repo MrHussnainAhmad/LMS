@@ -24,9 +24,10 @@ export async function paymentAccess(req: NextRequest) {
     .where(and(eq(admissionApplicantAccounts.id, applicant.applicantId), eq(admissionApplicantAccounts.institutionId, applicant.institutionId),
       eq(admissionApplicantAccounts.sessionVersion, applicant.sessionVersion), eq(institutions.publicSlug, host.slug)));
   if (!account) return null;
-  return and(eq(attempts.institutionId, applicant.institutionId), sql`exists (
-    select 1 from admission_applications a where a.id = ${attempts.applicationId} and a.institution_id = ${applicant.institutionId} and a.applicant_id = ${applicant.applicantId}
-  )`);
+  return sql`exists (
+    select 1 from admission_applications a where a.id = ${attempts.applicationId} and a.institution_id = ${attempts.institutionId}
+    and a.intake_institution_id = ${applicant.institutionId} and a.applicant_id = ${applicant.applicantId}
+  )`;
 }
 
 // Explicit projection prevents returning encrypted credential snapshots or provider secrets.
@@ -34,6 +35,8 @@ export const publicPaymentFields = {
   id: attempts.id, invoiceId: attempts.invoiceId, applicationId: attempts.applicationId,
   gateway: attempts.gateway, environment: attempts.environment, amount: attempts.amount, currency: attempts.currency,
   status: attempts.status, receiptNumber: attempts.receiptNumber, providerReference: attempts.providerReference,
+  closedAt: attempts.closedAt, providerResponseCode: attempts.providerResponseCode,
+  initiationStartedAt: attempts.initiationStartedAt,
   institutionName: attempts.institutionName, payerName: attempts.payerName, description: attempts.description,
   verifiedAt: attempts.verifiedAt, createdAt: attempts.createdAt, expiresAt: attempts.expiresAt,
 };

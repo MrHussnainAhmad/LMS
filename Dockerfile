@@ -15,13 +15,16 @@ FROM deps AS worker-builder
 WORKDIR /app
 COPY tsconfig.json ./
 COPY src ./src
-COPY scripts/push-receipt-worker.ts scripts/institution-restore-worker.ts ./scripts/
+COPY scripts/push-receipt-worker.ts scripts/institution-restore-worker.ts scripts/payment-reconciliation-worker.ts ./scripts/
 RUN ./node_modules/.bin/esbuild scripts/push-receipt-worker.ts \
       --bundle --platform=node --target=node20 --format=cjs --packages=external \
       --sourcemap --outfile=dist/push-receipt-worker.cjs
 RUN ./node_modules/.bin/esbuild scripts/institution-restore-worker.ts \
       --bundle --platform=node --target=node20 --format=cjs --packages=external \
       --sourcemap --outfile=dist/institution-restore-worker.cjs
+RUN ./node_modules/.bin/esbuild scripts/payment-reconciliation-worker.ts \
+      --bundle --platform=node --target=node20 --format=cjs --packages=external \
+      --sourcemap --outfile=dist/payment-reconciliation-worker.cjs
 
 # Only compiled workers and production dependencies; no root or source/test tools.
 FROM base AS push-receipt-worker
@@ -70,7 +73,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts/standalone-server.cjs ./s
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/hot-lane-request.cjs ./scripts/hot-lane-request.cjs
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
 RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
-USER nextjs
+USER nextjs:nodejs
 EXPOSE 3000
 ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"

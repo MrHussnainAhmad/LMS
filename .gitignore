@@ -108,6 +108,7 @@ google_drive_setup_guide.md
 !/scripts/verify-local.mjs
 !/scripts/verify-qr-key-rotation.ts
 !/scripts/verify-qr-attendance.ts
+!/scripts/verify-qr-login.ts
 !/scripts/verify-public-site-builder.ts
 !/scripts/verify-public-site-builder-ui.cjs
 !/scripts/verify-request-costs.cjs
@@ -204,6 +205,7 @@ scripts/reset-parent-password.ts
 /caddy-config/
 
 # Local task notes and diagnostic evidence (keep operational docs)
+/CENTRAL_BACKUP_PRODUCTION_FIX_REPORT.md
 /fixsfromcluade.md
 /docs/*-20??-??-??/
 /docs/performance-experiments/
@@ -244,3 +246,11 @@ users.csv
 
 # Reproducible mobile API regression checks
 !/scripts/verify-mobile-parity.ts
+!/scripts/verify-central-backups.ts
+!/scripts/verify-backup-volume.sh
+!/scripts/verify-online-payments.ts
+!/scripts/payment-reconciliation-worker.ts
+
+!/scripts/verify-mobile-notifications.ts
+
+!/scripts/verify-institution-apps.ts

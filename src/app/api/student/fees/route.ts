@@ -16,6 +16,7 @@ import { getStudentFeeAccount, getStudentFeeDetails } from "@/lib/student-fees";
 import { positiveInteger } from "@/lib/pagination";
 import { submitStudentFeeProof } from "@/lib/manual-fee-submissions";
 import { getParentPortalContext } from "@/lib/parent-access";
+import { readPaymentConfig,PaymentError } from '@/lib/payments/config';
 
 const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 const ALLOWED_PROOF_FORMATS = new Set(["jpg", "jpeg", "png", "webp", "pdf"]);
@@ -42,6 +43,7 @@ export const GET = requireRole(
 
 export const POST = requireRole(["STUDENT", "PARENT"], async (req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
+  if((await readPaymentConfig(institutionId)).mode!=='MANUAL')return NextResponse.json({error:'Manual payments are disabled. Use Online checkout.'},{status:409});
   let studentId = session.userId;
   if (session.role === "PARENT") {
     try {
@@ -94,6 +96,7 @@ export const POST = requireRole(["STUDENT", "PARENT"], async (req: NextRequest, 
       proofFileKey: encodeAdmissionFileAsset(asset), submittedByRole: session.role, submittedById: session.userId }));
     return NextResponse.json({ submission }, { status: 201 });
   } catch (error) {
+    if(error instanceof PaymentError)return NextResponse.json({error:error.message},{status:error.status});
     if (error instanceof Error && error.message === "PAYMENT_ACCOUNT_UNAVAILABLE") return NextResponse.json({ error: "Payment account was removed. Refresh and select a current account." }, { status: 409 });
     if (error instanceof Error && error.message === "PAYMENT_REFERENCE_USED") return NextResponse.json({ error: "This transaction ID has already been submitted for this payment account." }, { status: 409 });
     if (error instanceof Error && error.message === "INVOICE_NOT_PAYABLE") return NextResponse.json({ error: "This challan is no longer awaiting payment" }, { status: 409 });

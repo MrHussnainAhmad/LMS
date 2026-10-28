@@ -78,6 +78,7 @@ export const POST = requireRole(["STUDENT"], async (req: NextRequest, { session,
         set: { marksObtained: 0, totalMarks: Number(row.test.maxMarks) },
       });
 
+      await (await import('@/lib/notification-events')).notifyPublishedResults(session.institutionId,row.test.id,[session.userId]);
       return NextResponse.json({ error: "The test timer expired. Your submission was recorded as 0." }, { status: 400 });
     }
 
@@ -130,6 +131,7 @@ export const POST = requireRole(["STUDENT"], async (req: NextRequest, { session,
       });
     }
 
+    if(row.onlineTest.mode==='MCQ')await (await import('@/lib/notification-events')).notifyPublishedResults(session.institutionId,row.test.id,[session.userId]);
     revalidatePath("/student/tests");
     revalidatePath("/student/marks");
     revalidatePath("/staff/tests");

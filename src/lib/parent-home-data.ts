@@ -6,7 +6,7 @@ import { jsonRows } from './dashboard-data';
 
 /** Aggregate the six home panels without occupying six pool slots per parent. */
 export async function getParentHomeData(institutionId: number, child: NonNullable<ParentPortalContext['selectedChild']>,
-  period: { from: string; to: string }, dayOfWeek = new Date().getDay()) {
+  period: { from: string; to: string }, dayOfWeek = new Date().getDay(), options: { overviewOnly?: boolean } = {}) {
   const attendance = db.select({
     total: sql<number>`count(*)::int`.as('total'),
     attended: sql<number>`count(*) filter (where ${attendances.status} in ('PRESENT', 'LATE'))::int`.as('attended'),
@@ -18,9 +18,9 @@ export async function getParentHomeData(institutionId: number, child: NonNullabl
   }).from(marks).innerJoin(tests, eq(marks.testId, tests.id)).innerJoin(subjects, eq(tests.subjectId, subjects.id))
     .where(and(eq(marks.institutionId, institutionId), eq(marks.studentId, child.id), isNotNull(tests.resultsPublishedAt),
       gte(tests.date, period.from), lte(tests.date, period.to))).orderBy(desc(tests.date), desc(marks.id)).limit(10);
-  const fees = db.select({ total: sql<number>`${feeInvoices.totalAmount}`.as('total'), paid: sql<number>`${feeInvoices.paidAmount}`.as('paid') })
+  const fees = db.select({ total: sql<number>`coalesce(sum(${feeInvoices.totalAmount}), 0)`.as('total'), paid: sql<number>`coalesce(sum(${feeInvoices.paidAmount}), 0)`.as('paid') })
     .from(feeInvoices).where(and(eq(feeInvoices.institutionId, institutionId), eq(feeInvoices.studentId, child.id),
-      inArray(feeInvoices.status, ['DUE', 'PARTIAL']))).limit(24);
+      inArray(feeInvoices.status, ['DUE', 'PARTIAL'])));
   const todayClasses = db.select({ id: staffAssignments.id,
     start: sql<string>`${staffAssignments.startTime}`.as('start'), end: sql<string>`${staffAssignments.endTime}`.as('end'),
     subject: sql<string | null>`${subjects.name}`.as('subject'), teacher: sql<string | null>`${staff.name}`.as('teacher'),
@@ -41,7 +41,8 @@ export async function getParentHomeData(institutionId: number, child: NonNullabl
     attendance: sql<Awaited<typeof attendance>[number]>`(select row_to_json(child) from (${attendance}) child)`,
     recentResults: jsonRows<Awaited<typeof results>[number]>(results), fees: jsonRows<Awaited<typeof fees>[number]>(fees),
     todayClasses: jsonRows<Awaited<typeof todayClasses>[number]>(todayClasses),
-    diary: jsonRows<Awaited<typeof diary>[number]>(diary), upcomingTests: jsonRows<Awaited<typeof upcomingTests>[number]>(upcomingTests),
+    diary: options.overviewOnly ? sql<Awaited<typeof diary>>`'[]'::json` : jsonRows<Awaited<typeof diary>[number]>(diary),
+    upcomingTests: options.overviewOnly ? sql<Awaited<typeof upcomingTests>>`'[]'::json` : jsonRows<Awaited<typeof upcomingTests>[number]>(upcomingTests),
   }).from(sql`(select 1) as anchor`);
   return data;
 }

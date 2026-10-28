@@ -73,6 +73,7 @@ export async function issueMonthlyFees(tx: Tx, institutionId: number, period: Bi
   for (let offset = 0; offset < prepared.length; offset += 500) {
     const group = prepared.slice(offset, offset + 500);
     const inserted = await tx.insert(feeInvoices).values(group.map(row => ({ institutionId, ...snapshot(row.student), billingMonth: period.billingMonth, dueDate: period.dueDate, subtotal: row.subtotal, additionalAmount: row.additionalAmount, discountAmount: row.discountAmount, totalAmount: row.totalAmount, status: row.totalAmount === 0 ? "PAID" as const : "DUE" as const }))).onConflictDoNothing().returning({ id: feeInvoices.id, studentId: feeInvoices.studentId });
+    await (await import('./notification-delivery')).createBulkNotifications(inserted.map(invoice=>({institutionId,userRole:'STUDENT' as const,userId:invoice.studentId,type:'FEE_VOUCHER' as const,title:'Fee voucher created',message:`A new fee voucher is available. Due date: ${period.dueDate}.`,referenceId:invoice.id,eventKey:`fee-voucher:${invoice.id}`})),tx);
     created += inserted.length;
     const invoiceIds = new Map(inserted.map(invoice => [invoice.studentId, invoice.id]));
     const items = group.flatMap(row => {
@@ -114,7 +115,8 @@ export async function issueOneTimeFees(tx: Tx, institutionId: number, input: Eve
   if (!recipients.length) throw new FeeBillingError("No active students match this one-time charge.");
   await tx.insert(feeBillingBatches).values({ id: input.batchId, institutionId, label: input.label, requestHash });
   for (let offset = 0; offset < recipients.length; offset += 500) {
-    const inserted = await tx.insert(feeInvoices).values(recipients.slice(offset, offset + 500).map(student => ({ institutionId, ...snapshot(student), billingKey: input.batchId, billingKind: "ONE_TIME" as const, billingLabel: input.label, billingMonth: input.billingMonth, dueDate: input.dueDate, subtotal: input.amount, totalAmount: input.amount }))).returning({ id: feeInvoices.id });
+    const inserted = await tx.insert(feeInvoices).values(recipients.slice(offset, offset + 500).map(student => ({ institutionId, ...snapshot(student), billingKey: input.batchId, billingKind: "ONE_TIME" as const, billingLabel: input.label, billingMonth: input.billingMonth, dueDate: input.dueDate, subtotal: input.amount, totalAmount: input.amount }))).returning({ id: feeInvoices.id, studentId: feeInvoices.studentId });
+    await (await import('./notification-delivery')).createBulkNotifications(inserted.map(invoice=>({institutionId,userRole:'STUDENT' as const,userId:invoice.studentId,type:'FEE_VOUCHER' as const,title:'Fee voucher created',message:`${input.label} fee voucher is available. Due date: ${input.dueDate}.`,referenceId:invoice.id,eventKey:`fee-voucher:${invoice.id}`})),tx);
     await tx.insert(feeInvoiceItems).values(inserted.map(invoice => ({ invoiceId: invoice.id, feeHeadId: head.id, label: input.label, type: "FEE" as const, amount: input.amount })));
   }
   return { created: recipients.length, alreadyIssued: false, batchId: input.batchId };

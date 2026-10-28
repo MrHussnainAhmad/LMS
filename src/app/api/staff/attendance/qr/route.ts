@@ -47,6 +47,7 @@ export const POST = requireRole(['STAFF'], async (req: NextRequest, { session })
     await authorizeAttendanceSection(scope);
     if (input.action === 'scan') {
       const { campusId, ...result } = await markQrAttendance(scope, date, input.qr);
+      if (!result.alreadyPresent) after(async()=>{await createAttendanceNotifications({institutionId:scope.institutionId,date,records:[{studentId:result.student.id,status:'PRESENT'}]});});
       if (!result.alreadyPresent) await invalidateStudentAttendanceCaches(scope.institutionId, [result.student.id], { ...scope, date, campusId });
       return NextResponse.json({ ...result, date }, { headers });
     }

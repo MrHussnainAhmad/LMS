@@ -71,6 +71,12 @@ const SUPPLEMENTAL_MIGRATIONS = [
   "0073_fee_snapshots_and_archive_write_guards.sql",
   "0074_explicit_fee_billing.sql",
   "0075_public_site_builder.sql",
+  "0076_central_backup_reconciliation.sql",
+  "0077_online_payment_modes.sql",
+  "0078_qr_account_login.sql",
+  "0079_qr_login_sessions.sql",
+  "0080_mobile_notifications.sql",
+  "0081_institution_mobile_apps.sql",
 ];
 
 if (!process.argv.includes("--apply"))

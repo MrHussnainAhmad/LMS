@@ -100,24 +100,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, p
 
     const { invalidateStudentMarksCaches } = await import('@/lib/redis');
     await invalidateStudentMarksCaches(session.institutionId!, records.map((record: {studentId: number}) => Number(record.studentId)));
-    const { createBulkNotifications } = await import("@/lib/notifications");
-    after(async () => {
-      try {
-        await createBulkNotifications(records.map((r: any) => ({
-          institutionId: session.institutionId!,
-          userRole: "STUDENT",
-          userId: Number(r.studentId),
-          type: "MARKS",
-          title: "Marks Updated",
-          message: `Your marks for ${test.title} have been updated. You scored ${r.marksObtained}/${expectedTotal}.`,
-          referenceId: test.id,
-        })));
-
-
-      } catch (e) {
-        console.error(e);
-      }
-    });
+    await (await import('@/lib/notification-events')).notifyPublishedResults(session.institutionId!,test.id,records.map((record:{studentId:number})=>Number(record.studentId)));
 
     return NextResponse.json({ success: true });
   } catch (error) {

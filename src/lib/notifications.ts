@@ -1,443 +1,25 @@
 import { db } from "@/db";
-import { announcements, expoPushTickets, notifications, staff, students } from "@/db/schema";
+import { announcements, expoPushTickets, staff, students, parentAccounts, parentStudents, pushDevices } from "@/db/schema";
 import { resolveAnnouncementRecipients } from "@/lib/announcements";
-import { and, eq, inArray, lt, or, sql, SQL } from "drizzle-orm";
-import { after } from "next/server";
+import { and, eq, inArray, lt, or, ne, isNotNull, sql, SQL } from "drizzle-orm";
 import { formatClassSection } from "@/lib/class-section-label";
-
-type NotificationType = 'ANNOUNCEMENT' | 'EXAM_TIMETABLE' | 'ASSIGNMENT' | 'TEST' | 'MARKS' | 'ATTENDANCE' | 'GENERAL' | 'LEAVE_REQUEST' | 'DIARY';
-
-type NotificationPayload = {
-  institutionId: number;
-  userRole: 'STUDENT' | 'STAFF' | 'INSTITUTION' | 'EMPLOYEE' | 'SUPER_ADMIN';
-  userId: number;
-  type: NotificationType;
-  title: string;
-  message: string;
-  referenceId?: number;
-};
-
-type AttendanceNotificationRecord = {
-  studentId: number;
-  status: "PRESENT" | "ABSENT" | "LATE" | "LEAVE";
-};
-
-type NotificationDelivery = NotificationPayload & {
-  notificationId?: number;
-};
-
-type ExpoTicket = {
-  status: "ok" | "error";
-  id?: string;
-  message?: string;
-  details?: { error?: string };
-};
-
-type ExpoReceipt = {
-  status: "ok" | "error";
-  message?: string;
-  details?: { error?: string };
-};
-
-type PushDeliverySummary = {
-  payloads: number;
-  targets: number;
-  missingTokens: number;
-  disabledByPreference: number;
-  tickets: number;
-  ticketErrors: number;
-};
-
-/**
- * Rows per notification INSERT. 1 000 rows × 7 columns is ~7 000 bind parameters,
- * far below Postgres' 65 535 ceiling, and cuts round trips 5× on a whole-roster
- * announcement fan-out (2 000 recipients: 10 statements → 2).
- */
-const NOTIFICATION_INSERT_CHUNK_SIZE = 1_000;
-const ANNOUNCEMENT_RECIPIENT_CHUNK_SIZE = 2000;
-/** Cap parallel post-response push jobs so after() storms can't pin CPU/RAM. */
-const MAX_CONCURRENT_PUSH_JOBS = 2;
-/**
- * Cap the *waiting* jobs too. Each queued job closes over its full delivery
- * array, so an unbounded queue behind two slots is a memory leak that survives
- * until restart: one hung Expo request holds a slot while announcement storms pile
- * up thousands of retained notification objects behind it.
- */
-const MAX_PENDING_PUSH_JOBS = 64;
-/**
- * Expo requests must not hang forever. Without a timeout a stalled connection
- * holds one of the two push slots indefinitely, which is what let the queue above
- * grow in the first place. fetch() has no default timeout in Node.
- */
-const EXPO_SEND_TIMEOUT_MS = 15_000;
-const EXPO_RECEIPT_TIMEOUT_MS = 20_000;
-
-let activePushJobs = 0;
-const pendingPushJobs: Array<{ grant: () => void; drop: (error: Error) => void }> = [];
-
-function acquirePushSlot(): Promise<void> {
-  if (activePushJobs < MAX_CONCURRENT_PUSH_JOBS) {
-    activePushJobs += 1;
-    return Promise.resolve();
-  }
-  return new Promise((resolve, reject) => {
-    if (pendingPushJobs.length >= MAX_PENDING_PUSH_JOBS) {
-      // Drop the oldest waiter rather than the newest: it has been queued longest,
-      // its notifications are the stalest, and rejecting it releases the delivery
-      // array it was holding. The DB rows are already committed either way — only
-      // the push notification is skipped.
-      const oldest = pendingPushJobs.shift();
-      oldest?.drop(new Error("Push queue saturated; oldest pending job dropped"));
-      console.warn("Expo push queue saturated", {
-        activePushJobs,
-        pendingPushJobs: pendingPushJobs.length,
-        maxPendingPushJobs: MAX_PENDING_PUSH_JOBS,
-      });
-    }
-    pendingPushJobs.push({
-      grant: () => {
-        activePushJobs += 1;
-        resolve();
-      },
-      drop: reject,
-    });
-  });
-}
-
-function releasePushSlot() {
-  activePushJobs = Math.max(0, activePushJobs - 1);
-  const next = pendingPushJobs.shift();
-  if (next) next.grant();
-}
-
-function debugLog(message: string, meta?: Record<string, unknown>) {
-  if (process.env.DEBUG_NOTIFICATIONS === "1") {
-    console.info(message, meta);
-  }
-}
-
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
-}
-
-export async function createNotification(payload: NotificationPayload) {
-  debugLog("Creating single notification", {
-    type: payload.type,
-    userRole: payload.userRole,
-    userId: payload.userId,
-    referenceId: payload.referenceId,
-  });
-
-  const [inserted] = await db.insert(notifications).values(payload).returning({ id: notifications.id });
-  scheduleExpoPushNotifications([{ ...payload, notificationId: inserted?.id }]);
-  return inserted;
-}
-
-export async function createBulkNotifications(payloads: NotificationPayload[]) {
-  debugLog("Creating bulk notifications", {
-    payloads: payloads.length,
-    types: Array.from(new Set(payloads.map((payload) => payload.type))),
-    studentRecipients: payloads.filter((payload) => payload.userRole === "STUDENT").length,
-    staffRecipients: payloads.filter((payload) => payload.userRole === "STAFF").length,
-  });
-
-  if (payloads.length === 0) return;
-
-  const insertedRows: { id: number }[] = [];
-  for (const chunk of chunkArray(payloads, NOTIFICATION_INSERT_CHUNK_SIZE)) {
-    const chunkRows = await db.insert(notifications).values(chunk).returning({ id: notifications.id });
-    insertedRows.push(...chunkRows);
-  }
-  debugLog("Bulk notification rows inserted", {
-    requested: payloads.length,
-    inserted: insertedRows.length,
-  });
-
-  const deliveries = payloads.map((payload, index) => ({
-    ...payload,
-    notificationId: insertedRows[index]?.id,
-  }));
-  scheduleExpoPushNotifications(deliveries);
-  return insertedRows;
-}
-
-/**
- * Background-worker variant. Unlike createBulkNotifications(), this does not
- * depend on Next.js request-scoped after() and waits for push delivery setup.
- */
-export async function createBulkNotificationsImmediately(payloads: NotificationPayload[]) {
-  if (payloads.length === 0) return [];
-
-  const insertedRows: { id: number }[] = [];
-  for (const chunk of chunkArray(payloads, NOTIFICATION_INSERT_CHUNK_SIZE)) {
-    const chunkRows = await db.insert(notifications).values(chunk).returning({ id: notifications.id });
-    insertedRows.push(...chunkRows);
-  }
-
-  await sendExpoPushNotifications(payloads.map((payload, index) => ({
-    ...payload,
-    notificationId: insertedRows[index]?.id,
-  })));
-
-  return insertedRows;
-}
-
-function scheduleExpoPushNotifications(deliveries: NotificationDelivery[]) {
-  after(async () => {
-    try {
-      await acquirePushSlot();
-    } catch (error) {
-      // Queue overflow. The notification rows are already committed, so the in-app
-      // notification still appears — only the push is skipped. Deliberately outside
-      // the try/finally below: no slot was acquired, so releasing one here would
-      // hand a third job a slot that does not exist.
-      console.error("Expo push delivery skipped:", error);
-      return;
-    }
-    try {
-      await sendExpoPushNotifications(deliveries);
-    } catch (error) {
-      console.error("Expo push delivery failed:", error);
-    } finally {
-      releasePushSlot();
-    }
-  });
-}
-
-export async function createAttendanceNotifications({
-  institutionId,
-  date,
-  records,
-}: {
-  institutionId: number;
-  date: Date | string;
-  records: AttendanceNotificationRecord[];
-}) {
-  const dateLabel = date instanceof Date ? date.toISOString().split("T")[0] : date.split("T")[0];
-  const notifyList = records.filter((record) => (
-    record.status === "ABSENT" || record.status === "LEAVE" || record.status === "LATE"
-  ));
-  const studentIds = Array.from(new Set(notifyList.map((record) => record.studentId)));
-  const studentRows = studentIds.length > 0
-    ? await db
-      .select({ id: students.id, name: students.name })
-      .from(students)
-      .where(and(eq(students.institutionId, institutionId), inArray(students.id, studentIds)))
-    : [];
-  const studentNames = new Map(studentRows.map((student) => [student.id, student.name]));
-
-  await createBulkNotifications(notifyList.map((record) => {
-    const studentName = studentNames.get(record.studentId) || "Student";
-    const isAbsent = record.status === "ABSENT";
-
-    return {
-      institutionId,
-      userRole: "STUDENT",
-      userId: record.studentId,
-      type: "ATTENDANCE",
-      title: isAbsent ? `${studentName} was absent from school.` : "Attendance Alert",
-      message: isAbsent
-        ? `Dear Parents/Guardians, please be informed that ${studentName} was absent on ${dateLabel}.`
-        : `You have been marked ${record.status} for ${dateLabel}.`,
-    };
-  }));
-}
-
-async function sendExpoPushNotifications(payloads: NotificationDelivery[]): Promise<PushDeliverySummary> {
-  const summary: PushDeliverySummary = {
-    payloads: payloads.length,
-    targets: 0,
-    missingTokens: 0,
-    disabledByPreference: 0,
-    tickets: 0,
-    ticketErrors: 0,
-  };
-
-  try {
-    // Recipient ids grouped by tenant. The two lookups below used to filter on id
-    // alone: they trusted that every id handed in belonged to the institution named
-    // on its own payload, and an id-only read of students/staff is also invisible to
-    // scripts/audit-tenant-scope.mjs. Grouping costs one pass over payloads and
-    // makes both reads institution-scoped. Ids are globally unique serials, so the
-    // state maps below stay keyed by id alone.
-    const studentIdsByInstitution = new Map<number, Set<number>>();
-    const staffIdsByInstitution = new Map<number, Set<number>>();
-
-    for (const payload of payloads) {
-      const bucket = payload.userRole === 'STUDENT'
-        ? studentIdsByInstitution
-        : payload.userRole === 'STAFF'
-          ? staffIdsByInstitution
-          : undefined;
-      if (!bucket) continue;
-      const existing = bucket.get(payload.institutionId);
-      if (existing) existing.add(payload.userId);
-      else bucket.set(payload.institutionId, new Set([payload.userId]));
-    }
-
-    const studentPushState = new Map<number, {
-      token: string | null;
-      testNotifications: boolean;
-      announcementNotifications: boolean;
-    }>();
-    const staffPushState = new Map<number, {
-      token: string | null;
-      announcementNotifications: boolean;
-    }>();
-
-    let studentRecipientCount = 0;
-    let staffRecipientCount = 0;
-
-    for (const [institutionId, idSet] of studentIdsByInstitution) {
-      const studentIds = Array.from(idSet);
-      studentRecipientCount += studentIds.length;
-      const studentRecords = await db
-        .select({
-          id: students.id,
-          token: students.expoPushToken,
-          testNotifications: students.testPushNotificationsEnabled,
-          announcementNotifications: students.announcementPushNotificationsEnabled,
-        })
-        .from(students)
-        .where(and(eq(students.institutionId, institutionId), inArray(students.id, studentIds)));
-
-      studentRecords.forEach((record) => {
-        studentPushState.set(record.id, {
-          token: record.token,
-          testNotifications: record.testNotifications,
-          announcementNotifications: record.announcementNotifications,
-        });
-      });
-    }
-
-    for (const [institutionId, idSet] of staffIdsByInstitution) {
-      const staffIds = Array.from(idSet);
-      staffRecipientCount += staffIds.length;
-      const staffRecords = await db
-        .select({
-          id: staff.id,
-          token: staff.expoPushToken,
-          announcementNotifications: staff.announcementPushNotificationsEnabled,
-        })
-        .from(staff)
-        .where(and(eq(staff.institutionId, institutionId), inArray(staff.id, staffIds)));
-
-      staffRecords.forEach((record) => {
-        staffPushState.set(record.id, {
-          token: record.token,
-          announcementNotifications: record.announcementNotifications,
-        });
-      });
-    }
-
-    debugLog("Expo push token lookup", {
-      studentRecipients: studentRecipientCount,
-      studentTokens: Array.from(studentPushState.values()).filter((state) => Boolean(state.token)).length,
-      staffRecipients: staffRecipientCount,
-      staffTokens: Array.from(staffPushState.values()).filter((state) => Boolean(state.token)).length,
-    });
-
-    // Only the token and the payload are retained per target; the Expo message
-    // objects are built per 100-message chunk below and released with it. Building
-    // them here held two extra objects (message + data) per recipient alive for the
-    // whole fan-out, on top of the payload and delivery arrays.
-    const targets = payloads.flatMap((payload) => {
-      const studentState = payload.userRole === 'STUDENT' ? studentPushState.get(payload.userId) : undefined;
-      const staffState = payload.userRole === 'STAFF' ? staffPushState.get(payload.userId) : undefined;
-      const token = studentState?.token ?? staffState?.token;
-
-      if (!token) {
-        summary.missingTokens++;
-        return [];
-      }
-
-      const announcementLike = payload.type === 'ANNOUNCEMENT' || payload.type === 'EXAM_TIMETABLE';
-      const enabled = payload.userRole === 'STUDENT'
-        ? payload.type === 'TEST'
-          ? studentState?.testNotifications
-          : announcementLike
-            ? studentState?.announcementNotifications
-            : true
-        : payload.userRole === 'STAFF'
-          ? announcementLike
-            ? staffState?.announcementNotifications
-            : true
-          : false;
-
-      if (!enabled) {
-        summary.disabledByPreference++;
-        return [];
-      }
-
-      return [{ token, payload }];
-    });
-
-    summary.targets = targets.length;
-
-    if (targets.length === 0) {
-      debugLog("Expo push delivery summary", summary);
-      return summary;
-    }
-
-    const CHUNK_SIZE = 100;
-    for (let start = 0; start < targets.length; start += CHUNK_SIZE) {
-      const chunk = targets.slice(start, start + CHUNK_SIZE);
-      let tickets: ExpoTicket[];
-      try {
-        tickets = await sendExpoChunkWithRetry(chunk.map((item) => ({
-          to: item.token,
-          sound: 'default',
-          title: item.payload.title,
-          body: item.payload.message,
-          data: { type: item.payload.type, referenceId: item.payload.referenceId },
-        })));
-      } catch (error) {
-        chunk.forEach((target) => {
-          console.error("Expo Push Send Failed After Retry:", {
-            token: target.token,
-            reason: error instanceof Error ? error.message : String(error),
-          });
-        });
-        continue;
-      }
-
-      const ticketRows = tickets.flatMap((ticket, index) => {
-        const target = chunk[index];
-        if (!target) return [];
-
-        if (ticket.status === 'error') {
-          summary.ticketErrors++;
-          console.error("Expo Push Ticket Error:", {
-            token: target.token,
-            reason: ticket.details?.error || ticket.message || 'Unknown error',
-          });
-          return [];
-        }
-
-        if (!ticket.id) return [];
-        summary.tickets++;
-        return [{
-          ticketId: ticket.id,
-          token: target.token,
-          userRole: target.payload.userRole,
-          userId: target.payload.userId,
-          notificationId: target.payload.notificationId,
-        }];
-      });
-
-      if (ticketRows.length > 0) {
-        await db.insert(expoPushTickets).values(ticketRows).onConflictDoNothing();
-      }
-    }
-
-    debugLog("Expo push delivery summary", summary);
-  } catch (err) {
-    console.error("Error preparing push notifications:", err);
-  }
-
-  return summary;
+import { createNotification, createBulkNotifications, createBulkNotificationsImmediately, type NotificationPayload } from './notification-delivery';
+export { createNotification, createBulkNotifications, createBulkNotificationsImmediately };
+type ExpoReceipt={status:'ok'|'error';message?:string;details?:{error?:string}};
+const EXPO_RECEIPT_TIMEOUT_MS=20000;
+function debugLog(message:string,meta?:Record<string,unknown>){if(process.env.DEBUG_NOTIFICATIONS==='1')console.info(message,meta);}
+function chunkArray<T>(items:T[],size:number):T[][]{const result:T[][]=[];for(let i=0;i<items.length;i+=size)result.push(items.slice(i,i+size));return result;}
+const ANNOUNCEMENT_RECIPIENT_CHUNK_SIZE=2000;
+type AttendanceNotificationRecord={studentId:number;status:'PRESENT'|'ABSENT'|'LATE'|'LEAVE'};
+export async function createAttendanceNotifications({institutionId,date,records}:{institutionId:number;date:Date|string;records:AttendanceNotificationRecord[]}) {
+ const dateLabel=typeof date==='string'?date.split('T')[0]:date.toISOString().split('T')[0];
+ if(!records.length)return;
+ const links=await db.select({parentId:parentStudents.parentId,studentId:students.id,name:students.name}).from(parentStudents)
+ .innerJoin(parentAccounts,and(eq(parentAccounts.id,parentStudents.parentId),eq(parentAccounts.institutionId,institutionId)))
+ .innerJoin(students,and(eq(students.id,parentStudents.studentId),eq(students.institutionId,institutionId)))
+ .where(and(eq(parentStudents.institutionId,institutionId),inArray(parentStudents.studentId,records.map(r=>r.studentId)),and(ne(parentAccounts.status,'DISABLED'),isNotNull(parentAccounts.passwordHash))));
+ await createBulkNotifications(records.flatMap(record=>links.filter(l=>l.studentId===record.studentId).map(link=>({institutionId,userRole:'PARENT' as const,userId:link.parentId,studentId:link.studentId,
+ type:'ATTENDANCE' as const,title:`Attendance: ${record.status.toLowerCase()}`,message:`${link.name} was marked ${record.status.toLowerCase()} on ${dateLabel}.`,eventKey:`attendance:${link.studentId}:${dateLabel}:${record.status}`}))));
 }
 
 export async function createDiaryNotifications({
@@ -516,38 +98,6 @@ export async function createOnlineTestNotifications({
   })));
 }
 
-async function sendExpoChunkWithRetry(messages: unknown[]) {
-  try {
-    return await sendExpoChunk(messages);
-  } catch (firstError) {
-    console.error("Expo Push Send Error, retrying once:", firstError);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    return await sendExpoChunk(messages);
-  }
-}
-
-async function sendExpoChunk(messages: unknown[]): Promise<ExpoTicket[]> {
-  const response = await fetch('https://exp.host/--/api/v2/push/send', {
-    method: 'POST',
-    headers: {
-      'Accept': 'application/json',
-      'Accept-encoding': 'gzip, deflate',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(messages),
-    // Without this a stalled connection to exp.host holds one of the two push
-    // slots forever; fetch() has no default timeout in Node.
-    signal: AbortSignal.timeout(EXPO_SEND_TIMEOUT_MS),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Expo push send failed: ${response.status} ${response.statusText}`);
-  }
-
-  const body = await response.json();
-  return Array.isArray(body.data) ? body.data : [];
-}
-
 /** Expo needs a few minutes before a receipt exists. */
 const RECEIPT_CHECK_DELAY_MS = 15 * 60 * 1000;
 /**
@@ -605,6 +155,7 @@ export async function checkExpoPushReceipts() {
     headers: {
       'Accept': 'application/json',
       'Accept-encoding': 'gzip, deflate',
+      ...(process.env.EXPO_ACCESS_TOKEN?{Authorization:`Bearer ${process.env.EXPO_ACCESS_TOKEN}`}:{}),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ ids: pendingTickets.map(ticket => ticket.ticketId) }),
@@ -635,9 +186,10 @@ export async function checkExpoPushReceipts() {
 
     const reason = receipt.details?.error || receipt.message || 'Unknown receipt error';
     failedReasons.set(ticket.id, reason);
-    console.error("Expo Push Receipt Error:", { token: ticket.token, reason });
+    console.error("Expo Push Receipt Error:", { ticketRecordId: ticket.id, reason });
 
     if (receipt.details?.error === 'DeviceNotRegistered') {
+      await db.update(pushDevices).set({revokedAt:now}).where(and(eq(pushDevices.token,ticket.token),eq(pushDevices.userId,ticket.userId),eq(pushDevices.userRole,ticket.userRole)));
       if (ticket.userRole === 'STUDENT') studentTokenClears.push({ id: ticket.userId, token: ticket.token });
       else if (ticket.userRole === 'STAFF') staffTokenClears.push({ id: ticket.userId, token: ticket.token });
     }
@@ -751,7 +303,7 @@ export async function processAnnouncementNotification(announcementId: number) {
     senderId: announcement.senderId,
   });
 
-  const type = announcement.title.toLowerCase().includes("timetable") ? 'EXAM_TIMETABLE' : 'ANNOUNCEMENT';
+  const type = /\bexam (scheduled|updated|cancelled):|exam timetable/i.test(announcement.title) ? 'EXAM_TIMETABLE' : announcement.title.toLowerCase().includes('timetable') ? 'TIMETABLE' : 'ANNOUNCEMENT';
   const message = announcement.content.substring(0, 100) + (announcement.content.length > 100 ? '...' : '');
 
   const recipients = await resolveAnnouncementRecipients(announcement);

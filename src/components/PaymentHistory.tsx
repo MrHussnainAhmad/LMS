@@ -8,9 +8,12 @@ export type PublicPayment = {
   environment: string; receiptNumber: string | null; providerReference: string | null;
   institutionName: string; payerName: string; description: string; createdAt: string; verifiedAt: string | null; expiresAt: string;
   qrImage?: string | null;
+  closedAt?:string|null;providerResponseCode?:string|null;
+  initiationStartedAt?:string|null;
 };
 export function paymentStatus(payment: PublicPayment) {
   if (payment.environment === "sandbox" && payment.receiptNumber) return "Sandbox payment verified — fee unchanged";
+  if(payment.closedAt)return 'Payment not completed';
   return payment.status === "PAID" ? "Paid and verified" : payment.status === "REVIEW" ? "Payment received — institution review required"
     : Date.parse(payment.expiresAt) < Date.now() ? "Payment not confirmed — check before retrying" : "Awaiting payment confirmation";
 }

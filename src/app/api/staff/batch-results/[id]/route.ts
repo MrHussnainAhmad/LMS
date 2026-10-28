@@ -158,6 +158,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ).returning();
 
     if (!subject) return NextResponse.json({ error: "Not found or unauthorized" }, { status: 404 });
+    await (await import('@/lib/notification-events')).notifyBatchResults(session.institutionId!,subjectId);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

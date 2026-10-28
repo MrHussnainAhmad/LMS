@@ -2,8 +2,10 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { admissionApplications, admissionFeePayments, admissionFeeProofs } from '@/db/schema';
 import { resolvePaymentAccount, assertPaymentReferenceUnused } from './manual-payment-accounts';
+import { assertManualPayment } from './payments/manual-mode';
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export async function submitAdmissionFeeProof(tx: Transaction, input: { institutionId: number; applicationId: number; paymentId: number; expectedStatus: string; paymentAccountId: string; transactionId: string; sourceBankName: string; proofFileKey: string }) {
+    await assertManualPayment(tx,input.institutionId,{applicationId:input.applicationId});
     const [current] = await tx.select({ status: admissionApplications.status }).from(admissionApplications)
       .where(and(eq(admissionApplications.id, input.applicationId), eq(admissionApplications.institutionId, input.institutionId))).for("update");
     if (!current || current.status !== "FEE_PENDING") return false;

@@ -19,6 +19,10 @@ const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
+function driveFetch(input: string, init: RequestInit = {}) {
+  const timeout = AbortSignal.timeout(init.method === 'PUT' ? 45 * 60 * 1000 : 60_000);
+  return fetch(input, { ...init, signal: init.signal ? AbortSignal.any([init.signal, timeout]) : timeout });
+}
 // The administrator pre-creates the destination folder, so drive.file is not
 // sufficient: it cannot reliably access files/folders not created by this app.
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
@@ -80,13 +84,13 @@ export function centralDriveOAuthUrl(state: string): string {
 
 /**
  * Exchanges an OAuth authorization code for a refresh token.
- * The refresh token is logged to stdout by the callback route so the
- * administrator can copy it into GOOGLE_DRIVE_CENTRAL_REFRESH_TOKEN.
+ * The authenticated callback displays the refresh token once for private storage.
+ * It is never logged.
  * It is never stored in the database.
  */
 export async function exchangeCentralDriveCode(code: string): Promise<{ refreshToken: string }> {
   const config = centralDriveClientConfig();
-  const response = await fetch(TOKEN_ENDPOINT, {
+  const response = await driveFetch(TOKEN_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -116,10 +120,11 @@ export async function exchangeCentralDriveCode(code: string): Promise<{ refreshT
  * with grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer). All callers
  * remain unchanged.
  */
-export async function getCentralAccessToken(): Promise<string> {
+export async function getCentralAccessToken(signal?: AbortSignal): Promise<string> {
   const config = centralDriveClientConfig();
   const refreshToken = requiredEnv("GOOGLE_DRIVE_CENTRAL_REFRESH_TOKEN");
-  const response = await fetch(TOKEN_ENDPOINT, {
+  const response = await driveFetch(TOKEN_ENDPOINT, {
+    signal,
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -145,7 +150,7 @@ async function driveRequest<T>(
   url: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(url, {
+  const response = await driveFetch(url, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -153,12 +158,7 @@ async function driveRequest<T>(
     },
   });
   if (!response.ok) {
-    let providerMessage = "";
-    try {
-      const body = await response.json() as Record<string, unknown>;
-      if (body && "error" in body) providerMessage = `: ${JSON.stringify(body.error)}`;
-    } catch { /* ignore parse error */ }
-    const err = new Error(`Central Drive request failed (${response.status})${providerMessage}`);
+    const err = new Error(`Central Drive request failed (${response.status})`);
     (err as Error & { status?: number }).status = response.status;
     throw err;
   }
@@ -236,13 +236,16 @@ export async function uploadCentralBackupFile(options: {
   filePath: string;
   fileName: string;
   folderId: string;
+  driveFileId?: string;
+  signal?: AbortSignal;
 }): Promise<{ driveFileId: string; size: number }> {
-  const token = await getCentralAccessToken();
+  const token = await getCentralAccessToken(options.signal);
   const localSize = statSync(options.filePath).size;
 
   // Step 1: Initiate resumable upload session.
   const initiateUrl = `${DRIVE_UPLOAD}?uploadType=resumable&supportsAllDrives=true&fields=id,size`;
-  const initiateResponse = await fetch(initiateUrl, {
+  const initiateResponse = await driveFetch(initiateUrl, {
+    signal: options.signal,
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -251,6 +254,7 @@ export async function uploadCentralBackupFile(options: {
       "X-Upload-Content-Length": String(localSize),
     },
     body: JSON.stringify({
+      ...(options.driveFileId ? { id: options.driveFileId } : {}),
       name: options.fileName,
       parents: [options.folderId],
       mimeType: "application/octet-stream",
@@ -265,7 +269,8 @@ export async function uploadCentralBackupFile(options: {
   if (!sessionUri) throw new Error("Central Drive did not return a resumable upload session URI");
 
   // Step 2: Upload the file content to the session URI.
-  const uploadResponse = await fetch(sessionUri, {
+  const uploadResponse = await driveFetch(sessionUri, {
+    signal: options.signal,
     method: "PUT",
     headers: {
       "Content-Type": "application/octet-stream",
@@ -296,13 +301,28 @@ export async function uploadCentralBackupFile(options: {
 export async function verifyCentralDriveFile(options: {
   driveFileId: string;
   expectedSize: number;
+  expectedSha256?: string;
+  folderId?: string;
+  signal?: AbortSignal;
 }): Promise<boolean> {
-  const token = await getCentralAccessToken();
-  const file = await driveRequest<{ id: string; size?: string }>(
+  const token = await getCentralAccessToken(options.signal);
+  const file = await driveRequest<{ id: string; size?: string; sha256Checksum?: string; parents?: string[] }>(
     token,
-    `${DRIVE_FILES}/${encodeURIComponent(options.driveFileId)}?fields=id,size&supportsAllDrives=true`,
+    `${DRIVE_FILES}/${encodeURIComponent(options.driveFileId)}?fields=id,size,sha256Checksum,parents&supportsAllDrives=true`,
+    { signal: options.signal },
   );
-  return file.id === options.driveFileId && Number(file.size) === options.expectedSize;
+  return file.id === options.driveFileId && Number(file.size) === options.expectedSize
+    && (!options.expectedSha256 || file.sha256Checksum === options.expectedSha256)
+    && (!options.folderId || file.parents?.includes(options.folderId) === true);
+}
+
+// Persist this ID before sending bytes. Retrying an interrupted upload then
+// targets the same object instead of creating duplicate Drive backups.
+export async function reserveCentralDriveFileId(signal?: AbortSignal): Promise<string> {
+  const token = await getCentralAccessToken(signal);
+  const result = await driveRequest<{ ids?: string[] }>(token, `${DRIVE_FILES}/generateIds?count=1&space=drive&type=files`, { signal });
+  if (!result.ids?.[0]) throw new Error('Drive did not allocate a backup ID');
+  return result.ids[0];
 }
 
 // ---------------------------------------------------------------------------
@@ -320,23 +340,29 @@ export type DriveBackupFile = {
  * Lists all central database backup files in the Drive folder, ordered by
  * name ascending (dates embedded in names give chronological order).
  */
-export async function listCentralDriveFiles(folderId: string): Promise<DriveBackupFile[]> {
-  const token = await getCentralAccessToken();
-  const query = `'${folderId}' in parents and name contains 'database-' and trashed = false`;
+export async function listCentralDriveFiles(folderId: string, signal?: AbortSignal): Promise<DriveBackupFile[]> {
+  const token = await getCentralAccessToken(signal);
+  const query = `'${escapedDriveQuery(folderId)}' in parents and name contains 'database-' and trashed = false`;
   const params = new URLSearchParams({
     q: query,
     spaces: "drive",
-    fields: "files(id,name,size,createdTime)",
+    fields: "nextPageToken,files(id,name,size,createdTime)",
     pageSize: "1000",
     orderBy: "name asc",
     supportsAllDrives: "true",
     includeItemsFromAllDrives: "true",
   });
-  const result = await driveRequest<{ files?: DriveBackupFile[] }>(
-    token,
-    `${DRIVE_FILES}?${params}`,
-  );
-  return result.files ?? [];
+  const files: DriveBackupFile[] = [];
+  const seen = new Set<string>();
+  for (;;) {
+    signal?.throwIfAborted();
+    const result = await driveRequest<{ files?: DriveBackupFile[]; nextPageToken?: string }>(token, `${DRIVE_FILES}?${params}`, { signal });
+    files.push(...(result.files ?? []));
+    if (!result.nextPageToken) return files;
+    if (seen.has(result.nextPageToken)) throw new Error('Drive pagination repeated a token');
+    seen.add(result.nextPageToken);
+    params.set('pageToken', result.nextPageToken);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -346,11 +372,11 @@ export async function listCentralDriveFiles(folderId: string): Promise<DriveBack
 /**
  * Deletes a single Drive file by ID.
  */
-export async function deleteDriveFile(driveFileId: string): Promise<void> {
-  const token = await getCentralAccessToken();
-  const response = await fetch(
+export async function deleteDriveFile(driveFileId: string, signal?: AbortSignal): Promise<void> {
+  const token = await getCentralAccessToken(signal);
+  const response = await driveFetch(
     `${DRIVE_FILES}/${encodeURIComponent(driveFileId)}?supportsAllDrives=true`,
-    { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+    { method: "DELETE", headers: { Authorization: `Bearer ${token}` }, signal },
   );
   if (!response.ok && response.status !== 404) {
     throw new Error(`Central Drive delete failed for file ${driveFileId} (${response.status})`);
@@ -377,18 +403,24 @@ export async function applyCentralDriveRetention(
   folderId: string,
   keepDaily: number,
   keepMonthly: number,
+  verifiedIds?: ReadonlySet<string>,
+  signal?: AbortSignal,
 ): Promise<{ kept: number; deleted: number; errors: number }> {
-  const files = await listCentralDriveFiles(folderId);
+  const files = await listCentralDriveFiles(folderId, signal);
 
   // Parse only files matching the expected naming pattern.
-  const datePattern = /^database-(\d{4})-(\d{2})-(\d{2})-\d{2}-\d{2}\.dump\.enc$/;
+  const datePattern = /^database-(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})(?:-[0-9a-f]{16})?\.dump\.enc$/;
   const parsed = files
     .map((f) => {
+      if (verifiedIds && !verifiedIds.has(f.id)) return null;
       const match = datePattern.exec(f.name);
       if (!match) return null;
       const year = Number(match[1]);
       const month = Number(match[2]);
       const day = Number(match[3]);
+      const date = new Date(Date.UTC(year, month - 1, day, Number(match[4]), Number(match[5])));
+      if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day
+        || date.getUTCHours() !== Number(match[4]) || date.getUTCMinutes() !== Number(match[5])) return null;
       // YYYY-MM key used for monthly retention.
       const monthKey = `${match[1]}-${match[2]}`;
       return { file: f, year, month, day, monthKey };
@@ -400,7 +432,15 @@ export async function applyCentralDriveRetention(
   const keep = new Set<string>();
 
   // Keep most recent N (daily).
-  parsed.slice(0, keepDaily).forEach((x) => keep.add(x.file.id));
+  if (!Number.isSafeInteger(keepDaily) || keepDaily < 1 || !Number.isSafeInteger(keepMonthly) || keepMonthly < 1) throw new Error('Invalid backup retention');
+  // Keep every run on each retained UTC day, including manual retries/runs.
+  const daysSeen = new Set<string>();
+  for (const x of parsed) {
+    const dayKey = x.file.name.slice(9, 19);
+    if (!daysSeen.has(dayKey) && daysSeen.size >= keepDaily) break;
+    daysSeen.add(dayKey);
+    keep.add(x.file.id);
+  }
 
   // Keep one per month for the most recent M months.
   const monthsSeen = new Map<string, string>();
@@ -417,8 +457,9 @@ export async function applyCentralDriveRetention(
 
   for (const x of parsed) {
     if (keep.has(x.file.id)) continue;
+    signal?.throwIfAborted();
     try {
-      await deleteDriveFile(x.file.id);
+      await deleteDriveFile(x.file.id, signal);
       console.log(`[central-backup] retention: deleted ${x.file.name} (${x.file.id})`);
       deleted++;
     } catch (err) {

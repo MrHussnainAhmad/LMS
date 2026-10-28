@@ -114,3 +114,24 @@ export async function withPlatformLoginRateLimit(
 
   return checkRateLimit(key, limit, 60);
 }
+
+/** QR bearer capabilities fail closed if the shared limiter is unavailable.
+ * Never use the process-local fallback for this cross-replica login flow. */
+export async function withQrLoginRateLimit(req: NextRequest, operation: 'create' | 'redeem' | 'status' | 'revoke', account?: string) {
+  const limits = { create: [60, 10], redeem: [30, 30], status: [120, 40], revoke: [60, 20] };
+  if (redis.status !== 'ready') return { success: false, unavailable: true, retryAfterSeconds: 60 };
+  try {
+    const keys: [string, number][] = [[`ratelimit:qr-login:${operation}:ip:${clientIp(req)}`, limits[operation][0]]];
+    if (account) keys.push([`ratelimit:qr-login:${operation}:account:${account}`, limits[operation][1]]);
+    for (const [key, limit] of keys) {
+      const result = await redis.multi().incr(key).expire(key, 60, 'NX').exec();
+      if (!result || result.length !== 2 || result.some(([error]) => error) || typeof result[0][1] !== 'number') {
+        return { success: false, unavailable: true, retryAfterSeconds: 60 };
+      }
+      if (result[0][1] > limit) return { success: false, unavailable: false, retryAfterSeconds: 60 };
+    }
+    return { success: true, unavailable: false, retryAfterSeconds: 60 };
+  } catch {
+    return { success: false, unavailable: true, retryAfterSeconds: 60 };
+  }
+}

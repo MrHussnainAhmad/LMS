@@ -15,7 +15,7 @@ import { GoogleDriveBackupSettings } from "./GoogleDriveBackupSettings";
 import { CampusIdentityEditor } from './CampusIdentityEditor';
 import { ChangePasswordForm } from './ChangePasswordForm';
 
-import { PaymentAccountsSettings } from "@/components/PaymentAccountsSettings";
+import { PaymentSettings } from "@/components/PaymentSettings";
 
 const settingsLinkClass = "block rounded-md border border-border p-4 text-left transition-colors hover:bg-stone-50";
 
@@ -64,13 +64,13 @@ export default async function InstitutionSettingsPage() {
             <div className="flex items-start gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-brand-100 bg-white"><CreditCard className="h-5 w-5 text-brand-700" /></span>
               <div>
-                <CardTitle className="text-lg">Payment Gateways</CardTitle>
-                <p className="mt-1 text-sm leading-6 text-stone-500">Manage the bank and wallet accounts used to collect your institution&apos;s fees.</p>
+                <CardTitle className="text-lg">Payments</CardTitle>
+                <p className="mt-1 text-sm leading-6 text-stone-500">Choose Online or Manual payments for your institution&apos;s challans and admission fees.</p>
               </div>
             </div>
           </CardHeader>
           <CardContent className="p-5 sm:p-6">
-            <PaymentAccountsSettings />
+            <PaymentSettings />
           </CardContent>
         </Card>
         )}

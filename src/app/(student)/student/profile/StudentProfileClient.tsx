@@ -1,4 +1,5 @@
 "use client";
+import { QrLoginButton } from "@/components/auth/QrLoginButton";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -149,6 +150,7 @@ export function StudentProfileClient({
 
   return (
     <div className="flex min-w-0 flex-col gap-6 animate-fade-in">
+      <div className="flex justify-end"><QrLoginButton /></div>
 
       {!isGraduated && (
         <Card className="min-w-0 overflow-hidden">

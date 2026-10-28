@@ -137,11 +137,13 @@ export default async function InstitutionAcademicsPage() {
                   placeholder="e.g. MATH-401"
                 />
               </div>
-              <SubmitButton
-                className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors"
-              >
-                Create Subject
-              </SubmitButton>
+              <div className="pt-2">
+                <SubmitButton
+                  className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors"
+                >
+                  Create Subject
+                </SubmitButton>
+              </div>
             </ActionForm>
           </CardContent>
         </Card>
@@ -222,9 +224,11 @@ export default async function InstitutionAcademicsPage() {
                   />
                 </div>
                 <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" name="isFinalClass" /> This is the final graduating class</label>
-                <SubmitButton className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors">
-                  Create Class
-                </SubmitButton>
+                <div className="pt-2">
+                  <SubmitButton className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors">
+                    Create Class
+                  </SubmitButton>
+                </div>
               </ActionForm>
             </CardContent>
           </Card>

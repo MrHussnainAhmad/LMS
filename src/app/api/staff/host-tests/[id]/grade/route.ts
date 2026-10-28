@@ -66,6 +66,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, p
       set: { marksObtained: totalScore, totalMarks: Number(row.test.maxMarks) },
     });
 
+    await (await import('@/lib/notification-events')).notifyPublishedResults(session.institutionId!,row.test.id,[row.submission.studentId]);
     return NextResponse.json({ success: true, totalScore });
   } catch (error) {
     const publicInputError = inputErrorResponse(error);

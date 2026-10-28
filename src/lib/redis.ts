@@ -122,9 +122,10 @@ export function peekCachedOrFetch<T>(key: string, ttlSeconds: number, fetcher: (
   return undefined;
 }
 
-export async function getCachedOrFetch<T>(key: string, ttlSeconds: number, fetcher: () => Promise<T>, decode: (json: string) => T = JSON.parse): Promise<T> {
+export async function getCachedOrFetch<T>(key: string, ttlSeconds: number, fetcher: () => Promise<T>, decode: (json: string) => T = JSON.parse, force = false): Promise<T> {
   ttlSeconds = cacheTtlForKey(key, ttlSeconds);
   if (!ttlSeconds) return fetcher();
+  if (force) await invalidateReadCacheKeys([key]);
   const local = peekCachedOrFetch(key, ttlSeconds, fetcher, decode);
   if (local !== undefined) return local;
   observeCache(key, 'l1-miss');

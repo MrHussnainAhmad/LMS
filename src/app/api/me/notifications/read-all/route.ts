@@ -8,7 +8,7 @@ import { getVisibleAnnouncements } from "@/lib/announcements";
 import { announcementReads } from "@/db/schema";
 import { redis } from "@/lib/redis";
 
-export const PATCH = requireRole(["STUDENT", "STAFF", "INSTITUTION", "INSTITUTION_ADMIN", "EMPLOYEE", "SUPER_ADMIN"], async (req: NextRequest, { session }) => {
+export const PATCH = requireRole(["STUDENT", "STAFF", "PARENT", "INSTITUTION", "INSTITUTION_ADMIN", "EMPLOYEE", "SUPER_ADMIN"], async (req: NextRequest, { session }) => {
   try {
     await db.update(notifications)
       .set({ isRead: true })

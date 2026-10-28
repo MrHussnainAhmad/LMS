@@ -13,6 +13,7 @@ import { getCachedOrFetch } from "@/lib/redis";
 import { formatClassSection } from "@/lib/class-section-label";
 
 import { StaffLeaveRequestButton } from "./StaffLeaveRequestButton";
+import { QrLoginButton } from "@/components/auth/QrLoginButton";
 
 /**
  * Staff dashboard — today's timetable + announcements only (visible above the fold).
@@ -85,6 +86,7 @@ export default async function StaffDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
+      <div className="flex justify-end"><QrLoginButton /></div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">

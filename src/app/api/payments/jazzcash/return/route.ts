@@ -1,3 +1,21 @@
-// Online gateway collection has been retired. Payment proof requires institution review.
-import { retiredOnlinePayment } from "@/lib/retired-online-payment";
-export const POST = retiredOnlinePayment;
+import { NextRequest,NextResponse } from 'next/server';
+import { getPaymentAttempt,attemptCredentials,settlePayment } from '@/lib/payments/service';
+import { verifyJazzCash } from '@/lib/payments/providers';
+import { paymentOrigin } from '@/lib/payments/endpoints';
+import { readPaymentBody } from '@/lib/payments/http';
+export async function POST(req:NextRequest) {
+  try {
+    const text=await readPaymentBody(req);
+    const parameters=new URLSearchParams(text);const fields:Record<string,string>={};
+    for(const [key,value] of parameters) {if(Object.hasOwn(fields,key)||value.length>2048)throw new Error('Invalid callback');fields[key]=value;}
+    if(!/^[A-Za-z0-9]{1,20}$/.test(fields.pp_TxnRefNo||''))throw new Error('Invalid callback');
+    const attempt=await getPaymentAttempt(fields.pp_TxnRefNo);
+    if(attempt.gateway!=='jazzcash')throw new Error('Gateway mismatch');
+    const evidence=verifyJazzCash(fields,attempt,attemptCredentials(attempt).credentials);
+    await settlePayment(attempt.id,evidence);
+    const response=NextResponse.redirect(new URL(`/payments/${attempt.id}`,attempt.portalOrigin||paymentOrigin()),303);
+    response.headers.set('Cache-Control','no-store');response.headers.set('Referrer-Policy','no-referrer');return response;
+  }catch {
+    return NextResponse.json({error:'Payment confirmation could not be verified. Check your payment record.'},{status:400,headers:{'Cache-Control':'no-store'}});
+  }
+}

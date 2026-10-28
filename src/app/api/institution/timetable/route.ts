@@ -163,6 +163,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
     }).returning({ id: staffAssignments.id });
 
     await invalidateTimetableReadCaches(institutionId, sectionId, resolvedStaffId);
+    await (await import('@/lib/notification-events')).notifyTimetable(institutionId,sectionId,resolvedStaffId,`create:${inserted.id}`);
 
     return NextResponse.json({ id: inserted.id });
   } catch (error: any) {
@@ -187,6 +188,7 @@ export const DELETE = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (r
   if (assignment) {
     await db.delete(staffAssignments).where(eq(staffAssignments.id, id));
     await invalidateTimetableReadCaches(institutionId, assignment.sectionId, assignment.staffId);
+    await (await import('@/lib/notification-events')).notifyTimetable(institutionId,assignment.sectionId,assignment.staffId,`delete:${assignment.id}`);
   }
 
   return NextResponse.json({ success: true });

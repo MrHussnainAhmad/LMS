@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
 
     if (targetUser) {
       await invalidateUserValidity(targetUser.role, targetUser.userId);
+      await (await import('@/lib/notification-events')).notifySecurity({institutionId:session.institutionId!,userRole:targetUser.role,userId:targetUser.userId},'Your institution reset your account password. Contact the institution if this was unexpected.');
     }
 
     // Log the action

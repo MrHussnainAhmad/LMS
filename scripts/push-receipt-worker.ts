@@ -4,6 +4,10 @@ import { gracefulShutdown } from "@/lib/process-lifecycle";
 import { enqueueScheduledInstitutionBackups, processNextInstitutionBackup } from "@/lib/institution-backups";
 import { processEmailOutboxBatch } from "@/lib/email-outbox";
 
+import { sendDueNotificationReminders } from '@/lib/notification-reminders';
+let reminderTimer: NodeJS.Timeout | undefined;
+let reminderInFlight: Promise<void> | undefined;
+
 const DEFAULT_INTERVAL_MS = 60_000;
 const MIN_INTERVAL_MS = 10_000;
 const intervalFromEnvironment = Number.parseInt(process.env.PUSH_RECEIPT_INTERVAL_MS ?? "", 10);
@@ -107,11 +111,22 @@ async function scheduleNextRun() {
   }
 }
 
+// Independent clock: long backup/receipt maintenance must not hold up due alerts.
+async function scheduleReminderClock() {
+  if (stopping) return;
+  reminderInFlight=sendDueNotificationReminders().then(()=>{}).catch(()=>{console.error('Notification reminder clock check failed');});
+  await reminderInFlight;
+  reminderInFlight=undefined;
+  if(!stopping)reminderTimer=setTimeout(()=>{void scheduleReminderClock();},900000);
+}
+
 async function stop(signal: string) {
   if (stopping) return;
   console.info(`Push receipt worker received ${signal}; stopping after the current run.`);
   stopping = true;
   if (timer) clearTimeout(timer);
+  if (reminderTimer) clearTimeout(reminderTimer);
+  if (reminderInFlight) await reminderInFlight;
   if (runInFlight) {
     try {
       await runInFlight;
@@ -127,4 +142,5 @@ process.on("SIGTERM", () => { void stop("SIGTERM"); });
 process.on("SIGINT", () => { void stop("SIGINT"); });
 
 console.info("Push receipt worker started", { intervalMs });
+void scheduleReminderClock();
 void scheduleNextRun();
