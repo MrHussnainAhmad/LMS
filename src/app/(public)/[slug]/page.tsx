@@ -4,11 +4,12 @@ import { platformPages } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import ReactMarkdown from "react-markdown";
 import { unstable_cache } from "next/cache";
+import { connection } from "next/server";
 import { PublicPageHeader } from "@/components/layout/PublicPageHeader";
 
 export const revalidate = 300;
 
-const getPlatformPage = unstable_cache(
+const getCachedPlatformPage = unstable_cache(
   async (slug: string) => {
     const [page] = await db.select().from(platformPages).where(eq(platformPages.slug, slug)).limit(1);
     return page ?? null;
@@ -16,6 +17,14 @@ const getPlatformPage = unstable_cache(
   ["platform-page"],
   { revalidate: 300, tags: ["platform-pages"] }
 );
+
+async function getPlatformPage(slug: string) {
+  if (slug !== 'terms-of-service') return getCachedPlatformPage(slug);
+  // Read must show the newly published terms even on another app replica.
+  await connection();
+  const [page] = await db.select().from(platformPages).where(eq(platformPages.slug, slug)).limit(1);
+  return page ?? null;
+}
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = await params;

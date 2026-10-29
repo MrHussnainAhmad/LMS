@@ -1,4 +1,5 @@
 import { inputErrorResponse } from '@/lib/input-error-response';
+import { assertStudentPlanCapacity } from '@/lib/plan-entitlements';
 import { parseStudentCsv, studentImportRollErrors, type ImportRoll } from "@/lib/student-import-csv";
 import { after, NextRequest, NextResponse } from "next/server";
 import { validationError } from '@/lib/validation-errors';
@@ -197,6 +198,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
     let inserted: Array<{ id: number }>;
     try {
       inserted = await db.transaction(async (tx) => {
+        await assertStudentPlanCapacity(tx, tenantId, preparedRows.length);
         await tx.execute(sql`SELECT pg_advisory_xact_lock(36073, ${tenantId})`);
         const conflicts = await findConflicts(tx);
         if (conflicts.length) throw Object.assign(new Error("IMPORT_CONFLICT"), { rowErrors: conflicts });

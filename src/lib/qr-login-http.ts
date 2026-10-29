@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readQrOwner, QrLoginError, type QrOwner } from './qr-login';
 import { withQrLoginRateLimit } from './rate-limit';
+import { inputErrorResponse } from './input-error-response';
 
 export const QR_LOGIN_HEADERS = { 'Cache-Control': 'no-store, private', Pragma: 'no-cache', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
 export function qrJson(body: unknown, status = 200) {
@@ -35,6 +36,8 @@ export async function qrHandler(work: () => Promise<Response>) {
   try { return await work(); }
   catch (error) {
     if (error instanceof QrLoginError) return qrJson({ error: error.message }, error.status);
+    const inputError = inputErrorResponse(error);
+    if (inputError) return qrJson(inputError.body, inputError.status);
     // Database errors can contain SQL parameters. Never log the exception or QR.
     console.error('[qr-login] Request failed; authentication was not completed.');
     return qrJson({ error: 'QR login is temporarily unavailable. Try again shortly.' }, 503);

@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers';
 import type { NextRequest } from 'next/server';
 import { cache } from 'react';
 import { db } from '@/db';
-import { qrLoginSessions, refreshTokens, pushDevices } from '@/db/schema';
+import { qrLoginSessions, refreshTokens, pushDevices, planDeviceSessions } from '@/db/schema';
 import { eq, and, isNull, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { UserRole, JWTPayload, requiresPasswordChange } from './auth-types';
@@ -15,6 +15,7 @@ import { enrichFreshStudentSession } from './auth-student';
 import { CAMPUS_VIEW_COOKIE, CAMPUS_READ_ONLY_ERROR } from './campus-view';
 import { resolveCampusSession } from './campus-workspaces';
 import { mobileAppAccessAllowed } from './mobile-app-access';
+import { reservePlanDeviceSession, deviceSessionExpiry } from './plan-device-sessions';
 
 export { verifyAccessToken };
 export type { UserRole, JWTPayload };
@@ -48,10 +49,13 @@ export async function createAccessToken(payload: JWTPayload) {
     .sign(getJwtSecret());
 }
 
-export async function createTokens(payload: JWTPayload, tokenStore: Pick<typeof db, 'insert'> = db) {
-  const accessToken = await createAccessToken(payload);
+export async function createTokens(payload: JWTPayload, tokenStore: Pick<typeof db, 'insert' | 'execute'> = db, replaceRefreshToken?: string): Promise<{ accessToken: string; refreshToken: string }> {
+  if (tokenStore === db) return db.transaction(tx => createTokens(payload, tx, replaceRefreshToken));
   const { refreshToken, tokenHash, expiresAt: defaultExpiry } = createRefreshTokenMaterial();
   const expiresAt = payload.qrSessionExpiresAt ? new Date(payload.qrSessionExpiresAt * 1000) : defaultExpiry;
+  const replaceHash = replaceRefreshToken && REFRESH_TOKEN_PATTERN.test(replaceRefreshToken) ? crypto.createHash('sha256').update(replaceRefreshToken).digest('hex') : undefined;
+  const planDeviceSessionId = await reservePlanDeviceSession(tokenStore, payload, tokenHash, expiresAt, replaceHash);
+  const accessToken = await createAccessToken({ ...payload, planDeviceSessionId });
 
   await tokenStore.insert(refreshTokens).values({
     userRole: payload.role,
@@ -66,7 +70,7 @@ export async function createTokens(payload: JWTPayload, tokenStore: Pick<typeof 
 }
 
 type RefreshRotationResult =
-  | { status: 'ROTATED'; refreshToken: string; userRole: UserRole; userId: number; clientType: 'WEB' | 'MOBILE'; qrSessionId?: string; qrSessionExpiresAt?: number }
+  | { status: 'ROTATED'; refreshToken: string; userRole: UserRole; userId: number; clientType: 'WEB' | 'MOBILE'; qrSessionId?: string; qrSessionExpiresAt?: number; planDeviceSessionId?: string }
   | { status: 'INVALID' | 'EXPIRED' | 'REUSED' };
 
 /**
@@ -93,6 +97,8 @@ export async function rotateRefreshToken(presentedToken: string): Promise<Refres
       .where(eq(refreshTokens.tokenHash, presentedHash))
       .limit(1);
     if (!record) return { status: 'INVALID' } as const;
+    const [deviceSession] = await tx.select().from(planDeviceSessions).where(eq(planDeviceSessions.refreshTokenHash, presentedHash)).limit(1);
+    if (deviceSession && (deviceSession.revokedAt || deviceSession.expiresAt <= new Date())) return { status: 'EXPIRED' } as const;
 
     const now = new Date();
     if (record.revokedAt) {
@@ -109,6 +115,7 @@ export async function rotateRefreshToken(presentedToken: string): Promise<Refres
           eq(refreshTokens.userId, record.userId),
           isNull(refreshTokens.revokedAt),
         ));
+      await tx.update(planDeviceSessions).set({ revokedAt: now }).where(and(eq(planDeviceSessions.userRole, record.userRole), eq(planDeviceSessions.userId, record.userId), isNull(planDeviceSessions.revokedAt)));
       return { status: 'REUSED' } as const;
     }
 
@@ -137,6 +144,7 @@ export async function rotateRefreshToken(presentedToken: string): Promise<Refres
       expiresAt: next.expiresAt,
     });
     await tx.update(pushDevices).set({sessionTokenHash:next.tokenHash,updatedAt:now}).where(eq(pushDevices.sessionTokenHash,presentedHash));
+    if (deviceSession) await tx.update(planDeviceSessions).set({ refreshTokenHash: next.tokenHash, expiresAt: deviceSessionExpiry(next.expiresAt, record.clientType) }).where(eq(planDeviceSessions.id, deviceSession.id));
     await tx
       .update(refreshTokens)
       .set({ revokedAt: now, replacedByHash: next.tokenHash })
@@ -149,6 +157,7 @@ export async function rotateRefreshToken(presentedToken: string): Promise<Refres
       userRole: record.userRole,
       userId: record.userId,
       qrSessionId: qrSession?.id,
+      planDeviceSessionId: deviceSession?.id,
       qrSessionExpiresAt: qrSession ? Math.floor(qrSession.expiresAt.getTime() / 1000) : undefined,
     } as const;
   });
@@ -288,6 +297,7 @@ export async function setCampusViewCookie(token: string) {
 }
 
 export async function revokeAllSessions(role: UserRole, userId: number) {
+  await db.update(planDeviceSessions).set({ revokedAt: new Date() }).where(and(eq(planDeviceSessions.userRole, role), eq(planDeviceSessions.userId, userId), isNull(planDeviceSessions.revokedAt)));
   await db
     .update(refreshTokens)
     .set({ revokedAt: new Date() })
@@ -301,6 +311,7 @@ export async function revokeAllSessions(role: UserRole, userId: number) {
 export async function revokeRefreshToken(refreshToken: string) {
   if (!REFRESH_TOKEN_PATTERN.test(refreshToken)) return;
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+  await db.update(planDeviceSessions).set({ revokedAt: new Date() }).where(eq(planDeviceSessions.refreshTokenHash, tokenHash));
   await db.update(pushDevices).set({revokedAt:new Date()}).where(eq(pushDevices.sessionTokenHash,tokenHash));
   await db
     .update(refreshTokens)

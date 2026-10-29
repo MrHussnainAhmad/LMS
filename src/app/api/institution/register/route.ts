@@ -2,11 +2,13 @@ import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { institutions, campuses } from '@/db/schema';
+import { institutions, campuses, institutionAgreementAcceptances } from '@/db/schema';
 import { assertCampusEmailAvailable } from '@/lib/campus-workspaces';
 import { hash } from '@node-rs/argon2';
 import { registerInstitutionSchema } from '@/lib/validators/institution';
-import { withRateLimit } from '@/lib/rate-limit';
+import { withRateLimit, withDealCodeRateLimit } from '@/lib/rate-limit';
+import { createServiceAgreementSnapshot } from '@/lib/service-agreement';
+import { registrationPlan, consumeDealtCode, PlanError } from '@/lib/plan-management';
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,10 +25,14 @@ export async function POST(req: NextRequest) {
     }
 
     const data = parsed.data;
+    if (data.pricingPlan === 'DEALED' && !(await withDealCodeRateLimit(req)).success) {
+      return NextResponse.json({ error: 'Too many code attempts or verification is temporarily unavailable. Please try again later.' }, { status: 429 });
+    }
     const adminPasswordHash = await hash(data.adminPassword);
 
     await db.transaction(async (tx) => {
     await assertCampusEmailAvailable(tx, data.contactEmail);
+    const plan = await registrationPlan(tx, data.pricingPlan, data.planRevision, data.dealCode);
     const [institution] = await tx.insert(institutions).values({
       name: data.name,
       campusName: data.mainCampusName,
@@ -38,17 +44,27 @@ export async function POST(req: NextRequest) {
       contactEmail: data.contactEmail,
       contactPhone: data.contactPhone,
       registrationNumber: data.registrationNumber,
-      pricingPlan: data.pricingPlan,
+      pricingPlan: plan.id,
       logoKey: data.logoKey,
       proofDocumentKey: data.proofDocumentKey,
       adminPasswordHash,
       status: 'PENDING',
     }).returning({ id: institutions.id });
     await tx.insert(campuses).values({ institutionId: institution.id, name: data.mainCampusName, address: data.address });
+    await tx.insert(institutionAgreementAcceptances).values({
+      institutionId: institution.id,
+      agreementVersion: data.agreementVersion,
+      acceptedAt: new Date(),
+      representativeName: data.agreementRepresentativeName,
+      contactEmail: data.contactEmail,
+      snapshot: createServiceAgreementSnapshot(data, data.agreementRepresentativeName, plan),
+    });
+    if (plan.kind === 'DEAL') await consumeDealtCode(tx, plan, data.dealCode!, institution.id);
     });
 
     return NextResponse.json({ message: 'Institution registered successfully. Pending approval.' }, { status: 201 });
   } catch (err: unknown) {
+    if (err instanceof PlanError) return NextResponse.json({ error: err.message }, { status: err.status });
     const publicInputError = inputErrorResponse(err);
     if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
 

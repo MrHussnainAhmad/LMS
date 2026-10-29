@@ -1,62 +1,31 @@
-export const pricingPlans = [
-  {
-    id: "BASIC",
-    campusLimit: 1,
-    campusDetail: "1 campus (Main only)",
-    name: "Basic",
-    audience: "Small schools",
-    setup: "Rs. 5,000",
-    monthly: "Rs. 3,500",
-    monthlyDetail: "per month",
-    scale: "Up to 300 students",
-    tone: "basic",
-    featured: false,
-  },
-  {
-    id: "STANDARD",
-    campusLimit: 3,
-    campusDetail: "Up to 3 campuses (Main + 2 additional)",
-    name: "Standard",
-    audience: "Growing schools",
-    setup: "Rs. 8,000",
-    monthly: "Rs. 6,500",
-    monthlyDetail: "per month",
-    scale: "301–800 students",
-    tone: "standard",
-    featured: true,
-  },
-  {
-    id: "PREMIUM",
-    campusLimit: 5,
-    campusDetail: "Up to 5 campuses (Main + 4 additional)",
-    name: "Premium",
-    audience: "Large institutions",
-    setup: "Rs. 12,000",
-    monthly: "Rs. 11,000",
-    monthlyDetail: "per month",
-    scale: "801–1,500 students",
-    tone: "premium",
-    featured: false,
-  },
-  {
-    id: "ENTERPRISE",
-    campusLimit: null,
-    campusDetail: "Campuses created by platform admins or employees",
-    name: "Enterprise",
-    audience: "Multi-campus institutions",
-    setup: "Custom",
-    monthly: "From Rs. 11",
-    monthlyDetail: "per student/month (Negotiable depending on student count)",
-    scale: "1,500+ students, multi-campus",
-    tone: "premium",
-    featured: false,
-  },
-] as const;
+﻿import { eq, and, isNull, asc } from 'drizzle-orm';
+import { db } from '@/db';
+import { subscriptionPlans, institutionAgreementAcceptances, institutions } from '@/db/schema';
+import { displayPlan, type PricingPlan } from './plan-types';
 
-export type PricingPlanId = (typeof pricingPlans)[number]["id"];
-
-export function getPricingPlan(value: string | null | undefined) {
+export async function getPublicPricingPlans(store: Pick<typeof db, 'select'> = db): Promise<PricingPlan[]> {
+  const rows = await store.select().from(subscriptionPlans)
+    .where(and(eq(subscriptionPlans.kind, 'PUBLIC'), isNull(subscriptionPlans.archivedAt)))
+    .orderBy(asc(subscriptionPlans.sortOrder), asc(subscriptionPlans.createdAt));
+  return rows.map(displayPlan);
+}
+export async function getPricingPlan(value: string | null | undefined, store: Pick<typeof db, 'select'> = db): Promise<PricingPlan | undefined> {
   if (!value) return undefined;
-  const normalized = value.trim().toUpperCase();
-  return pricingPlans.find((plan) => plan.id === normalized);
+  const [plan] = await store.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, value.trim().toUpperCase())).limit(1);
+  return plan ? displayPlan(plan) : undefined;
+}
+/** Assigned terms survive catalog removal and price changes. */
+export async function getInstitutionPricingPlan(institutionId: number, store: Pick<typeof db, 'select'> = db): Promise<PricingPlan | undefined> {
+  const [institution] = await store.select({ id: institutions.id, parentId: institutions.parentInstitutionId, planId: institutions.pricingPlan })
+    .from(institutions).where(eq(institutions.id, institutionId)).limit(1);
+  if (!institution) return undefined;
+  const rootId = institution.parentId ?? institution.id;
+  const [accepted] = await store.select({ snapshot: institutionAgreementAcceptances.snapshot }).from(institutionAgreementAcceptances)
+    .where(eq(institutionAgreementAcceptances.institutionId, rootId)).limit(1);
+  if (accepted?.snapshot.plan.definition) return displayPlan(accepted.snapshot.plan.definition);
+  if (institution.parentId) {
+    const [root] = await store.select({ planId: institutions.pricingPlan }).from(institutions).where(eq(institutions.id, rootId)).limit(1);
+    return getPricingPlan(root?.planId, store);
+  }
+  return getPricingPlan(institution.planId, store);
 }

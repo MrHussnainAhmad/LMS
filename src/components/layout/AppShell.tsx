@@ -5,6 +5,8 @@ import { Sidebar, SidebarItem } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { ShellBrand } from "./BrandMark";
 import { cn } from "@/lib/utils";
+import TermsUpdateNotice from '@/components/TermsUpdateNotice';
+import { PricingPlanUpdateNotice } from '@/components/PricingPlanUpdateNotice';
 import { clearShellClientCache, writeShellClientCache, shellCacheKey } from "@/lib/shell-client-cache";
 
 interface AppShellProps {
@@ -47,6 +49,8 @@ export function AppShell({
 
   return (
     <div className="app-shell flex min-h-dvh text-foreground">
+      <TermsUpdateNotice key={`${userRole}:${userId ?? ''}`} />
+      {['INSTITUTION','INSTITUTION_ADMIN'].includes(userRole) ? <PricingPlanUpdateNotice key={`pricing:${userRole}:${userId ?? ''}`} /> : null}
       {isSidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-brand-950/55 lg:hidden"

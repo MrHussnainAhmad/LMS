@@ -599,7 +599,7 @@ export async function POST(req: NextRequest) {
     if (!scopedPayload) return NextResponse.json({ error: 'Institution account is not APPROVED' }, { status: 403 });
     if (returnTokens && isMobileRole(role)) scopedPayload.clientType = "MOBILE";
     if (!await mobileAppAccessAllowed(scopedPayload)) return NextResponse.json(MOBILE_APPS_DISABLED, { status: 403, headers: { "Cache-Control": "no-store" } });
-    const { accessToken, refreshToken } = await createTokens(scopedPayload);
+    const { accessToken, refreshToken } = await createTokens(scopedPayload, undefined, req.cookies.get('refresh_token')?.value);
 
     await setAuthCookies(accessToken, refreshToken);
     after(() => clearFailedLoginsBestEffort(role, user.id));

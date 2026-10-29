@@ -9,11 +9,13 @@ import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { CheckCircle2 } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
-import { pricingPlans, type PricingPlanId } from "@/lib/pricing";
+import type { PricingPlan } from '@/lib/plan-types';
+import { DealedAgreementPreview } from '@/components/DealedAgreementPreview';
+import { SERVICE_AGREEMENT_VERSION } from '@/lib/service-agreement';
 
 const STEPS = ["Details", "Location", "Documents & Setup"];
 
-export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanId }) {
+export function RegistrationForm({ selectedPlan, plans: pricingPlans }: { selectedPlan?: string; plans: PricingPlan[] }) {
   const [step, setStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -32,13 +34,30 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
     registrationNumber: "",
     pricingPlan: selectedPlan ?? "",
     adminPassword: "",
+    agreementRepresentativeName: "",
     // Mocked for UI phase (R2 uploads can be implemented fully later)
     logoKey: "mock-logo-key",
     proofDocumentKey: "mock-doc-key",
   });
   const [hasAgreed, setHasAgreed] = useState(false);
+  const [dealCode, setDealCode] = useState('');
+  const [dealtPlan, setDealtPlan] = useState<PricingPlan | null>(null);
+  const [verifyingDeal, setVerifyingDeal] = useState(false);
+  const [agreementOpen, setAgreementOpen] = useState(false);
+  const activePlan = formData.pricingPlan === 'DEALED' ? dealtPlan : pricingPlans.find(plan => plan.id === formData.pricingPlan);
+
+  const verifyDeal = async () => {
+    setVerifyingDeal(true); setDealtPlan(null); setHasAgreed(false);
+    try {
+      const data = await api.post<{ plan: PricingPlan }>('/api/public/dealed', { code: dealCode });
+      setDealtPlan(data.plan);
+    } catch (error) {
+      toast({ title: 'Could not verify deal', description: error instanceof Error ? error.message : 'Check the code and try again.', variant: 'destructive' });
+    } finally { setVerifyingDeal(false); }
+  };
 
   const updateForm = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setHasAgreed(false);
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
@@ -48,10 +67,10 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (step < STEPS.length - 1) {
-      if (step === 0 && !formData.pricingPlan) {
+      if (step === 0 && !activePlan) {
         toast({
           title: "Pricing Plan Required",
-          description: "Select a pricing plan before continuing.",
+          description: "Select a pricing plan and verify the code if you chose Dealed.",
           variant: "destructive",
         });
         return;
@@ -60,7 +79,7 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
       return;
     }
 
-    if (!hasAgreed) {
+    if (!hasAgreed || !activePlan) {
       toast({
         title: "Agreement Required",
         description: "You must agree to the Nisaab360 Service Agreement to register.",
@@ -71,7 +90,13 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
 
     setIsLoading(true);
     try {
-      await api.post("/api/institution/register", formData);
+      await api.post("/api/institution/register", {
+        ...formData,
+        agreementAccepted: hasAgreed,
+        agreementVersion: SERVICE_AGREEMENT_VERSION,
+        planRevision: activePlan.revision,
+        ...(formData.pricingPlan === 'DEALED' ? { dealCode } : {}),
+      });
       setIsSuccess(true);
     } catch (err: unknown) {
       toast({
@@ -146,11 +171,14 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
             <div className="space-y-1">
               <label className="text-sm font-medium">Pricing Plan <span className="text-red-600" aria-hidden="true">*</span></label>
               <Select
-                onValueChange={(val) =>
-                  setFormData((previous) => ({ ...previous, pricingPlan: val as PricingPlanId }))
-                }
+                onValueChange={(val) => {
+                  setHasAgreed(false);
+                  setDealtPlan(null); setDealCode('');
+                  setFormData((previous) => ({ ...previous, pricingPlan: val }));
+                }}
                 value={formData.pricingPlan}
                 required
+                disabled={verifyingDeal}
               >
                 <SelectTrigger aria-label="Pricing plan"><SelectValue placeholder="Select a pricing plan" /></SelectTrigger>
                 <SelectContent>
@@ -159,8 +187,14 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
                       {plan.name} — {plan.audience}
                     </SelectItem>
                   ))}
+                  <SelectItem value="DEALED">Dealed — enter your private offer code</SelectItem>
                 </SelectContent>
               </Select>
+              {formData.pricingPlan === 'DEALED' ? <div className="space-y-3 rounded-md border border-brand-200 bg-brand-50 p-4">
+                <label className="block text-sm font-medium" htmlFor="deal-code">Five-character deal code</label>
+                <div className="flex gap-2"><Input id="deal-code" value={dealCode} disabled={verifyingDeal} onChange={event => { setDealCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5)); setDealtPlan(null); setHasAgreed(false); }} maxLength={5} autoComplete="off" spellCheck={false} placeholder="ABCDE" /><Button type="button" variant="outline" disabled={verifyingDeal || dealCode.length !== 5} onClick={() => void verifyDeal()}>{verifyingDeal ? 'Checking…' : 'Check code'}</Button></div>
+                {dealtPlan ? <div className="space-y-1 text-sm" role="status"><p className="font-semibold">Dealed: {dealtPlan.name}</p><p>{dealtPlan.monthly} — {dealtPlan.monthlyDetail}</p><p>{dealtPlan.scale} · {dealtPlan.campusDetail} · {dealtPlan.deviceLimit} devices</p><p>Platforms: {dealtPlan.platforms.join(', ')}</p><p>This code is used only when registration succeeds.</p></div> : <p className="text-xs text-stone-600">Ask your platform admin for a code. Codes expire after seven days and can register only one institution.</p>}
+              </div> : null}
               {formData.pricingPlan && (
                 <p className="text-xs text-stone-500">
                   This plan will be included with your request and service agreement.
@@ -210,6 +244,10 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
             </div>
             
             <div className="pt-4 border-t border-stone-200">
+              <label className="mb-4 block space-y-1">
+                <span className="text-sm font-medium">Authorised representative&apos;s full name</span>
+                <Input name="agreementRepresentativeName" value={formData.agreementRepresentativeName} onChange={updateForm} required minLength={2} maxLength={255} autoComplete="name" />
+              </label>
               <label className="flex items-start gap-3 cursor-pointer">
                 <input 
                   type="checkbox" 
@@ -219,8 +257,8 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
                   required
                 />
                 <span className="text-sm text-stone-700">
-                  I have read and agree to the{" "}
-                  <a
+                  I am authorised to act for this institution. I have read and accept the{" "}
+                  {formData.pricingPlan === 'DEALED' ? <button type="button" className="text-brand-600 underline font-medium" disabled={!dealtPlan} onClick={() => setAgreementOpen(true)}>Nisaab360 Service Agreement</button> : <a
                     href={
                       formData.pricingPlan
                         ? `/agreement-nisaab360?plan=${formData.pricingPlan.toLowerCase()}`
@@ -231,7 +269,7 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
                     className="text-brand-600 hover:underline font-medium"
                   >
                     Nisaab360 Service Agreement
-                  </a>.
+                  </a>}{" "}(version {SERVICE_AGREEMENT_VERSION}), including the selected pricing, on its behalf.
                 </span>
               </label>
             </div>
@@ -247,6 +285,7 @@ export function RegistrationForm({ selectedPlan }: { selectedPlan?: PricingPlanI
           </Button>
         </div>
       </form>
+      {dealtPlan ? <DealedAgreementPreview open={agreementOpen} onOpenChange={setAgreementOpen} plan={dealtPlan} institutionName={formData.name} address={`${formData.address}, ${formData.city}, ${formData.country}`} /> : null}
     </Card>
   );
 }

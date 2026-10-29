@@ -55,7 +55,7 @@ export function peekVerifiedAccessToken(token: string): JWTPayload | null {
     const now = Date.now();
     if (cached.expMs > now) {
       if (cached.nbf !== undefined && cached.nbf > Math.floor(now / 1000)) return null;
-      if (cached.payload.qrSessionId) return null;
+      if (cached.payload.qrSessionId || cached.payload.planDeviceSessionId) return null;
       return cached.payload;
     }
     verifiedTokenCache.delete(token);
@@ -70,9 +70,10 @@ export async function verifyAccessToken(token: string): Promise<JWTPayload | nul
   try {
     // Reuse signature verification, but read the shared revocation row every time.
     const cached = verifiedTokenCache.get(token);
-    if (cached?.payload.qrSessionId && cached.expMs > Date.now() &&
+    if ((cached?.payload.qrSessionId || cached?.payload.planDeviceSessionId) && cached.expMs > Date.now() &&
         (cached.nbf === undefined || cached.nbf <= Math.floor(Date.now() / 1000))) {
-      return await (await import('./qr-session')).isQrSessionActive(cached.payload) ? cached.payload : null;
+      if (cached.payload.qrSessionId && !await (await import('./qr-session')).isQrSessionActive(cached.payload)) return null;
+      return await (await import('./plan-device-sessions')).isPlanDeviceSessionActive(cached.payload) ? cached.payload : null;
     }
     const key = await getJwtKey();
     const { payload } = await jwtVerify(token, key, {
@@ -82,6 +83,7 @@ export async function verifyAccessToken(token: string): Promise<JWTPayload | nul
     const typed = payload as unknown as JWTPayload;
     typed.mustChangePassword = requiresPasswordChange(typed.role, typed.mustChangePassword);
     if (typed.qrSessionId && !await (await import('./qr-session')).isQrSessionActive(typed)) return null;
+    if (typed.planDeviceSessionId && !await (await import('./plan-device-sessions')).isPlanDeviceSessionActive(typed)) return null;
     rememberVerifiedToken(token, typed);
     return typed;
   } catch {

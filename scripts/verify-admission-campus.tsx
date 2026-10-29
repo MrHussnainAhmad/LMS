@@ -66,6 +66,8 @@ async function main() {
       });
       await memory.exec(`CREATE TABLE "${config.name}" (${columns.join(',')});`);
     }
+    await memory.exec(await readFile('drizzle/0082_institution_agreement_acceptance.sql', 'utf8'));
+    await memory.exec(await readFile('drizzle/0083_admin_managed_plans.sql', 'utf8'));
     await memory.exec(`CREATE UNIQUE INDEX applicant_tenant ON admission_applicant_accounts(id,institution_id);
       CREATE UNIQUE INDEX applicant_email ON admission_applicant_accounts(institution_id,lower(guardian_email));
       CREATE UNIQUE INDEX offering_tenant ON admission_offerings(id,institution_id,cycle_id);

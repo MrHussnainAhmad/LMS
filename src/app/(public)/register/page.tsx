@@ -1,7 +1,8 @@
 import { RegistrationForm } from "./RegistrationForm";
 import { Metadata } from "next";
 import { PublicAccessShell } from "@/components/layout/PublicAccessShell";
-import { getPricingPlan } from "@/lib/pricing";
+import { getPublicPricingPlans } from "@/lib/pricing";
+import { connection } from 'next/server';
 
 export const metadata: Metadata = {
   title: "Register Your Institution",
@@ -17,7 +18,9 @@ export default async function RegisterPage({
   searchParams: Promise<{ plan?: string | string[] }>;
 }) {
   const params = await searchParams;
-  const requestedPlan = typeof params.plan === "string" ? getPricingPlan(params.plan) : undefined;
+  await connection();
+  const plans = await getPublicPricingPlans();
+  const requestedPlan = typeof params.plan === 'string' ? plans.find(plan => plan.id === params.plan!.toString().toUpperCase()) : undefined;
 
   return (
     <PublicAccessShell
@@ -26,7 +29,7 @@ export default async function RegisterPage({
       eyebrow="Institution registration"
     >
       <div className="mx-auto max-w-2xl">
-        <RegistrationForm selectedPlan={requestedPlan?.id} />
+        <RegistrationForm plans={plans} selectedPlan={requestedPlan?.id} />
       </div>
     </PublicAccessShell>
   );

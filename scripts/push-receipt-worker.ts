@@ -3,6 +3,7 @@ import { pruneExpiredRefreshTokens } from "@/lib/token-maintenance";
 import { gracefulShutdown } from "@/lib/process-lifecycle";
 import { enqueueScheduledInstitutionBackups, processNextInstitutionBackup } from "@/lib/institution-backups";
 import { processEmailOutboxBatch } from "@/lib/email-outbox";
+import { pruneExpiredDealtPlanCodes } from '@/lib/plan-management';
 
 import { sendDueNotificationReminders } from '@/lib/notification-reminders';
 let reminderTimer: NodeJS.Timeout | undefined;
@@ -20,6 +21,7 @@ let timer: NodeJS.Timeout | undefined;
 let runInFlight: Promise<void> | undefined;
 let lastTokenPruneHour: number | undefined;
 let lastTicketPruneHour: number | undefined;
+let lastDealCodePruneHour: number | undefined;
 let lastInstitutionBackupScheduleHour: number | undefined;
 
 /**
@@ -48,6 +50,7 @@ async function runHourly(
 
 async function runOnce() {
   const currentHour = Math.floor(Date.now() / 3_600_000);
+  lastDealCodePruneHour = await runHourly('Expired deal code cleanup', lastDealCodePruneHour, currentHour, pruneExpiredDealtPlanCodes);
   try {
     const result = await processEmailOutboxBatch();
     if (result.claimed > 0) console.info("Email outbox processed", result);

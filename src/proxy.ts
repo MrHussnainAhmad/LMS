@@ -73,7 +73,8 @@ export async function proxy(request: NextRequest) {
   // Institution detail pages open this shared document on the current portal host.
   const isAgreementPath = path === '/agreement-nisaab360';
 
-  if (!isStaticOrApi) {
+  // The terms notice opens this shared document from every portal/custom host.
+  if (!isStaticOrApi && !['/terms-of-service', '/pricing', '/agreement-nisaab360'].includes(path)) {
     if (hostname === 'blog.nisaab360.app' || hostname.startsWith('blog.localhost')) {
       rewritePath = `/blog${path === '/' ? '' : path}`;
     } else if (hostname === 'student.nisaab360.app' || hostname.startsWith('student.localhost')) {

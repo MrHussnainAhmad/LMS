@@ -254,3 +254,5 @@ users.csv
 !/scripts/verify-mobile-notifications.ts
 
 !/scripts/verify-institution-apps.ts
+# Local standalone plan-verification script; keep it off GitHub.
+/scripts/verify-plans.ts

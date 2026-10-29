@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { api } from "@/lib/api-client";
+import TermsUpdateNotice from '@/components/TermsUpdateNotice';
 
 const navigationGroups = [
   {
@@ -67,6 +68,7 @@ export function ParentShell({
   };
   return (
     <div className="min-h-screen bg-stone-100">
+      <TermsUpdateNotice />
       <header className="border-b border-brand-800 bg-brand-950 text-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
           <div>

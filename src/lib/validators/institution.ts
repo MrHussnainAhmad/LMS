@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { validateInstitutionSlug } from '@/lib/institution-domain';
+import { SERVICE_AGREEMENT_VERSION } from '@/lib/service-agreement';
 
 export const institutionPublicSlugSchema = z.string().transform((value, context) => {
   const validation = validateInstitutionSlug(value);
@@ -26,12 +27,20 @@ export const registerInstitutionSchema = z.object({
   contactEmail: z.string().trim().email().transform((value) => value.toLowerCase()),
   contactPhone: z.string().min(5),
   registrationNumber: z.string().min(2),
-  pricingPlan: z.enum(['BASIC', 'STANDARD', 'PREMIUM', 'ENTERPRISE']),
+  pricingPlan: z.string().trim().min(1).max(20).regex(/^[A-Z0-9_]+$/),
+  planRevision: z.number().int().positive(),
+  dealCode: z.string().trim().toUpperCase().regex(/^[A-HJ-NP-Z2-9]{5}$/).optional(),
+  agreementAccepted: z.literal(true, { error: 'You must accept the Service Agreement to register.' }),
+  agreementVersion: z.literal(SERVICE_AGREEMENT_VERSION, { error: 'The Service Agreement has changed. Reload registration and read the current agreement before submitting.' }),
+  agreementRepresentativeName: z.string().trim().min(2).max(255),
   adminPassword: z.string().min(8),
   // file metadata that client obtained from R2 upload
   logoKey: z.string().min(5),
   proofDocumentKey: z.string().min(5),
-}).strict();
+}).strict().superRefine((data, context) => {
+  if (data.pricingPlan === 'DEALED' && !data.dealCode) context.addIssue({ code: 'custom', path: ['dealCode'], message: 'Enter and verify your Dealed code.' });
+  if (data.pricingPlan !== 'DEALED' && data.dealCode) context.addIssue({ code: 'custom', path: ['dealCode'], message: 'Deal codes can only be used with Dealed.' });
+});
 
 export const reviewInstitutionSchema = z.object({
   status: z.enum(['APPROVED', 'REJECTED']),

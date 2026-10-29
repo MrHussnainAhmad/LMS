@@ -17,6 +17,7 @@ import { enqueueEmail } from '@/lib/email-outbox';
 import { ParentAccountActivationEmail, ParentStudentLinkedEmail } from '@/lib/email';
 import { invalidateUserValidity } from '@/lib/user';
 import { ZodError } from 'zod';
+import { assertStudentPlanCapacity } from '@/lib/plan-entitlements';
 
 const WHOLE_CLASS_SECTION_NAME = "Whole Class";
 
@@ -119,6 +120,7 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
       : null;
 
     const { newStudent, parentLink } = await db.transaction(async (tx) => {
+      await assertStudentPlanCapacity(tx, tenantId, 1);
       const [created] = await tx.insert(students).values({
         institutionId: tenantId,
         campusId,

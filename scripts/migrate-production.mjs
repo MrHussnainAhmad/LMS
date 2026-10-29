@@ -77,6 +77,9 @@ const SUPPLEMENTAL_MIGRATIONS = [
   "0079_qr_login_sessions.sql",
   "0080_mobile_notifications.sql",
   "0081_institution_mobile_apps.sql",
+  "0082_institution_agreement_acceptance.sql",
+  "0083_admin_managed_plans.sql",
+  "0084_deal_code_fingerprints.sql",
 ];
 
 if (!process.argv.includes("--apply"))

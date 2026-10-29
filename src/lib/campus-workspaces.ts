@@ -3,7 +3,7 @@ import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { hashPassword } from './argon2-pool';
 import { campusLoginSlug, campusUsernameCandidate } from './login-identifiers';
-import { getPricingPlan } from './pricing';
+import { getInstitutionPricingPlan } from './pricing';
 import { db } from '@/db';
 import { campuses, institutions, institutionAdmins, institutionOwners, staff, students } from '@/db/schema';
 import type { JWTPayload } from './auth-types';
@@ -96,9 +96,10 @@ export async function createCampusWorkspace(session: JWTPayload, input: unknown,
     await tx.execute(sql`SELECT id FROM institutions WHERE id = ${rootId} FOR UPDATE`);
     const [root] = await tx.select().from(institutions).where(and(eq(institutions.id, rootId), isNull(institutions.parentInstitutionId), eq(institutions.status, 'APPROVED'), isNull(institutions.deletedAt))).limit(1);
     if (!root) throw new CampusPolicyError('Approved main institution not found.', 404);
-    const plan = getPricingPlan(root.pricingPlan) ?? getPricingPlan('BASIC')!;
-    if (plan.id === 'ENTERPRISE' && platformRootId === undefined) throw new CampusPolicyError('Only platform admins and employees can create Enterprise campuses.', 403);
-    if (platformRootId !== undefined && plan.id !== 'ENTERPRISE') throw new CampusPolicyError('Platform campus creation is available for Enterprise institutions only.', 409);
+    const plan = await getInstitutionPricingPlan(root.id, tx);
+    if (!plan) throw new CampusPolicyError('The institution has no configured plan.', 409);
+    if (plan.platformManagedCampuses && platformRootId === undefined) throw new CampusPolicyError('Only platform admins and employees can create campuses for this plan.', 403);
+    if (platformRootId !== undefined && !plan.platformManagedCampuses) throw new CampusPolicyError('This plan allows campuses to be managed by the institution.', 409);
     // Count Main and every active campus, including campuses awaiting login setup.
     // The parent row lock keeps checking the limit and inserting a campus atomic.
     const [{ total }] = (await tx.execute(sql`SELECT count(*)::int AS total FROM campuses c JOIN institutions i ON i.id = c.institution_id

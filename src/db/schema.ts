@@ -23,6 +23,8 @@ import {
 import type { WebsiteNotices } from "@/lib/public-website-notices";
 import type { PublicEventBlock } from "@/lib/public-events";
 import type { PageDesign, WebsiteDesign } from "@/lib/public-site-builder";
+import type { ServiceAgreementSnapshot } from '@/lib/service-agreement';
+import type { PricingPlan } from '@/lib/plan-types';
 import { sql } from "drizzle-orm";
 
 // --- ENUMS ---
@@ -260,9 +262,7 @@ export const institutions = pgTable(
     registrationNumber: varchar("registration_number", {
       length: 100,
     }).notNull(),
-    pricingPlan: varchar("pricing_plan", { length: 20 })
-      .$type<"BASIC" | "STANDARD" | "PREMIUM" | "ENTERPRISE">()
-      .notNull(),
+    pricingPlan: varchar("pricing_plan", { length: 20 }).notNull(),
     proofDocumentKey: varchar("proof_document_key", { length: 255 }).notNull(),
     status: instStatusEnum("status").default("PENDING").notNull(),
     rejectionReason: text("rejection_reason"),
@@ -308,6 +308,80 @@ export const institutions = pgTable(
     ),
   }),
 );
+
+// Registration acceptance is separate from mutable institution settings.
+// Legacy accounts have no row; never infer or backfill their consent.
+export const institutionAgreementAcceptances = pgTable('institution_agreement_acceptances', {
+  institutionId: integer('institution_id').primaryKey().references(() => institutions.id, { onDelete: 'cascade' }),
+  agreementVersion: varchar('agreement_version', { length: 40 }).notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }).defaultNow().notNull(),
+  representativeName: varchar('representative_name', { length: 255 }).notNull(),
+  contactEmail: varchar('contact_email', { length: 255 }).notNull(),
+  snapshot: jsonb('snapshot').$type<ServiceAgreementSnapshot>().notNull(),
+});
+
+export const subscriptionPlans = pgTable('subscription_plans', {
+  id: varchar('id', { length: 20 }).primaryKey(),
+  kind: varchar('kind', { length: 8 }).$type<'PUBLIC' | 'DEAL'>().notNull(),
+  name: varchar('name', { length: 120 }).notNull(),
+  monthlyFeePaisa: integer('monthly_fee_paisa'),
+  setupFeePaisa: integer('setup_fee_paisa'),
+  perStudentFeePaisa: integer('per_student_fee_paisa'),
+  studentLimit: integer('student_limit'),
+  studentCount: integer('student_count'),
+  campusLimit: integer('campus_limit'),
+  platforms: jsonb('platforms').$type<string[]>().default([]).notNull(),
+  deviceLimit: integer('device_limit'),
+  platformManagedCampuses: boolean('platform_managed_campuses').default(false).notNull(),
+  audience: varchar('audience', { length: 160 }).default('').notNull(),
+  featured: boolean('featured').default(false).notNull(),
+  revision: integer('revision').default(1).notNull(),
+  sortOrder: integer('sort_order').default(100).notNull(),
+  redeemedInstitutionId: integer('redeemed_institution_id').references(() => institutions.id, { onDelete: 'set null' }),
+  redeemedAt: timestamp('redeemed_at', { withTimezone: true }),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+  createdBy: integer('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const dealtPlanCodes = pgTable('dealt_plan_codes', {
+  codeHash: varchar('code_hash', { length: 64 }).primaryKey(),
+  planId: varchar('plan_id', { length: 20 }).notNull().references(() => subscriptionPlans.id),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const dealtCodeFingerprints = pgTable('dealt_code_fingerprints', {
+  codeHash: varchar('code_hash', { length: 64 }).primaryKey(),
+});
+
+export const pricingPlanChanges = pgTable('pricing_plan_changes', {
+  id: serial('id').primaryKey(),
+  planId: varchar('plan_id', { length: 20 }).notNull(),
+  before: jsonb('before').$type<PricingPlan | null>(),
+  after: jsonb('after').$type<PricingPlan | null>(),
+  createdBy: integer('created_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const pricingNoticeReads = pgTable('pricing_notice_reads', {
+  userRole: varchar('user_role', { length: 32 }).notNull(),
+  userId: integer('user_id').notNull(),
+  lastChangeId: integer('last_change_id').default(0).notNull(),
+}, t => [primaryKey({ columns: [t.userRole, t.userId] })]);
+
+export const planDeviceSessions = pgTable('plan_device_sessions', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  userRole: varchar('user_role', { length: 32 }).notNull(),
+  userId: integer('user_id').notNull(),
+  refreshTokenHash: varchar('refresh_token_hash', { length: 64 }).notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
 // --- INSTITUTION PUBLIC WEBSITES ---
 export const institutionPublicProfiles = pgTable(

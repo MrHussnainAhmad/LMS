@@ -1,4 +1,5 @@
 import { validationError } from '@/lib/validation-errors';
+import { assertStudentPlanCapacity } from '@/lib/plan-entitlements';
 import { applicantCredentialResetAllowedSql } from "@/lib/admission-campus";
 import { after, NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
@@ -1093,6 +1094,7 @@ export const PATCH = requireRole(
 
       try {
         await db.transaction(async (tx) => {
+          await assertStudentPlanCapacity(tx, institutionId, 1);
           if (application.offeringCapacity) {
             await tx.execute(
               sql`SELECT pg_advisory_xact_lock(${institutionId}, ${application.offeringId})`,

@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Check, Star } from "lucide-react";
 import { LandingHeader } from "@/components/layout/LandingHeader";
-import { pricingPlans } from "@/lib/pricing";
+import { getPublicPricingPlans } from "@/lib/pricing";
+import { connection } from 'next/server';
 import styles from "./pricing.module.css";
 
 export const metadata: Metadata = {
@@ -21,7 +22,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  await connection();
+  const pricingPlans = await getPublicPricingPlans();
   return (
     <div className={styles.page}>
       <LandingHeader />
@@ -41,9 +44,9 @@ export default function PricingPage() {
               a one-time setup fee, straightforward monthly billing, and a student range that is easy to understand.
             </p>
             <div className={styles.heroPrice}>
-              <span>Monthly plans from</span>
-              <strong>Rs. 3,500</strong>
-              <small>for up to 300 students</small>
+              <span>Public pricing</span>
+              <strong>{pricingPlans[0]?.monthly ?? 'Contact us'}</strong>
+              <small>{pricingPlans[0]?.scale ?? 'Plans will appear here when published'}</small>
             </div>
           </div>
         </section>
@@ -94,6 +97,7 @@ export default function PricingPage() {
 
                 <ul>
                   <li><Check size={15} />{plan.campusDetail}</li>
+                  <li><Check size={15} />{plan.platforms.join(', ')}</li>
                   <li>
                     <Check size={15} />
                     Clear monthly pricing
@@ -127,7 +131,7 @@ export default function PricingPage() {
             {pricingPlans.map((plan) => (
               <div key={plan.id}>
                 <span>{plan.name}</span>
-                <p>{plan.monthly} {plan.id === "ENTERPRISE" ? plan.monthlyDetail : "per month"} — {plan.scale}.</p>
+                <p>{plan.monthly} {plan.monthlyDetail} — {plan.scale}.</p>
               </div>
             ))}
           </div>

@@ -119,6 +119,9 @@ async function main() {
     await memory.exec(sessionMigration);
     await memory.exec(sessionMigration);
     await memory.exec(readFileSync('drizzle/0081_institution_mobile_apps.sql', 'utf8'));
+    await memory.exec("ALTER TABLE institutions ADD COLUMN pricing_plan varchar(20) NOT NULL DEFAULT 'BASIC'");
+    await memory.exec(readFileSync('drizzle/0082_institution_agreement_acceptance.sql', 'utf8'));
+    await memory.exec(readFileSync('drizzle/0083_admin_managed_plans.sql', 'utf8'));
     const indexes = await memory.query<{ indexname: string }>("SELECT indexname FROM pg_indexes WHERE tablename='qr_login_challenges'");
     for (const name of ['qr_login_challenges_pkey', 'qr_login_challenges_source_idx', 'qr_login_challenges_expiry_idx']) assert.ok(indexes.rows.some(row => row.indexname === name));
     const columns = await memory.query<{ column_name: string }>("SELECT column_name FROM information_schema.columns WHERE table_name='qr_login_challenges'");

@@ -26,7 +26,8 @@ import { LandingHeader } from "@/components/layout/LandingHeader";
 import { LandingMotion } from "@/components/landing/LandingMotion";
 import { WebsiteDestroyer } from "@/components/landing/WebsiteDestroyer";
 import { ModelScene } from "@/components/landing/ModelScene";
-import { pricingPlans } from "@/lib/pricing";
+import { getPublicPricingPlans } from "@/lib/pricing";
+import { connection } from 'next/server';
 import styles from "./landing.module.css";
 
 const landingModels = {
@@ -95,7 +96,8 @@ async function getLandingData() {
 }
 
 export default async function LandingPage() {
-  const { featuredLogos, latestReviews } = await getLandingData();
+  await connection();
+  const [{ featuredLogos, latestReviews }, pricingPlans] = await Promise.all([getLandingData(), getPublicPricingPlans()]);
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -108,8 +110,8 @@ export default async function LandingPage() {
     offers: {
       "@type": "AggregateOffer",
       priceCurrency: "PKR",
-      lowPrice: "3000",
-      offerCount: "3",
+      ...(pricingPlans.some(plan => plan.monthlyFeePaisa !== null) ? { lowPrice: String(Math.min(...pricingPlans.flatMap(plan => plan.monthlyFeePaisa === null ? [] : [plan.monthlyFeePaisa / 100]))) } : {}),
+      offerCount: String(pricingPlans.length),
     },
   };
 

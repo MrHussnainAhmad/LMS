@@ -5,6 +5,7 @@ export function requiresPasswordChange(role: string, mustChangePassword?: boolea
 }
 
 export interface JWTPayload {
+  planDeviceSessionId?: string;
   clientType?: "WEB" | "MOBILE";
   qrSessionId?: string;
   qrSessionExpiresAt?: number;

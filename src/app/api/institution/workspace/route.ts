@@ -5,23 +5,23 @@ import { db } from '@/db';
 import { institutions, institutionOwners } from '@/db/schema';
 import { getTenantContext, requireRole } from '@/lib/rbac';
 import { canManageCampuses, listInstitutionCampuses } from '@/lib/campus-workspaces';
-import { getPricingPlan } from '@/lib/pricing';
+import { getInstitutionPricingPlan } from '@/lib/pricing';
 import { redis } from '@/lib/redis';
 import { validationError } from '@/lib/validation-errors';
 
 export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (_req, { session }) => {
   const institutionId = getTenantContext(session);
-  const [campuses, owners, profiles, roots] = await Promise.all([
+  const [campuses, owners, profiles, plan] = await Promise.all([
     listInstitutionCampuses(session),
     db.select({ id: institutionOwners.id }).from(institutionOwners).where(eq(institutionOwners.institutionId, institutionId)).limit(1),
     db.select({ parentId: institutions.parentInstitutionId, registrationNumber: institutions.registrationNumber }).from(institutions).where(eq(institutions.id, institutionId)).limit(1),
-    db.select({ pricingPlan: institutions.pricingPlan }).from(institutions).where(eq(institutions.id, session.rootInstitutionId ?? institutionId)).limit(1),
+    getInstitutionPricingPlan(institutionId),
   ]);
-  const plan = getPricingPlan(roots[0]?.pricingPlan) ?? getPricingPlan('BASIC')!;
+  if (!plan) return NextResponse.json({ error: 'No plan is configured for this institution.' }, { status: 409 });
   return NextResponse.json({ institutionId, homeInstitutionId: session.homeInstitutionId, campusId: session.campusId, campusName: session.campusName,
     role: session.role, readOnly: Boolean(session.campusReadOnly), isMainCampus: profiles[0]?.parentId === null,
     registrationNumber: profiles[0]?.registrationNumber, needsOwner: session.role === 'INSTITUTION' && !session.campusReadOnly && !owners.length,
-    campuses, plan, canManageCampuses: canManageCampuses(session) && plan.id !== 'ENTERPRISE',
+    campuses, plan, canManageCampuses: canManageCampuses(session) && !plan.platformManagedCampuses,
   }, { headers: { 'Cache-Control': 'no-store' } });
 });
 

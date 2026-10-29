@@ -15,6 +15,15 @@ const portals = [
   { host: 'employee.localhost:3000', prefix: '/employee', role: 'EMPLOYEE' },
 ];
 
+for (const host of ['student.nisaab360.app', 'staff.nisaab360.app', 'parent.nisaab360.app', 'institution.nisaab360.app', 'employee.nisaab360.app', 'sa.nisaab360.app', 'school.nisaab360.app', 'student.localhost:3000']) {
+  test(`updated terms remain a shared public document on ${host}`, async () => {
+    const response = await proxy(new NextRequest(`http://${host}/terms-of-service`, { headers: { host } }));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('x-middleware-next'), '1');
+    assert.equal(response.headers.get('x-middleware-rewrite'), null);
+  });
+}
+
 for (const { host, prefix, role } of portals) {
   test(`agreement stays reachable and dashboard stays protected on ${host}`, async () => {
     const token = await new SignJWT({ userId: 1, role, mustChangePassword: false })

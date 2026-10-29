@@ -3,22 +3,19 @@ import { getSession } from '@/lib/auth';
 import { canManageCampuses, listInstitutionCampuses } from '@/lib/campus-workspaces';
 import { CampusLoginForm } from '@/components/institution/CampusLoginForm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { db } from '@/db';
-import { institutions } from '@/db/schema';
-import { eq } from 'drizzle-orm';
-import { getPricingPlan } from '@/lib/pricing';
+import { getInstitutionPricingPlan } from '@/lib/pricing';
 
 export default async function InstitutionCampusesPage() {
   const session = await getSession();
   if (!session || !['INSTITUTION', 'INSTITUTION_ADMIN'].includes(session.role)) redirect('/institution-login');
-  const [campuses, roots] = await Promise.all([
+  const [campuses, plan] = await Promise.all([
     listInstitutionCampuses(session),
-    db.select({ pricingPlan: institutions.pricingPlan }).from(institutions).where(eq(institutions.id, session.rootInstitutionId ?? session.institutionId!)).limit(1),
+    getInstitutionPricingPlan(session.institutionId!),
   ]);
-  const plan = getPricingPlan(roots[0]?.pricingPlan) ?? getPricingPlan('BASIC')!;
-  const canManage = canManageCampuses(session) && plan.id !== 'ENTERPRISE';
-  const canSetUp = canManage && plan.campusLimit !== null && campuses.length <= plan.campusLimit;
-  const canAdd = canManage && plan.campusLimit !== null && campuses.length < plan.campusLimit;
+  if (!plan) return <p>No plan is configured. Contact your platform administrator.</p>;
+  const canManage = canManageCampuses(session) && !plan.platformManagedCampuses;
+  const canSetUp = canManage && (plan.campusLimit === null || campuses.length <= plan.campusLimit);
+  const canAdd = canManage && (plan.campusLimit === null || campuses.length < plan.campusLimit);
   return <div className="space-y-8">
 
     <div className="grid gap-6 lg:grid-cols-3">
@@ -39,7 +36,7 @@ export default async function InstitutionCampusesPage() {
       <Card><CardHeader><CardTitle>{plan.name} campus access</CardTitle></CardHeader><CardContent className="space-y-4">
         <p className="text-sm">{plan.campusDetail}.</p>
         <p className="text-sm font-medium">{campuses.length} {plan.campusLimit === null ? 'campuses' : `of ${plan.campusLimit} campuses`} in use, including Main.</p>
-        {plan.id === 'ENTERPRISE' ? <p className="text-sm text-stone-500">Contact a platform admin or employee to add a campus or set up its login.</p>
+        {plan.platformManagedCampuses ? <p className="text-sm text-stone-500">Contact a platform admin or employee to add a campus or set up its login.</p>
           : plan.campusLimit !== null && campuses.length >= plan.campusLimit ? <p className="text-sm text-stone-500">Your campus limit has been reached. Contact the platform team to change your plan.</p> : null}
         {canManage && <div>{canAdd && <h2 className="mb-4 font-semibold">Add New Campus</h2>}<CampusLoginForm allowCreate={canAdd} /></div>}
       </CardContent></Card>

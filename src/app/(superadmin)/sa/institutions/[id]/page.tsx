@@ -7,7 +7,7 @@ import { Building2, Users, UserSquare2, BookOpen, Layers, UserCircle, Phone, Mai
 import { StatCard } from "@/components/ui/stat-card";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { getPricingPlan } from "@/lib/pricing";
+import { getInstitutionPricingPlan } from "@/lib/pricing";
 import { InstitutionEnterpriseCampuses } from "@/components/InstitutionEnterpriseCampuses";
 import { InstitutionAppsControl } from "@/components/InstitutionAppsControl";
 import { InstitutionPublicSiteControl } from "@/components/InstitutionPublicSiteControl";
@@ -65,7 +65,7 @@ export default async function SAInstitutionDetailPage({ params }: { params: Prom
     db.select({ name: sections.name }).from(sections).where(eq(sections.institutionId, institutionId)),
   ]);
   const owner = ownerRows[0];
-  const selectedPlan = getPricingPlan(institution.pricingPlan);
+  const selectedPlan = await getInstitutionPricingPlan(institution.id);
   const studentsCount = studentsCountRows[0];
   const staffCount = staffCountRows[0];
   const classesCount = classesCountRows[0];
@@ -104,7 +104,7 @@ export default async function SAInstitutionDetailPage({ params }: { params: Prom
         <StatCard title="Sections" value={sectionsCount.value.toString()} icon={Layers} />
       </div>
 
-      {institution.pricingPlan === "ENTERPRISE" && institution.parentInstitutionId === null && institution.status === "APPROVED" && <InstitutionEnterpriseCampuses institutionId={institution.id} />}
+      {selectedPlan?.platformManagedCampuses && institution.parentInstitutionId === null && institution.status === "APPROVED" && <InstitutionEnterpriseCampuses institutionId={institution.id} />}
 
       <InstitutionAppsControl institutionId={institution.id} initialEnabled={institution.appsEnabled} />
 

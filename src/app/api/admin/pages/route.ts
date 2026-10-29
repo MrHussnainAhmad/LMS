@@ -6,6 +6,8 @@ import { platformPages } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { revalidatePath, revalidateTag } from 'next/cache';
+import { invalidateReadCacheKeys } from '@/lib/redis';
 
 const pageSchema = z.object({
   slug: z.string().min(1).max(255),
@@ -54,6 +56,10 @@ export async function POST(req: Request) {
 
     const [existingPage] = await db.select().from(platformPages).where(eq(platformPages.slug, slug));
     const now = new Date();
+
+    if (existingPage?.title === title && existingPage.content === content) {
+      return NextResponse.json({ message: "Page saved successfully" });
+    }
     
     if (existingPage) {
       const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
@@ -84,6 +90,11 @@ export async function POST(req: Request) {
       });
     }
 
+    revalidateTag('platform-pages', { expire: 0 });
+    revalidatePath(`/${slug}`);
+    if (slug === 'terms-of-service') {
+      await invalidateReadCacheKeys(['cache:platform:terms-notice']);
+    }
     return NextResponse.json({ message: "Page saved successfully" });
   } catch (error) {
     const publicInputError = inputErrorResponse(error);

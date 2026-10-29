@@ -67,6 +67,9 @@ async function main() {
     `);
     const migration = readFileSync('drizzle/0081_institution_mobile_apps.sql', 'utf8');
     await memory.exec(migration); await memory.exec(migration);
+    await memory.exec("ALTER TABLE institutions ADD COLUMN pricing_plan varchar(20) NOT NULL DEFAULT 'BASIC'");
+    await memory.exec(readFileSync('drizzle/0082_institution_agreement_acceptance.sql', 'utf8'));
+    await memory.exec(readFileSync('drizzle/0083_admin_managed_plans.sql', 'utf8'));
     assert.ok((await memory.query<{ apps_enabled: boolean }>('SELECT apps_enabled FROM institutions')).rows.every(row => row.apps_enabled));
     assert.match(readFileSync('scripts/migrate-production.mjs', 'utf8'), /0081_institution_mobile_apps\.sql/);
     pass('forward migration is idempotent and preserves existing institutions with Apps enabled');

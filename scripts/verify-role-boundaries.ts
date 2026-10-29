@@ -40,6 +40,7 @@ const mocks: Record<string, string> = {
   performance: 'export const measurePerformancePhase=async(_name,fn)=>fn();',
   'api-policy': 'export const withApiPolicy=fn=>fn;',
   audit: 'export const logAudit=async()=>{};',
+  'notification-delivery': 'export const createBulkNotifications=async()=>[];export const createNotification=async()=>undefined;',
   redis: 'export const redis={status:"ready",del:async()=>{},unlink:async()=>{}};export const invalidateInstitutionRosterCaches=async()=>{};export const invalidateStudentEnrichCache=async()=>{};export const invalidateReadCacheKeys=async()=>{};export const invalidateReadCachePatterns=async()=>{};export const invalidateTimetableReadCaches=async()=>{};export const invalidateAnnouncementReadCaches=async()=>{};export const invalidateStaffReadCaches=async()=>{};export const getCachedOrFetch=async(_key,_ttl,fn)=>fn();export const peekCachedOrFetch=()=>null;',
   'central-drive-backups': 'export const centralDriveOAuthUrl=state=>"https://accounts.google.test/consent?state="+state;export const exchangeCentralDriveCode=async()=>({refreshToken:"fixture-central-secret"});',
   cloudinary: 'export default {api:{resource:async()=>{throw Error("Unexpected cloudinary call")}}};',
@@ -85,6 +86,8 @@ try {
     await memory.exec(`CREATE TABLE "${config.name}" (${columns.join(',')});`);
   }
   await memory.exec('CREATE UNIQUE INDEX fee_head_fixture_name_unique ON fee_heads(institution_id,name)');
+  await memory.exec(await readFile('drizzle/0082_institution_agreement_acceptance.sql', 'utf8'));
+  await memory.exec(await readFile('drizzle/0083_admin_managed_plans.sql', 'utf8'));
   const rootPassword = await hash('fixture-main-password');
   const rootValues = { name: 'National College', type: 'COLLEGE' as const, username: 'national', country: 'Pakistan', city: 'Lahore', address: 'Main address', contactEmail: 'main@example.test', contactPhone: '03001234567', registrationNumber: 'NCS01', pricingPlan: 'PREMIUM' as const, logoKey: 'fixture-logo', proofDocumentKey: 'fixture-proof', adminPasswordHash: rootPassword, status: 'APPROVED' as const };
   // Pre-migration insert must not reference the newly introduced columns.

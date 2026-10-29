@@ -115,6 +115,16 @@ export async function withPlatformLoginRateLimit(
   return checkRateLimit(key, limit, 60);
 }
 
+/** Five-character deal capabilities always use a shared, fail-closed limiter. */
+export async function withDealCodeRateLimit(req: NextRequest) {
+  if (redis.status !== 'ready') return { success: false };
+  try {
+    const key = `ratelimit:dealed:${clientIp(req)}`;
+    const result = await redis.multi().incr(key).expire(key, 60, 'NX').exec();
+    return { success: Boolean(result && result.length === 2 && result.every(([error]) => !error) && typeof result[0][1] === 'number' && result[0][1] <= 5) };
+  } catch { return { success: false }; }
+}
+
 /** QR bearer capabilities fail closed if the shared limiter is unavailable.
  * Never use the process-local fallback for this cross-replica login flow. */
 export async function withQrLoginRateLimit(req: NextRequest, operation: 'create' | 'redeem' | 'status' | 'revoke', account?: string) {

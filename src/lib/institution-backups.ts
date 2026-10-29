@@ -34,7 +34,7 @@ const archiver = requireFunc("archiver-zip-encrypted/node_modules/archiver") as 
 export type InstitutionBackupType = "DAILY" | "MANUAL";
 archiver.registerFormat("zip-encrypted", zipEncrypted);
 const SAFE_IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
-const REDACTED = new Set(["password_hash", "admin_password_hash", "security_question", "security_answer_hash", "token", "token_hash", "expo_push_token", "reset_token", "temporary_password"]);
+const REDACTED = new Set(["password_hash", "admin_password_hash", "security_question", "security_answer_hash", "token", "token_hash", "refresh_token_hash", "expo_push_token", "reset_token", "temporary_password"]);
 export const INSTITUTION_BACKUP_DEPENDENT_TABLES: Record<string, string> = {
   announcement_reads: "announcement_id IN (SELECT id FROM announcements WHERE institution_id = $1)",
   batch_exam_subjects: "batch_exam_id IN (SELECT id FROM batch_exams WHERE institution_id = $1)",

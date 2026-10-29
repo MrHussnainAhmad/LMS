@@ -207,6 +207,8 @@ export async function revokeQrLoginSession(owner: QrOwner, id: string) {
     )).for('update').limit(1);
     if (!row) throw new QrLoginError('QR session not found.', 404);
     if (!row.revokedAt) await tx.update(qrLoginSessions).set({ revokedAt: new Date() }).where(eq(qrLoginSessions.id, id));
+    await tx.execute(sql`UPDATE plan_device_sessions SET revoked_at=now() WHERE refresh_token_hash IN
+      (SELECT token_hash FROM refresh_tokens WHERE qr_session_id=${id}) AND revoked_at IS NULL`);
     return { id, status: 'REVOKED' };
   });
 }

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 export async function InstitutionEnterpriseCampuses({ institutionId }: { institutionId: number }) {
   const campuses = await listRootCampuses(institutionId);
   const endpoint = `/api/employee/institutions/${institutionId}/campuses`;
-  return <Card><CardHeader><CardTitle>Enterprise campuses</CardTitle></CardHeader><CardContent className="space-y-6">
+  return <Card><CardHeader><CardTitle>Platform-managed campuses</CardTitle></CardHeader><CardContent className="space-y-6">
     <p className="text-sm text-stone-500">Only platform admins and employees can create these campuses. Each campus has its own login and workspace.</p>
     <div className="grid gap-4 md:grid-cols-2">{campuses.map(campus => <div key={campus.id} className="border border-stone-200 p-4">
       <h3 className="font-semibold">{campus.name}</h3><p className="text-sm text-stone-500">{campus.address}</p>

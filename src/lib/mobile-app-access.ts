@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '@/db';
 import type { JWTPayload } from './auth-types';
+import { planPlatformAllowed } from './plan-entitlements';
 
 export const MOBILE_APPS_DISABLED = {
   error: 'Mobile apps are not enabled for your institution. You can still use the website.',
@@ -18,6 +19,7 @@ export async function mobileAppAccessAllowed(
   nativeTransport = false,
   store: Pick<typeof db, 'execute'> = db,
 ): Promise<boolean> {
+  if (!await planPlatformAllowed(session, nativeTransport || session.clientType === 'MOBILE', store)) return false;
   if (!isMobileRole(session.role) || (!nativeTransport && session.clientType !== 'MOBILE')) return true;
   if (!session.institutionId) return false;
   const result = await store.execute(sql`

@@ -167,6 +167,7 @@ export async function POST(req: NextRequest) {
   }
 
   payload.clientType = rotation.clientType;
+  payload.planDeviceSessionId = rotation.planDeviceSessionId;
   // Legacy native sessions had no stored type: body-based refresh upgrades them.
   if (bodyRefreshToken && isMobileRole(payload.role)) payload.clientType = "MOBILE";
   if (!await mobileAppAccessAllowed(payload)) {
