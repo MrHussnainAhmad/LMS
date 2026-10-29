@@ -46,7 +46,7 @@ function PlanForm({ plan, kind, onSaved }: { plan?: AdminPlan; kind: 'PUBLIC' | 
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save this plan.'); }
     finally { setSaving(false); }
   };
-  const field = 'grid gap-1.5 text-sm font-medium';
+  const field = 'flex flex-col gap-1.5 text-sm font-medium';
   return <form onSubmit={submit} className="space-y-5">
     <div className="grid gap-4 sm:grid-cols-2">
       <label className={field}>Plan name<Input name="name" required minLength={2} maxLength={120} defaultValue={plan?.name ?? (kind === 'DEAL' ? 'Dealed' : '')} /></label>
