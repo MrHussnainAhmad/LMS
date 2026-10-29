@@ -4,7 +4,7 @@ Updated 27 October 2026. This implementation is prepared for sandbox onboarding.
 
 ## Institution and payer flow
 
-Institutions select exactly one payment mode: **Manual** or **Online**. Existing institutions default to Manual. Manual accounts and proof review remain available in Manual mode. Online mode supports JazzCash, Easypaisa, or both; credentials are encrypted separately for each institution. HBL is not offered. Historical gateway records remain readable.
+Institutions select exactly one payment mode: **Manual** or **Online**. Existing institutions default to Manual. Manual accounts and proof review remain available in Manual mode. Online mode supports JazzCash, Easypaisa, or both; credentials are encrypted separately for each institution. Institutions save and enable their provider-issued credentials, then select **Use Online payments**. No platform-admin activation or server approval flag is required. HBL is not offered. Historical gateway records remain readable.
 
 In Online mode, students, linked parents and admission applicants select an enabled gateway. The server creates a unique attempt using the institution and outstanding fee amount from the database, rather than trusting client amounts or institution IDs. The attempt retains its merchant credential snapshot so later configuration changes cannot redirect verification to another account.
 
@@ -38,24 +38,24 @@ Keep secrets outside Git. Configure the following variables on both app replicas
 
 ```dotenv
 PAYMENT_PUBLIC_ORIGIN=https://your-registered-payment-host.example
-# Leave empty until merchant acceptance has passed. This is an operator attestation.
-PAYMENT_VERIFIED_GATEWAYS=
 # Preserve the existing stable credential encryption secret across releases.
 STREAMING_CREDENTIALS_SECRET=
 CRON_SECRET=
 
-# Merchant-approved HTTPS URLs; no guessed defaults.
+# Optional endpoint overrides for the supported provider contracts.
+# Blank/unset values use the built-in sandbox/production URLs below.
 JAZZCASH_SANDBOX_CHECKOUT_URL=
 EASYPAISA_SANDBOX_INITIATE_URL=
 EASYPAISA_SANDBOX_INQUIRY_URL=
 
-# Unused until production is explicitly approved.
 JAZZCASH_CHECKOUT_URL=
 EASYPAISA_INITIATE_URL=
 EASYPAISA_INQUIRY_URL=
 ```
 
 The endpoint allowlist permits `sandbox.jazzcash.com.pk` / `payments.jazzcash.com.pk` and `easypaystg.easypaisa.com.pk` / `easypay.easypaisa.com.pk`, separately for sandbox and production. Easypaisa requires `/easypay-service/rest/v4/initiate-ma-transaction` and `/easypay-service/rest/v4/inquire-transaction`. Redirects, arbitrary hosts, HTTP provider endpoints and oversized responses are rejected. Confirm newly issued hosts before changing this policy.
+
+Default URLs use the matching environment host above. JazzCash checkout uses `/CustomerPortal/transactionmanagement/merchantform/`; Easypaisa uses the two REST v4 paths above. Existing valid endpoint overrides remain supported. Production readiness means complete saved credentials, an enabled gateway and a valid supported endpoint; it does not certify merchant credentials with the provider. Providers validate credentials when payment requests are submitted. Existing saved production credentials become available on deployment without being re-entered or approved by a platform admin.
 
 In Institution Settings → Payments, select Online, save sandbox merchant credentials, then choose **Use Online payments**. JazzCash requires merchant ID, password and integrity salt. Easypaisa requires store ID, account number, API username and password. Blank secret fields preserve existing secrets only for the same merchant/environment; re-enter secrets when changing either. Manual mode remains active until explicitly switched.
 
@@ -68,13 +68,13 @@ The reconciliation worker calls `POST /api/cron/payment-reconciliation` with `Au
 
 An attempt may be initiated once. A lost response or ambiguous timeout must not trigger another debit. Unstarted attempts can be replaced after expiry; initiated unresolved attempts remain blocked even after 30 minutes. The sandbox checkout offers a reset for unresolved test attempts only. Production unresolved attempts require verification with the provider. Credentials snapshots are retained encrypted for verification and must be included in the organization's data-retention/security policy.
 
-## Acceptance before live activation
+## Provider integration verification
 
 1. Obtain sandbox merchant accounts and the current issued integration guides. Confirm the exact products above, callback fields and SOAP contract with each provider.
 2. Test monthly and admission flows, both enabled providers, each provider alone, parent access, tenant denial, mode switching, credential rotation and printable histories.
 3. Exercise success, rejection, pending, timeout, browser closure, delayed notifications, duplicate callbacks, altered amounts/signatures and inquiry recovery. Compare every receipt with the sandbox merchant portal. Confirm sandbox receipts leave real balances unchanged.
 4. Verify the reconciliation worker and provider notification retry delivery on the intended public HTTPS callback host. No native mobile app checkout UI was changed in this website task.
-5. Only after provider acceptance, configure production endpoints/credentials and add accepted IDs (`jazzcash`, `easypaisa`, or both comma-separated) to `PAYMENT_VERIFIED_GATEWAYS` on both app replicas. Perform provider-approved small live payments and compare ledger, receipt and merchant settlement. The flag is not automated certification.
+5. Enter provider-issued production credentials in the institution's payment settings, enable the gateway and select **Use Online payments**. No additional platform activation is required. Verify provider responses, ledger entries, receipts and merchant settlement using provider-approved test procedures.
 
 To disable new Online payments, switch the institution to Manual. Keep callbacks, credential encryption keys and the worker available for in-flight payments. Do not drop payment tables/columns or delete attempts during rollback. An old binary that ignores payment mode must not receive new payment submissions; prefer reverting the UI while retaining mode guards and verification handlers.
 

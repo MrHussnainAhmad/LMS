@@ -3,12 +3,14 @@ import type { NextRequest } from 'next/server';
 
 export function gatewayEndpoint(gateway:GatewayId,environment:'sandbox'|'production',operation:'checkout'|'initiate'|'inquiry') {
   const prefix=`${gateway.toUpperCase()}_${environment==='sandbox'?'SANDBOX_':''}`;
-  const value=process.env[`${prefix}${operation.toUpperCase()}_URL`];
-  if(!value)throw new Error('Merchant endpoint is not configured');
-  const url=new URL(value);
   const allowed=gateway==='jazzcash'
     ? environment==='sandbox'?['sandbox.jazzcash.com.pk']:['payments.jazzcash.com.pk']
     : environment==='sandbox'?['easypaystg.easypaisa.com.pk']:['easypay.easypaisa.com.pk'];
+  if((gateway==='jazzcash'&&operation!=='checkout')||(gateway==='easypaisa'&&operation==='checkout'))throw new Error('Unsupported merchant operation');
+  const path=gateway==='jazzcash'?'/CustomerPortal/transactionmanagement/merchantform/'
+    : `/easypay-service/rest/v4/${operation==='initiate'?'initiate-ma-transaction':'inquire-transaction'}`;
+  const value=process.env[`${prefix}${operation.toUpperCase()}_URL`]?.trim()||`https://${allowed[0]}${path}`;
+  const url=new URL(value);
   if(url.protocol!=='https:'||url.username||url.password||url.port||!allowed.includes(url.hostname)||url.hash||url.search)throw new Error('Invalid merchant endpoint');
   if(gateway==='easypaisa'&&!url.pathname.endsWith(`/easypay-service/rest/v4/${operation==='initiate'?'initiate-ma-transaction':'inquire-transaction'}`))throw new Error('This adapter requires the merchant-approved REST v4 contract');
   return url.toString();

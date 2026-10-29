@@ -67,7 +67,8 @@ test('online payments: migration, configuration, access, provider verification a
     const target={institutionId:root.id,studentId:student.id,invoiceId:fee.id};
     const jazz={merchantId:'MID-FIXTURE',password:'fixture-password',integritySalt:'fixture-salt'};
     const easy={storeId:'123',accountNum:'456',username:'fixture-api',password:'fixture-password'};
-    await t.test('production credentials save securely while live payments remain locked',async()=>{
+    await t.test('institution credentials enable production without a platform activation flag or endpoint setup',async()=>{
+      for (const name of ['JAZZCASH_CHECKOUT_URL','EASYPAISA_INITIATE_URL','EASYPAISA_INQUIRY_URL']) delete process.env[name];
       assert.equal((await config.readPaymentConfig(root.id)).mode,'MANUAL');assert.deepEqual(config.GATEWAYS,['jazzcash','easypaisa']);
       await assert.rejects(()=>config.updatePaymentConfig(root.id,{action:'mode',mode:'ONLINE'}));
       await assert.rejects(()=>config.updatePaymentConfig(root.id,{action:'gateway',gateway:'hblpay',enabled:true,environment:'sandbox',credentials:jazz}));
@@ -75,14 +76,22 @@ test('online payments: migration, configuration, access, provider verification a
         const saved=await config.updatePaymentConfig(root.id,{action:'gateway',gateway,enabled:true,environment:'production',credentials});
         const visible=saved.gateways.find(value=>value.id===gateway)!;
         assert.equal(visible.configured,true);
-        assert.equal(visible.ready,false);
-        assert.match(visible.notReadyReason!,/acceptance testing/);
+        assert.equal(visible.ready,true);
+        assert.equal(visible.notReadyReason,null);
         assert.equal((await config.readPaymentConfig(root.id)).gateways[gateway]?.environment,'production');
         assert.ok(!JSON.stringify(saved).includes('fixture-password'));
         assert.ok(!JSON.stringify(saved).includes('fixture-salt'));
-        await assert.rejects(()=>config.updatePaymentConfig(root.id,{action:'mode',mode:'ONLINE'}));
-        await assert.rejects(()=>service.createPaymentAttempt(target,gateway),/not available/);
+        await config.updatePaymentConfig(root.id,{action:'mode',mode:'ONLINE'});
+        const productionFee=await invoice();
+        const payment=await service.createPaymentAttempt({...target,invoiceId:productionFee.id},gateway);
+        assert.equal(payment.environment,'production');
+        assert.equal(payment.merchantId,gateway==='jazzcash'?jazz.merchantId:easy.storeId);
+        assert.equal(payment.institutionId,root.id);
+        await config.updatePaymentConfig(root.id,{action:'mode',mode:'MANUAL'});
       }
+      assert.equal(endpoints.gatewayEndpoint('jazzcash','production','checkout'),'https://payments.jazzcash.com.pk/CustomerPortal/transactionmanagement/merchantform/');
+      assert.equal(endpoints.gatewayEndpoint('easypaisa','production','initiate'),'https://easypay.easypaisa.com.pk/easypay-service/rest/v4/initiate-ma-transaction');
+      assert.equal(endpoints.gatewayEndpoint('easypaisa','production','inquiry'),'https://easypay.easypaisa.com.pk/easypay-service/rest/v4/inquire-transaction');
     });
     await t.test('both credentials encrypted/masked; blank secrets preserved; tenant isolation',async()=>{
       await config.updatePaymentConfig(root.id,{action:'gateway',gateway:'jazzcash',enabled:true,environment:'sandbox',credentials:jazz});

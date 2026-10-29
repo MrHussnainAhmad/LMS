@@ -19,9 +19,6 @@ const credentialSchemas = {
   jazzcash: z.object({merchantId:z.string().trim().min(1).max(160),password:z.string().min(1).max(256),integritySalt:z.string().min(1).max(256)}).strict(),
   easypaisa: z.object({storeId:z.string().regex(/^\d{1,18}$/),accountNum:z.string().regex(/^\d{1,32}$/),username:z.string().trim().min(1).max(160),password:z.string().min(1).max(256)}).strict(),
 };
-export function productionApproved(gateway: GatewayId) {
-  return (process.env.PAYMENT_VERIFIED_GATEWAYS ?? '').split(',').map(value=>value.trim()).includes(gateway);
-}
 export async function readPaymentConfig(institutionId: number, executor: PaymentExecutor | typeof db = db, lock = false): Promise<PaymentConfig> {
   const query = executor.select().from(settings).where(eq(settings.institutionId,institutionId)).limit(1);
   const [row] = await (lock ? query.for('share') : query);
@@ -42,14 +39,12 @@ export async function readPaymentConfig(institutionId: number, executor: Payment
 export function publicPaymentConfig(config: PaymentConfig) {
   return { mode:config.mode,gateways:GATEWAYS.map(id=>{
     const gateway=config.gateways[id];
-    const approved=gateway?.environment !== 'production' || productionApproved(id);
     const endpointReady=Boolean(gateway && endpointsReady(id,gateway.environment));
-    const notReadyReason=!gateway ? null : !approved
-      ? 'Credentials saved. Live payments await platform activation after merchant acceptance testing.'
-      : !endpointReady ? 'Credentials saved. The platform administrator must finish the gateway connection setup.'
+    const notReadyReason=!gateway ? null : !endpointReady
+      ? 'The payment connection is unavailable. Please contact support.'
       : !gateway.enabled ? 'Credentials saved. Enable this gateway to make it available.' : null;
-    return {id,configured:Boolean(gateway),enabled:Boolean(gateway?.enabled),environment:gateway?.environment ?? 'sandbox',
-      ready:Boolean(gateway?.enabled && approved && endpointReady),notReadyReason,
+    return {id,configured:Boolean(gateway),enabled:Boolean(gateway?.enabled),environment:gateway?.environment ?? 'production',
+      ready:Boolean(gateway?.enabled && endpointReady),notReadyReason,
       merchantId:gateway?.credentials.merchantId ?? gateway?.credentials.storeId ?? '',
       accountNum:gateway?.credentials.accountNum ?? '',username:gateway?.credentials.username ?? ''};
   })};

@@ -44,12 +44,12 @@ export function PaymentSettings() {
       {gateway.notReadyReason&&<p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm" role="status">{gateway.notReadyReason}</p>}
       <fieldset disabled={busy} className="space-y-3">
         <label className="block text-xs font-medium">Environment<select name="environment" defaultValue={gateway.environment} className={input}><option value="sandbox">Sandbox testing</option><option value="production">Production</option></select></label>
-        <p className="text-xs text-stone-500">Saving production credentials does not verify them or activate live payments.</p>
+        <p className="text-xs text-stone-500">Save your merchant credentials and enable the gateway, then choose Use Online payments.</p>
         <label className="block text-xs font-medium">{gateway.id==='jazzcash'?'Merchant ID':'Store ID'}<input name={gateway.id==='jazzcash'?'merchantId':'storeId'} defaultValue={gateway.merchantId} maxLength={160} required className={input}/></label>
         {gateway.id==='easypaisa'&&<><label className="block text-xs font-medium">EWP account number<input name="accountNum" defaultValue={gateway.accountNum} maxLength={32} required className={input}/></label><label className="block text-xs font-medium">API username<input name="username" defaultValue={gateway.username} maxLength={160} required className={input}/></label></>}
         <label className="block text-xs font-medium">Merchant / API password<input name="password" type="password" autoComplete="new-password" maxLength={256} required={!gateway.configured} placeholder={gateway.configured?'Saved — leave blank to keep':'Provider-issued password'} className={input}/></label>
         {gateway.id==='jazzcash'&&<label className="block text-xs font-medium">Integrity salt<input name="integritySalt" type="password" autoComplete="new-password" maxLength={256} required={!gateway.configured} placeholder={gateway.configured?'Saved — leave blank to keep':'Provider-issued integrity salt'} className={input}/></label>}
-        <label className="flex items-center gap-2 text-sm"><input name="enabled" type="checkbox" defaultChecked={gateway.enabled}/>Enable this gateway</label>
+        <label className="flex items-center gap-2 text-sm"><input name="enabled" type="checkbox" defaultChecked={gateway.configured?gateway.enabled:true}/>Enable this gateway</label>
         <Button type="submit" disabled={busy}>Save {gateway.id==='jazzcash'?'JazzCash':'Easypaisa'}</Button>
       </fieldset>
       {feedbackGateway===gateway.id&&message&&<p role="status" className="rounded border p-3 text-sm">{message}</p>}
