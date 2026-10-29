@@ -98,7 +98,6 @@ export async function rotateRefreshToken(presentedToken: string): Promise<Refres
       .limit(1);
     if (!record) return { status: 'INVALID' } as const;
     const [deviceSession] = await tx.select().from(planDeviceSessions).where(eq(planDeviceSessions.refreshTokenHash, presentedHash)).limit(1);
-    if (deviceSession && (deviceSession.revokedAt || deviceSession.expiresAt <= new Date())) return { status: 'EXPIRED' } as const;
 
     const now = new Date();
     if (record.revokedAt) {
@@ -118,6 +117,8 @@ export async function rotateRefreshToken(presentedToken: string): Promise<Refres
       await tx.update(planDeviceSessions).set({ revokedAt: now }).where(and(eq(planDeviceSessions.userRole, record.userRole), eq(planDeviceSessions.userId, record.userId), isNull(planDeviceSessions.revokedAt)));
       return { status: 'REUSED' } as const;
     }
+
+    if (deviceSession && (deviceSession.revokedAt || deviceSession.expiresAt <= now)) return { status: 'EXPIRED' } as const;
 
     if (record.expiresAt <= now) {
       await tx

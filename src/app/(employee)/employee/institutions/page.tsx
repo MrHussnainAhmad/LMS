@@ -3,8 +3,8 @@ import { ServerPagination } from "@/components/ui/server-pagination";
 import { actionFeedback } from '@/lib/action-feedback';
 import { ActionForm } from '@/components/ui/action-form';
 import { db } from "@/db";
-import { institutions } from "@/db/schema";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { institutions, institutionAgreementAcceptances, subscriptionPlans } from "@/db/schema";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Building2, FileSearch } from "lucide-react";
 import { getSession } from "@/lib/auth";
@@ -41,13 +41,15 @@ export default async function EmployeeVerificationQueuePage({ searchParams }: { 
     name: institutions.name,
     username: institutions.username,
     type: institutions.type,
-    pricingPlan: institutions.pricingPlan,
+    planName: sql<string>`COALESCE(NULLIF(${institutionAgreementAcceptances.snapshot}->'plan'->>'name', ''), ${subscriptionPlans.name}, CASE WHEN ${institutions.pricingPlan} IS NULL THEN 'Not selected' ELSE 'Unavailable plan' END)`,
     city: institutions.city,
     country: institutions.country,
     status: institutions.status,
     createdAt: institutions.createdAt,
   })
     .from(institutions)
+    .leftJoin(institutionAgreementAcceptances, eq(institutionAgreementAcceptances.institutionId, institutions.id))
+    .leftJoin(subscriptionPlans, eq(subscriptionPlans.id, institutions.pricingPlan))
     .where(and(isNull(institutions.parentInstitutionId), status === "ALL" ? undefined : eq(institutions.status, status)))
     .orderBy(desc(institutions.createdAt), desc(institutions.id)).limit(51).offset((page - 1) * 50);
   const allInstitutions = institutionRows.slice(0, 50);
@@ -122,7 +124,7 @@ export default async function EmployeeVerificationQueuePage({ searchParams }: { 
                     </td>
                     <td className="px-6 py-4 text-stone-600">{inst.type}</td>
                     <td className="px-6 py-4 text-stone-600 font-medium">
-                      {inst.pricingPlan ?? "Not selected"}
+                      {inst.planName}
                     </td>
                     <td className="px-6 py-4 text-stone-600">{inst.city}, {inst.country}</td>
                     <td className="px-6 py-4">

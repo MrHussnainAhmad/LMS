@@ -43,8 +43,13 @@ export function publicPaymentConfig(config: PaymentConfig) {
   return { mode:config.mode,gateways:GATEWAYS.map(id=>{
     const gateway=config.gateways[id];
     const approved=gateway?.environment !== 'production' || productionApproved(id);
+    const endpointReady=Boolean(gateway && endpointsReady(id,gateway.environment));
+    const notReadyReason=!gateway ? null : !approved
+      ? 'Credentials saved. Live payments await platform activation after merchant acceptance testing.'
+      : !endpointReady ? 'Credentials saved. The platform administrator must finish the gateway connection setup.'
+      : !gateway.enabled ? 'Credentials saved. Enable this gateway to make it available.' : null;
     return {id,configured:Boolean(gateway),enabled:Boolean(gateway?.enabled),environment:gateway?.environment ?? 'sandbox',
-      ready:Boolean(gateway?.enabled && approved && endpointsReady(id,gateway.environment)),
+      ready:Boolean(gateway?.enabled && approved && endpointReady),notReadyReason,
       merchantId:gateway?.credentials.merchantId ?? gateway?.credentials.storeId ?? '',
       accountNum:gateway?.credentials.accountNum ?? '',username:gateway?.credentials.username ?? ''};
   })};
@@ -72,7 +77,6 @@ export async function updatePaymentConfig(institutionId:number,body:unknown) {
       const credentials={...(same?previous?.credentials:{}),...Object.fromEntries(Object.entries(action.credentials).filter(([,value])=>value!==''))};
       const checked=credentialSchemas[action.gateway].safeParse(credentials);
       if(!checked.success)throw new PaymentError('Provide all merchant credentials. Re-enter secrets when changing merchant or environment.');
-      if(action.environment==='production'&&!productionApproved(action.gateway))throw new PaymentError('Production is locked until this gateway passes merchant acceptance testing.',409);
       config.gateways[action.gateway]={enabled:action.enabled,environment:action.environment,credentials:checked.data};
     } else {
       if(action.mode==='ONLINE') {

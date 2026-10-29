@@ -2,8 +2,8 @@ import { actionFeedback } from '@/lib/action-feedback';
 import { ActionForm } from '@/components/ui/action-form';
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { institutions } from "@/db/schema";
-import { desc, count, isNull } from "drizzle-orm";
+import { institutions, institutionAgreementAcceptances, subscriptionPlans } from "@/db/schema";
+import { desc, count, eq, isNull, sql } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Building2, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -25,13 +25,15 @@ export default async function SAInstitutionsPage({ searchParams }: { searchParam
       name: institutions.name,
       username: institutions.username,
       type: institutions.type,
-      pricingPlan: institutions.pricingPlan,
+      planName: sql<string>`COALESCE(NULLIF(${institutionAgreementAcceptances.snapshot}->'plan'->>'name', ''), ${subscriptionPlans.name}, CASE WHEN ${institutions.pricingPlan} IS NULL THEN 'Not selected' ELSE 'Unavailable plan' END)`,
       city: institutions.city,
       country: institutions.country,
       status: institutions.status,
       createdAt: institutions.createdAt,
     })
       .from(institutions)
+      .leftJoin(institutionAgreementAcceptances, eq(institutionAgreementAcceptances.institutionId, institutions.id))
+      .leftJoin(subscriptionPlans, eq(subscriptionPlans.id, institutions.pricingPlan))
       .where(isNull(institutions.parentInstitutionId))
       .orderBy(desc(institutions.createdAt))
       .limit(PAGE_SIZE)
@@ -112,7 +114,7 @@ export default async function SAInstitutionsPage({ searchParams }: { searchParam
                     </td>
                     <td className="px-6 py-4 text-stone-600 font-medium">{inst.type}</td>
                     <td className="px-6 py-4 text-stone-600 font-medium">
-                      {inst.pricingPlan ?? "Not selected"}
+                      {inst.planName}
                     </td>
                     <td className="px-6 py-4 text-stone-600">
                       {inst.city}, {inst.country}

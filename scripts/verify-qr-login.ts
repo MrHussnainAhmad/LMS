@@ -372,19 +372,40 @@ async function main() {
     ] as const) {
       const password = 'Isolated-password-test!42';
       await memory.query(`UPDATE ${table} SET password_hash=$1 WHERE id=$2`, [await hashPassword(password), id]);
+      for (const required of [false, true]) {
+        await memory.query(`UPDATE ${table} SET must_change_password=$1 WHERE id=$2`, [required, id]);
+        state.counts.clear();
+        const response = await passwordLogin.POST(new NextRequest('http://localhost:3000/api/auth/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emailOrUsername: identifier, password, roleHint: role, returnTokens: true }),
+        }));
+        assert.equal(response.status, 200);
+        const result = await response.json();
+        assert.equal(result.role, role);
+        assert.equal(result.mustChangePassword, required);
+        const decoded = await auth.verifyAccessToken(result.accessToken);
+        assert.equal(decoded?.userId, id);
+        assert.equal(decoded?.mustChangePassword, required);
+        assert.match(result.refreshToken, /^[a-f0-9]{80}$/);
+        state.counts.clear();
+        const renewed = await refresh.POST(new NextRequest('http://localhost:3000/api/auth/refresh', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: result.refreshToken }),
+        }));
+        assert.equal(renewed.status, 200);
+        assert.equal((await auth.verifyAccessToken((await renewed.json()).accessToken))?.mustChangePassword, required);
+      }
+      const identity = await owner(role, id);
+      const challenge = await service.createQrLogin(identity.owner);
       state.counts.clear();
-      const response = await passwordLogin.POST(new NextRequest('http://localhost:3000/api/auth/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emailOrUsername: identifier, password, roleHint: role, returnTokens: true }),
-      }));
-      assert.equal(response.status, 200);
-      const result = await response.json();
-      assert.equal(result.role, role);
-      assert.equal(result.mustChangePassword, false);
-      assert.equal((await auth.verifyAccessToken(result.accessToken))?.userId, id);
-      assert.match(result.refreshToken, /^[a-f0-9]{80}$/);
+      const qrResponse = await redeem.POST(native(challenge.qr));
+      assert.equal(qrResponse.status, 200);
+      const qrResult = await qrResponse.json();
+      assert.equal(qrResult.mustChangePassword, true);
+      assert.equal((await auth.verifyAccessToken(qrResult.accessToken))?.mustChangePassword, true);
+      await memory.query(`UPDATE ${table} SET must_change_password=false WHERE id=$1`, [id]);
     }
-    pass('unchanged Student and Staff password routes still verify Argon2 passwords and issue the same mobile response');
+    pass('Student and Staff login, refresh and QR redemption preserve forced password changes in responses and verified tokens');
 
     Object.assign(student, await owner());
     const old = await service.createQrLogin(student.owner);

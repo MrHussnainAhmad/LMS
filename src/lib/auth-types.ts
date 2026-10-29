@@ -1,7 +1,7 @@
 export type UserRole = 'SUPER_ADMIN' | 'EMPLOYEE' | 'INSTITUTION' | 'INSTITUTION_ADMIN' | 'STAFF' | 'STUDENT' | 'PARENT';
 
-export function requiresPasswordChange(role: string, mustChangePassword?: boolean): boolean {
-  return Boolean(mustChangePassword) && !['STUDENT', 'STAFF', 'PARENT'].includes(role);
+export function requiresPasswordChange(_role: string, mustChangePassword?: boolean): boolean {
+  return Boolean(mustChangePassword);
 }
 
 export interface JWTPayload {
