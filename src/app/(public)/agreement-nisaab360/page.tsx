@@ -99,7 +99,7 @@ export default async function AgreementPage({ searchParams }: {
                     <div><span className="block text-xs uppercase tracking-wide text-stone-500">Subscription fee</span><strong>{selectedPlan.monthly}</strong><span className="block text-sm text-stone-600">{selectedPlan.monthlyDetail}</span></div>
                   </div>
                   <p className="mt-3 text-sm text-stone-600">{selectedPlan.scale} · {selectedPlan.campusDetail}</p>
-                  {selectedPlan.definition ? <p className="mt-3 text-sm">Platform access: {selectedPlan.definition.platforms.join(', ')}{selectedPlan.definition.deviceLimit !== null ? ` · Devices allowed: ${selectedPlan.definition.deviceLimit}` : ''}</p> : null}
+                  {selectedPlan.definition ? <p className="mt-3 text-sm">Platform access: {selectedPlan.definition.platforms.join(', ')}</p> : null}
                   {selectedPlan.id === 'ENTERPRISE' ? <p className="mt-3 text-sm">Final Enterprise pricing and billing quantities require a written quotation accepted before activation.</p> : null}
                 </div>
               ) : <p>Select a pricing plan during registration. Enterprise or other individually negotiated charges must be confirmed in writing before activation.</p>}

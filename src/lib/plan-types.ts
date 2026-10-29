@@ -2,7 +2,7 @@ export type PlanDefinition = {
   id: string; kind: 'PUBLIC' | 'DEAL'; name: string;
   monthlyFeePaisa: number | null; setupFeePaisa: number | null; perStudentFeePaisa: number | null;
   studentLimit: number | null; studentCount: number | null; campusLimit: number | null;
-  platforms: string[]; deviceLimit: number | null; platformManagedCampuses: boolean;
+  platforms: string[]; platformManagedCampuses: boolean;
   audience: string; featured: boolean; revision: number;
 };
 export type PricingPlan = PlanDefinition & {
@@ -17,7 +17,7 @@ export function displayPlan(plan: PlanDefinition): PricingPlan {
     id: plan.id, kind: plan.kind, name: plan.name, monthlyFeePaisa: plan.monthlyFeePaisa,
     setupFeePaisa: plan.setupFeePaisa, perStudentFeePaisa: plan.perStudentFeePaisa,
     studentLimit: plan.studentLimit, studentCount: plan.studentCount, campusLimit: plan.campusLimit,
-    platforms: [...plan.platforms], deviceLimit: plan.deviceLimit, platformManagedCampuses: plan.platformManagedCampuses,
+    platforms: [...plan.platforms], platformManagedCampuses: plan.platformManagedCampuses,
     audience: plan.audience, featured: plan.featured, revision: plan.revision,
     monthly: plan.monthlyFeePaisa !== null ? formatRupees(plan.monthlyFeePaisa) : plan.perStudentFeePaisa !== null ? `From ${formatRupees(plan.perStudentFeePaisa)}` : 'Custom',
     setup: plan.setupFeePaisa === null ? 'Custom' : formatRupees(plan.setupFeePaisa),
@@ -30,7 +30,7 @@ export function displayPlan(plan: PlanDefinition): PricingPlan {
 export const PLAN_DIFFERENCE_FIELDS = [
   ['name', 'Plan name'], ['monthly', 'Monthly fee'], ['setup', 'One-time fee'],
   ['monthlyDetail', 'Billing'], ['campusDetail', 'Campuses'], ['scale', 'Students'],
-  ['platforms', 'Platform access'], ['deviceLimit', 'Devices allowed'],
+  ['platforms', 'Platform access'],
   ['platformManagedCampuses', 'Campus management'], ['audience', 'Description'],
 ] as const;
 export function planDifferences(before: PricingPlan | null, after: PricingPlan | null) {

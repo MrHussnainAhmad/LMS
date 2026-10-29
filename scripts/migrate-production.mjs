@@ -80,6 +80,7 @@ const SUPPLEMENTAL_MIGRATIONS = [
   "0082_institution_agreement_acceptance.sql",
   "0083_admin_managed_plans.sql",
   "0084_deal_code_fingerprints.sql",
+  "0085_remove_plan_device_limits.sql",
 ];
 
 if (!process.argv.includes("--apply"))

@@ -87,6 +87,19 @@ test('fresh actual migration chain matches backup/restore Drizzle definitions; a
       for (const column of config.columns) if (!actual.has(`${config.name}.${column.name}`)) missing.push(`${config.name}.${column.name}`);
     }
     assert.deepEqual(missing, [], 'Migration-created schema is missing application columns');
+    // Removing device allowances must still enforce the remaining deal terms.
+    await memory.exec(`INSERT INTO subscription_plans
+      (id,kind,name,student_count,student_limit,per_student_fee_paisa,monthly_fee_paisa)
+      VALUES ('NO_DEVICE_LIMIT','DEAL','No device allowance',10,20,100,1000)`);
+    await memory.exec("UPDATE subscription_plans SET device_limit=1 WHERE id='NO_DEVICE_LIMIT'");
+    const removeDeviceLimits = await readFile('drizzle/0085_remove_plan_device_limits.sql', 'utf8');
+    await memory.exec(removeDeviceLimits);
+    await memory.exec(removeDeviceLimits);
+    const { rows: [legacyPlan] } = await memory.query<{ device_limit: number }>("SELECT device_limit FROM subscription_plans WHERE id='NO_DEVICE_LIMIT'");
+    assert.equal(legacyPlan.device_limit, 1, 'Retain historical plan data without enforcing it');
+    await memory.exec("UPDATE subscription_plans SET device_limit=NULL WHERE id='NO_DEVICE_LIMIT'");
+    await assert.rejects(() => memory.exec("UPDATE subscription_plans SET student_limit=NULL WHERE id='NO_DEVICE_LIMIT'"));
+    await assert.rejects(() => memory.exec("UPDATE subscription_plans SET monthly_fee_paisa=999 WHERE id='NO_DEVICE_LIMIT'"));
     await memory.exec(await readFile(`drizzle/${repairName}`, 'utf8'));
     await verifySchema((sql, params) => memory.query(sql, params));
   } finally { await memory.close(); }

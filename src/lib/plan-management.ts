@@ -17,13 +17,13 @@ export const managedPlanSchema = z.object({
   monthlyFeePaisa: money, setupFeePaisa: money, perStudentFeePaisa: money,
   studentLimit: capacity, studentCount: capacity, campusLimit: capacity,
   platforms: z.array(z.string().trim().min(1).max(80)).min(1).max(20).transform(values => [...new Set(values)]),
-  deviceLimit: capacity, platformManagedCampuses: z.boolean().default(false),
+  platformManagedCampuses: z.boolean().default(false),
   audience: z.string().trim().max(160).default(''), featured: z.boolean().default(false),
   revision: z.number().int().positive().optional(),
 }).strict().superRefine((value, ctx) => {
   if (value.kind === 'PUBLIC' && value.monthlyFeePaisa === null && value.perStudentFeePaisa === null) ctx.addIssue({ code: 'custom', path: ['monthlyFeePaisa'], message: 'Enter a monthly fee or a starting per-student rate.' });
   if (value.kind === 'DEAL') {
-    if (!value.studentLimit || !value.studentCount || value.perStudentFeePaisa === null || !value.deviceLimit) ctx.addIssue({ code: 'custom', message: 'Dealed plans require a student allowance, billed student count, per-student rate and device allowance.' });
+    if (!value.studentLimit || !value.studentCount || value.perStudentFeePaisa === null) ctx.addIssue({ code: 'custom', message: 'Dealed plans require a student allowance, billed student count and per-student rate.' });
     if (value.studentCount && value.studentLimit && value.studentCount > value.studentLimit) ctx.addIssue({ code: 'custom', path: ['studentCount'], message: 'Billed students cannot exceed the student allowance.' });
     if ((value.perStudentFeePaisa ?? 0) * (value.studentCount ?? 0) > 2_000_000_000) ctx.addIssue({ code: 'custom', message: 'The calculated monthly fee is too large.' });
   }
@@ -44,7 +44,7 @@ export async function saveManagedPlan(input: unknown, actorId: number, id?: stri
     if (previous && revision !== previous.revision) throw new PlanError('Another admin changed this plan. Reload and try again.', 409);
     if (previous && Object.entries(data).every(([key, value]) => JSON.stringify(value) === JSON.stringify(previous[key as keyof typeof data]))) return displayPlan(previous);
     const planId = previous?.id ?? `${data.kind === 'DEAL' ? 'D' : 'P'}_${randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`;
-    const values = { ...data, revision: (previous?.revision ?? 0) + 1, updatedAt: new Date() };
+    const values = { ...data, deviceLimit: null, revision: (previous?.revision ?? 0) + 1, updatedAt: new Date() };
     const [saved] = previous
       ? await tx.update(subscriptionPlans).set(values).where(eq(subscriptionPlans.id, planId)).returning()
       : await tx.insert(subscriptionPlans).values({ ...values, id: planId, createdBy: actorId }).returning();
