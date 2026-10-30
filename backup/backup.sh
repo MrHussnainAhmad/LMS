@@ -11,14 +11,23 @@ control() {
 # Schedule enqueues before the local worker lock, so a concurrent poll cannot lose the nightly job.
 if [ "${1:-}" = '--nightly' ]; then control '{"action":"nightly"}' >/dev/null; fi
 exec 9>/backups/.backup.lock
-flock -n 9 || exit 0
-find /backups -maxdepth 1 -type f \( -name 'backup-*.dump' -o -name 'backup-*.dump.partial' -o -name 'backup-*.dump.enc' -o -name 'backup-*.dump.package' \) -mmin +120 -delete
-delivery=$(control '{"action":"retry-email"}' || printf '{}')
+if ! flock -n 9; then
+ [ "${1:-}" != '--manual' ] || exit 75
+ exit 0
+fi
+find /backups -maxdepth 1 -type f \( -name 'backup-*.dump' -o -name 'backup-*.dump.partial' -o -name 'backup-*.dump.enc' -o -name 'backup-*.dump.package' -o -name 'backup-*.started' \) -mmin +120 -delete
+delivery='{}'
+if [ "${1:-}" != '--manual' ]; then delivery=$(control '{"action":"retry-email"}' || printf '{}'); fi
 if [ "$(printf '%s' "$delivery" | jq -r '.delivered // 0')" -gt 0 ]; then
  latest_epoch=$(printf '%s' "$delivery" | jq -r '.latestSuccessEpoch // 0')
  if [ "$latest_epoch" -gt 0 ]; then printf '%s\n' "$latest_epoch" > /backups/last-success; rm -f /backups/last-failure; fi
 fi
-job=$(control '{"action":"claim"}')
+if [ "${1:-}" = '--manual' ]; then
+ case "${2:-}" in ''|*[!A-Za-z0-9_-]*) exit 1 ;; esac
+ job=$(control "{\"action\":\"claim\",\"runId\":\"${2}\"}")
+else
+ job=$(control '{"action":"claim"}')
+fi
 run_id=$(printf '%s' "$job" | jq -r '.job.runId // empty')
 [ -n "$run_id" ] || exit 0
 case "$run_id" in *[!A-Za-z0-9_-]*) exit 1 ;; esac
@@ -42,6 +51,7 @@ date -u +%s > /backups/last-attempt
 : "${POSTGRES_DATABASE:?Required}"
 : "${POSTGRES_USER:?Required}"
 : "${POSTGRES_PASSWORD:?Required}"
+date -u +%s > "/backups/backup-${run_id}.started"
 PGPASSWORD="${POSTGRES_PASSWORD}" pg_dump --host="${POSTGRES_HOST}" --username="${POSTGRES_USER}" --dbname="${POSTGRES_DATABASE}" \
  --format=custom --compress=6 --no-owner --no-acl --file="${filepath}.partial"
 pg_restore --list "${filepath}.partial" >/dev/null

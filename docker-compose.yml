@@ -79,7 +79,7 @@ services:
       # this attachment makes the direct migration connection reachable.
       - appnet
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-app}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -261,6 +261,8 @@ services:
         condition: service_completed_successfully
       backup-volume-init:
         condition: service_completed_successfully
+      postgres-backup:
+        condition: service_healthy
     networks:
       - appnet
       - backend
@@ -355,6 +357,8 @@ services:
         condition: service_completed_successfully
       backup-volume-init:
         condition: service_completed_successfully
+      postgres-backup:
+        condition: service_healthy
     networks:
       - appnet
       - backend
@@ -557,10 +561,6 @@ services:
       CENTRAL_DATABASE_BACKUP_DRIVE_FOLDER_ID: ${CENTRAL_DATABASE_BACKUP_DRIVE_FOLDER_ID:-}
     depends_on:
       postgres:
-        condition: service_healthy
-      app:
-        condition: service_healthy
-      app2:
         condition: service_healthy
       backup-volume-init:
         condition: service_completed_successfully

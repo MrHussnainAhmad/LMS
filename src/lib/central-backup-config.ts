@@ -83,11 +83,22 @@ export async function beginRecoveryEmail(email: string, actor: number) {
  email_verification_expires_at=now()+interval '15 minutes',email_verification_attempts=0,updated_by=$3,updated_at=now()`,
     [email, digest, actor],
   );
-  await sendRecoveryEmail(
-    email,
-    "Verify your Nisaab360 backup recovery email",
-    `Verification code: ${code}\n\nThis code expires in 15 minutes. Future database backup passwords will be sent to this address.\nIf you did not request this, ignore this message.`,
-  );
+  try {
+    await sendRecoveryEmail(
+      email,
+      "Verify your Nisaab360 backup recovery email",
+      `Verification code: ${code}\n\nThis code expires in 15 minutes. Future database backup passwords will be sent to this address.\nIf you did not request this, ignore this message.`,
+    );
+  } catch (error) {
+    // Do not advertise an unsent code. Match its hash so a concurrent, newer
+    // request is preserved; the existing verified recovery address stays active.
+    await pool.query(
+      `UPDATE central_backup_settings SET pending_recovery_email=NULL,email_verification_hash=NULL,
+ email_verification_expires_at=NULL,email_verification_attempts=0 WHERE id=1 AND email_verification_hash=$1`,
+      [digest],
+    ).catch(() => {});
+    throw error;
+  }
 }
 export async function confirmRecoveryEmail(code: string) {
   const {
@@ -128,6 +139,7 @@ export async function queueDatabaseBackup(
   kind: "NIGHTLY" | "MANUAL",
   actor?: number,
 ) {
+  await reconcileBackupHistory();
   const settings = await getBackupSettings();
   if (!backupReady(settings))
     throw Error(
@@ -149,5 +161,13 @@ export async function queueDatabaseBackup(
     [runId, kind],
   );
   return job ?? { run_id: runId, status: "COMPLETED" };
+}
+export async function reconcileBackupHistory() {
+  await pool.query(`UPDATE central_backup_jobs SET status='FAILED',completed_at=now(),error='Backup did not start or its worker was interrupted. Start a new backup.'
+ WHERE (status='PENDING' AND created_at<now()-interval '2 minutes')
+ OR (status='RUNNING' AND started_at<now()-interval '2 hours')`);
+  await pool.query(`UPDATE central_database_backups SET status='FAILED',completed_at=now(),
+ error=COALESCE(error,error_message,'This backup attempt was interrupted and never completed. Remote files have been preserved.')
+ WHERE status IN ('PENDING','UPLOADING') AND started_at<now()-interval '2 hours' AND drive_verified_at IS NULL`);
 }
 export { encryptStreamingCredentials, decryptStreamingCredentials };

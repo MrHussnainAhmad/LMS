@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { createCipheriv, randomBytes, scryptSync } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
@@ -157,10 +158,102 @@ test('Compose orders migration/volume initialization; runtime identity and reten
     assert.equal(compose.services[name].environment.CENTRAL_DATABASE_BACKUP_KEEP_DAILY,undefined);
   }
   assert.equal(compose.services['backup-volume-init'].network_mode,'none');
-  assert.equal(compose.services['postgres-backup'].depends_on.app.condition,'service_healthy');
+  for (const name of ['app','app2']) assert.equal(compose.services[name].depends_on['postgres-backup'].condition,'service_healthy');
+  assert.equal(compose.services['postgres-backup'].depends_on.app,undefined);
+  assert.equal(compose.services['postgres-backup'].depends_on.app2,undefined);
+  assert.equal(compose.services['postgres-backup'].ports,undefined);
   assert.equal(compose.services['postgres-backup'].environment.TZ,'UTC');
   assert.match(await readFile('Dockerfile','utf8'),/USER nextjs:nodejs/);
   assert.match(await readFile('deployment/compose.release.yml','utf8'),/backup-volume-init:[\s\S]*?image: \$\{BACKUP_IMAGE/);
+});
+
+test('private backup worker starts the exact request before acknowledging, rejects forged requests and prevents duplicate processes', async () => {
+  const { createBackupServer } = require('../backup/control-server.cjs');
+  const directory = await mkdtemp(path.join(tmpdir(), 'n360-worker-'));
+  let starts = 0;
+  let busy = false;
+  let child: (EventEmitter & { exitCode: number | null; signalCode: string | null; kill: () => void }) | undefined;
+  const server = createBackupServer({ secret: 'synthetic-worker-secret', directory, launch: (command: string, args: string[], options: { shell: boolean }) => {
+    assert.equal(command, '/backup.sh');
+    assert.deepEqual(args.slice(0, 1), ['--manual']);
+    assert.equal(options.shell, false);
+    starts++;
+    const process = Object.assign(new EventEmitter(), { exitCode: null as number | null, signalCode: null as string | null, kill: () => { process.exitCode = 143; process.emit('exit', 143); } });
+    child = process;
+    setTimeout(() => { if (busy) { process.exitCode = 75; process.emit('exit', 75); } else void writeFile(path.join(directory, `backup-${args[1]}.started`), 'started'); }, 10);
+    return process;
+  } });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const origin = `http://127.0.0.1:${address.port}`;
+  const request = (id: string, authorized = true) => fetch(origin + '/start', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(authorized ? { Authorization: 'Bearer synthetic-worker-secret' } : {}) }, body: JSON.stringify({ runId: id }) });
+  try {
+    assert.equal((await fetch(origin + '/health')).status, 200);
+    assert.equal((await request('manual-fixture', false)).status, 401);
+    assert.equal((await request('../unsafe')).status, 400);
+    assert.equal(starts, 0);
+    const response = await request('manual-fixture');
+    assert.equal(response.status, 202);
+    assert.deepEqual(await response.json(), { started: true, runId: 'manual-fixture' });
+    await access(path.join(directory, 'backup-manual-fixture.started'));
+    assert.equal((await request('manual-fixture')).status, 202);
+    assert.equal(starts, 1);
+    assert.equal((await request('another-run')).status, 409);
+    child!.kill();
+    busy = true;
+    assert.equal((await request('busy-run')).status, 409);
+  } finally {
+    await new Promise<void>(resolve => { server.close(resolve); server.closeAllConnections(); });
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('native worker immediately creates a real PostgreSQL 16 dump without a terminal poll', { skip: !process.env.BACKUP_TEST_DOCKER_IMAGE }, async () => {
+  const image = process.env.BACKUP_TEST_DOCKER_IMAGE!;
+  const prefix = 'n360-backup-native-' + randomBytes(4).toString('hex');
+  const names = { database: prefix + '-pg', app: prefix + '-app', worker: prefix + '-worker', volume: prefix + '-volume', network: prefix + '-network' };
+  const directory = await mkdtemp(path.join(tmpdir(), prefix));
+  const docker = (...args: string[]) => execFileSync('docker', args, { encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const pause = () => new Promise(resolve => setTimeout(resolve, 300));
+  const label = 'nisaab360.test=' + prefix;
+  try {
+    docker('network', 'create', '--label', label, names.network);
+    docker('volume', 'create', '--label', label, names.volume);
+    docker('run', '--rm', '--network', 'none', '-v', names.volume + ':/backups', image, '--init-volume');
+    docker('run', '-d', '--name', names.database, '--label', label, '--network', names.network, '--network-alias', 'postgres', '--tmpfs', '/var/lib/postgresql/data', '-e', 'POSTGRES_USER=app', '-e', 'POSTGRES_DB=app', '-e', 'POSTGRES_PASSWORD=disposable-native-fixture-password', 'postgres:16-alpine');
+    let ready = false;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      try { docker('exec', names.database, 'pg_isready', '-h', '127.0.0.1', '-U', 'app', '-d', 'app'); ready = true; break; } catch { await pause(); }
+    }
+    assert.ok(ready, 'Disposable PostgreSQL must become ready');
+    docker('exec', names.database, 'psql', '-U', 'app', '-d', 'app', '-v', 'ON_ERROR_STOP=1', '-c', 'CREATE TABLE fixture_values(id integer PRIMARY KEY); INSERT INTO fixture_values VALUES(42);');
+    const fixture = path.join(directory, 'app-fixture.cjs');
+    await writeFile(fixture, `const http=require('node:http'),fs=require('node:fs'),crypto=require('node:crypto'),cp=require('node:child_process');let claimed=false,uploaded=false,finished=false;http.createServer(async(req,res)=>{const reply=(s,b)=>{res.writeHead(s,{'Content-Type':'application/json'});res.end(JSON.stringify(b))};if(req.url==='/result')return reply(200,{claimed,uploaded,finished});if(req.headers.authorization!=='Bearer synthetic-native-cron-secret')return reply(401,{});let text='';for await(const part of req)text+=part;const body=JSON.parse(text);if(req.url.endsWith('/control')){if(body.action==='retry-email')return reply(200,{delivered:0});if(body.action==='claim'){if(body.runId!=='manual-native-check'||claimed)return reply(200,{job:null});claimed=true;return reply(200,{job:{runId:body.runId,fileName:'database-2026-10-30-21-00-1234567890abcdef.dump'}})}if(body.action==='finish'){finished=body.success===true;return reply(200,{success:true})}}if(req.url==='/api/cron/central-backup'){try{const stat=fs.statSync(body.filePath),data=fs.readFileSync(body.filePath),catalog=cp.execFileSync('pg_restore',['--list',body.filePath],{encoding:'utf8'});if(stat.uid!==1001||(stat.mode&63)!==0||data.length!==body.fileSizeBytes||crypto.createHash('sha256').update(data).digest('hex')!==body.sha256||!catalog.includes('fixture_values'))throw Error('Invalid native dump');uploaded=true;return reply(200,{success:true})}catch{return reply(500,{error:'Native dump validation failed'})}}reply(400,{})}).listen(3000,'0.0.0.0');`);
+    docker('create', '--name', names.app, '--label', label, '--network', names.network, '--network-alias', 'app', '--user', '1001:1001', '--tmpfs', '/var/lib/postgresql/data', '-v', names.volume + ':/backups', '--entrypoint', 'node', image, '/tmp/app-fixture.cjs');
+    docker('cp', fixture, names.app + ':/tmp/app-fixture.cjs');
+    docker('start', names.app);
+    docker('run', '-d', '--init', '--name', names.worker, '--label', label, '--network', names.network, '--network-alias', 'worker', '--tmpfs', '/var/lib/postgresql/data', '--cap-drop', 'ALL', '--cap-add', 'SETUID', '--cap-add', 'SETGID', '--security-opt', 'no-new-privileges:true', '-v', names.volume + ':/backups', '-e', 'CRON_SECRET=synthetic-native-cron-secret', '-e', 'POSTGRES_HOST=postgres', '-e', 'POSTGRES_DATABASE=app', '-e', 'POSTGRES_USER=app', '-e', 'POSTGRES_PASSWORD=disposable-native-fixture-password', image);
+    ready = false;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      try { docker('exec', '--user', '1001:1001', names.worker, '/healthcheck.sh'); ready = true; break; } catch { await pause(); }
+    }
+    assert.ok(ready, 'Worker listener and private volume must be ready');
+    const probe = `const assert=require('node:assert/strict');(async()=>{const before=Date.now();const denied=await fetch('http://worker:8788/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'manual-native-check'})});assert.equal(denied.status,401);const response=await fetch('http://worker:8788/start',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer synthetic-native-cron-secret'},body:JSON.stringify({runId:'manual-native-check'})});assert.equal(response.status,202,await response.text());assert.ok(Date.now()-before<15000);let result;for(let n=0;n<50;n++){result=await(await fetch('http://app:3000/result')).json();if(result.finished)break;await new Promise(r=>setTimeout(r,100))}assert.deepEqual(result,{claimed:true,uploaded:true,finished:true});const rejected=await fetch('http://worker:8788/start',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer synthetic-native-cron-secret'},body:JSON.stringify({runId:'unclaimable-run'})});assert.equal(rejected.status,503);console.log('PASS real PostgreSQL dump: direct start, UID 1001, private file permissions, catalog/hash verification, completion, and rejected invalid start.')})().catch(e=>{console.error(e);process.exitCode=1});`;
+    const output = docker('exec', names.worker, 'node', '-e', probe);
+    assert.match(output, /PASS real PostgreSQL dump/);
+  } catch (error) {
+    for (const name of [names.worker, names.app]) try { console.error(docker('logs', '--tail', '20', name)); } catch {}
+    throw error;
+  } finally {
+    for (const name of [names.worker, names.app, names.database]) {
+      try { if (docker('inspect', '--format', '{{index .Config.Labels "nisaab360.test"}}', name) === prefix) docker('rm', '-f', '-v', name); } catch {}
+    }
+    for (const [kind, name] of [['volume', names.volume], ['network', names.network]]) {
+      try { if (docker(kind, 'inspect', '--format', '{{index .Labels "nisaab360.test"}}', name) === prefix) docker(kind, 'rm', name); } catch {}
+    }
+    assert.ok(path.resolve(directory).startsWith(path.resolve(tmpdir()) + path.sep));
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 async function isolatedModule<T>(entry: string, mocks: Record<string,string>): Promise<T> {

@@ -19,22 +19,22 @@ Use the full Docker stack when testing the production build and database backup 
 
 ```powershell
 cd D:\lms-backend-tunned\lms-backend
-npm run local:docker -- --backups
+npm run local:docker
 ```
 
 This starts the existing Linux images and the backup worker. It does not rebuild
 the website, stop it for migrations, or take another migration snapshot.
 If only the backup worker image is missing, it builds just that small image.
-Existing worker services are left as they are; omit `--backups` to avoid starting
-the backup worker if it is stopped.
-Enabling the backup worker permits the configured nightly job and password-email
-retries as well as manually requested database backups.
+The backup service is always started with the Docker website so **Back up now**
+can start processing directly. It stays idle until backup setup is enabled or an
+existing recovery-email delivery needs retrying. The older `--backups` argument
+is accepted for compatibility and is no longer required.
 
 For first setup, or after changing source code or database migrations, explicitly
 build and update the stack:
 
 ```powershell
-npm run local:docker -- --rebuild --backups
+npm run local:docker -- --rebuild
 ```
 
 This saves an encrypted database snapshot before applying migrations, provisions

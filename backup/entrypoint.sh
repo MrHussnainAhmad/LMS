@@ -8,4 +8,5 @@ printf '%s\n' '0 21 * * * /backup.sh --nightly >> /proc/1/fd/1 2>> /proc/1/fd/2'
 # Poll only manually queued jobs and retry password delivery; this does not create extra snapshots.
 printf '%s\n' '* * * * * /backup.sh --poll >> /proc/1/fd/1 2>> /proc/1/fd/2' >> /etc/crontabs/root
 su-exec 1001:1001 sh -c 'date -u +%s > /backups/worker-started'
-exec crond -f -d 8
+crond -b -l 8
+exec su-exec 1001:1001 node /control-server.cjs

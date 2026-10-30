@@ -6,6 +6,7 @@ import {
   getBackupSettings,
   backupReady,
   queueDatabaseBackup,
+  reconcileBackupHistory,
 } from "@/lib/central-backup-config";
 import { retryBackupEmailDelivery } from "@/lib/central-backup-delivery";
 import { readJsonBody } from "@/lib/http";
@@ -72,13 +73,13 @@ export async function POST(req: Request) {
     }
     if (action !== "claim")
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-    await pool.query(
-      "UPDATE central_backup_jobs SET status='FAILED',completed_at=now(),error='Backup worker interrupted.' WHERE status='RUNNING' AND started_at<now()-interval '2 hours'",
-    );
+    if (runId !== undefined && (typeof runId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(runId))) return NextResponse.json({ error: 'Invalid run' }, { status: 400 });
+    await reconcileBackupHistory();
     const {
       rows: [job],
     } = await pool.query(
-      `UPDATE central_backup_jobs SET status='RUNNING',started_at=now(),attempts=attempts+1 WHERE run_id=(SELECT run_id FROM central_backup_jobs WHERE status='PENDING' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING run_id,created_at`,
+      `UPDATE central_backup_jobs SET status='RUNNING',started_at=now(),attempts=attempts+1 WHERE run_id=(SELECT run_id FROM central_backup_jobs WHERE status='PENDING' AND ($1::text IS NULL OR run_id=$1) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING run_id,created_at`,
+      [runId ?? null],
     );
     if (!job) return NextResponse.json({ ready: true, job: null });
     const timestamp = new Date(job.created_at)

@@ -74,20 +74,20 @@ function hasImage(service) {
 }
 if (!process.argv.includes('--rebuild')) {
   if (!hasImage('app') || !hasImage('app2')) {
-    throw Error('Local web images are missing. Run npm start -- --rebuild once for initial setup. Add --backups to include the backup worker.');
+    throw Error('Local web images are missing. Run npm start -- --rebuild once for initial setup.');
   }
-  if (process.argv.includes('--backups') && !hasImage('postgres-backup')) {
+  if (!hasImage('postgres-backup')) {
     run([...compose, 'build', 'postgres-backup'], 'Building only the missing backup worker image; the website is not rebuilt');
   }
   run([...compose, 'up', '-d', '--no-build', '--wait', 'postgres', 'pgbouncer', 'valkey'], 'Starting existing database and cache services (no rebuild)');
+  run([...compose, 'up', '-d', '--no-build', '--no-deps', '--wait', 'postgres-backup'], 'Starting the backup service for Back up now');
   run([...compose, 'up', '-d', '--no-build', '--no-deps', '--wait', 'app', 'app2', 'caddy'], 'Starting the existing web images (no build or migrations)');
-  if (process.argv.includes('--backups')) run([...compose, 'up', '-d', '--no-build', '--no-deps', 'postgres-backup'], 'Starting the backup worker without rebuilding the website');
   console.info('Local website: https://localhost/login/super-admin');
-  console.info('Using the last built version. To apply source changes or migrations, run npm start -- --rebuild (add --backups if needed).');
+  console.info('Using the last built version. To apply source changes or migrations, run npm start -- --rebuild.');
   process.exit(0);
 }
 
-run([...compose, 'build', 'migrate', 'app', 'app2', 'backup-volume-init', ...(process.argv.includes('--backups') ? ['postgres-backup'] : [])], 'Building updated local Docker images');
+run([...compose, 'build', 'migrate', 'app', 'app2', 'backup-volume-init', 'postgres-backup'], 'Building updated local Docker images');
 run([...compose, 'stop', 'app', 'app2', 'push-receipt-worker', 'institution-restore-worker', 'payment-reconciliation-worker', 'postgres-backup'], 'Stopping only this local stack before migration');
 run([...compose, 'up', '-d', '--wait', 'postgres'], 'Starting the local PostgreSQL service');
 const stamp = new Date().toISOString().replace(/[:.]/g,'-');
@@ -106,8 +106,8 @@ run([...compose, 'run', '--rm', '--no-deps', 'migrate'], 'Applying current local
 run([...compose, 'run', '--rm', '--no-deps', '--volume', `${path.join(root,'scripts','provision-runtime-role.mjs')}:/app/scripts/provision-runtime-role.mjs:ro`, '-e', 'DATABASE_RUNTIME_USER', '-e', 'DATABASE_RUNTIME_PASSWORD', 'migrate', 'node', 'scripts/provision-runtime-role.mjs', '--apply'], 'Provisioning the restricted local runtime role');
 run([...compose, 'run', '--rm', '--no-deps', 'backup-volume-init'], 'Preparing the private backup volume');
 run([...compose, 'up', '-d', '--wait', 'pgbouncer', 'valkey'], 'Starting local pooled database and cache services');
+run([...compose, 'up', '-d', '--no-deps', '--wait', 'postgres-backup'], 'Starting the backup service for Back up now');
 run([...compose, 'up', '-d', '--no-deps', '--wait', 'app', 'app2', 'caddy'], 'Starting the local web build');
-if (process.argv.includes('--backups')) run([...compose, 'up', '-d', '--no-deps', 'postgres-backup'], 'Starting the local backup worker you requested');
 console.info('Local build is ready: https://localhost/login/super-admin');
 console.info('Accept the local Caddy certificate if prompted. Existing accounts remain; security migrations require signing in again.');
-console.info('Background mail/payment/school workers stay stopped. Add --backups when you want the manual database-backup queue processed.');
+console.info('Back up now starts directly from the page. Other mail/payment/school workers stay stopped.');

@@ -7,8 +7,8 @@ import { requireRole } from "@/lib/rbac";
 import { centralDriveOAuthUrl } from "@/lib/central-drive-backups";
 import {
   secretHash,
-  verifyBackupAdministrator,
 } from "@/lib/central-backup-config";
+import { confirmBackupAdministrator, withBackupConfirmation, backupConfirmationError } from "@/lib/backup-confirmation";
 import { readJsonBody, AUTH_MAX_BODY_BYTES } from "@/lib/http";
 import { withRateLimit } from "@/lib/rate-limit";
 export const POST = requireRole(
@@ -23,17 +23,16 @@ export const POST = requireRole(
       req,
       AUTH_MAX_BODY_BYTES,
     );
-    if (!parsed.ok || typeof parsed.data?.currentPassword !== "string")
+    if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+    if (parsed.data?.currentPassword !== undefined && typeof parsed.data.currentPassword !== "string")
       return NextResponse.json(
-        { error: "Current password is required" },
+        { error: "Invalid password confirmation" },
         { status: 400 },
       );
     let phase: "password" | "configuration" | "state" = "password";
+    let confirmation: Awaited<ReturnType<typeof confirmBackupAdministrator>> | undefined;
     try {
-      await verifyBackupAdministrator(
-        session.userId,
-        parsed.data.currentPassword,
-      );
+      confirmation = await confirmBackupAdministrator(req, session, parsed.data?.currentPassword as string | undefined);
       phase = "configuration";
       const nonce = randomBytes(32).toString("base64url");
       const state = await new SignJWT({
@@ -53,30 +52,17 @@ export const POST = requireRole(
    ON CONFLICT(id) DO UPDATE SET oauth_state_hash=$1,oauth_state_expires_at=now()+interval '15 minutes'`,
         [secretHash(nonce)],
       );
-      return NextResponse.json(
-        { authorizationUrl },
+      return withBackupConfirmation(NextResponse.json(
+        { authorizationUrl, confirmationExpiresAt: confirmation.expiresAt },
         { headers: { "Cache-Control": "no-store" } },
-      );
+      ), confirmation);
     } catch (error) {
-      if (phase === "password" && error instanceof Error &&
-        ["Current password is required", "Current password is incorrect"].includes(error.message)) {
-        return NextResponse.json(
-          { error: "Enter the current password you use to sign in to Super Admin, then connect Google Drive." },
-          { status: 400, headers: { "Cache-Control": "no-store" } },
-        );
-      }
+      if (phase === "password") return backupConfirmationError(error, confirmation, "Could not verify your current password. Please try again.", 503);
       // Do not log passwords, OAuth state, secrets, connection URLs or raw SQL errors.
       console.warn("Google Drive connection could not start", { phase });
-      return NextResponse.json(
-        {
-          error: phase === "configuration"
+      return backupConfirmationError(error, confirmation, phase === "configuration"
             ? "Google Drive OAuth is not configured correctly on this server. Check the OAuth client and callback settings."
-            : phase === "password"
-              ? "Could not verify your current password. Please try again."
-              : "Could not save the Google Drive connection request. Please try again.",
-        },
-        { status: 503, headers: { "Cache-Control": "no-store" } },
-      );
+            : "Could not save the Google Drive connection request. Please try again.", 503);
     }
   },
   { permission: "platform.security" },

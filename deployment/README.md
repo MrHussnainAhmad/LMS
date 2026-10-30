@@ -38,7 +38,7 @@ new privileges. Deployment commands below explicitly start services when run.
      -f docker-compose.yml -f deployment/compose.release.yml run --rm migrate
    docker compose --env-file .env --env-file deployment/release.env \
      -f docker-compose.yml -f deployment/compose.release.yml up -d --wait \
-     postgres pgbouncer valkey app app2 caddy push-receipt-worker institution-restore-worker
+     postgres pgbouncer valkey app app2 caddy push-receipt-worker institution-restore-worker payment-reconciliation-worker
    ```
 
    Both web replicas automatically wait for the migrator and `backup-volume-init`.
@@ -47,8 +47,13 @@ new privileges. Deployment commands below explicitly start services when run.
    upgrade, stop backup jobs/web replicas and explicitly run the new migrator and
    initializer before recreating the apps, as described in the report.
 
-   Start the backup service only after central Google Drive OAuth, folders and
-   the administrator encryption password are configured. Validate readiness,
+   Both web replicas depend on the healthy backup service, so Compose starts it
+   automatically. The private start listener is not published on a host port and
+   authenticates requests with the existing `CRON_SECRET`. **Back up now** starts
+   its specific backup directly and confirms processing has started before showing
+   success. A failed start is reported immediately instead of remaining pending.
+   Build/deploy the matching app and backup images together. Completing the dump,
+   encryption, upload and password email takes additional time. Validate readiness,
    login, one tenant host, email delivery and a backup before recording success.
    Application rollback uses previous image digests. It does not undo migrations;
    migration 0074 enables multiple challans in a month, so an older fee generator

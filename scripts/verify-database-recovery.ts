@@ -14,7 +14,8 @@ import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { build } from "esbuild";
 import { PGlite } from "@electric-sql/pglite";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { SignJWT } from "jose";
 import {
   createRecoveryPackage,
   extractRecoveryPackage,
@@ -198,6 +199,7 @@ test("central backup setup, OTP, queue, encrypted password delivery, retries and
   process.env.STREAMING_CREDENTIALS_SECRET =
     "synthetic-credential-key-at-least-32-characters";
   const memory = await PGlite.create();
+  const previousFetch = globalThis.fetch;
   const state = {
     query: async (sql: string, params?: unknown[]) => {
       const value = await memory.query(sql, params);
@@ -205,10 +207,23 @@ test("central backup setup, OTP, queue, encrypted password delivery, retries and
     },
     mail: [] as { to: string; subject: string; text: string }[],
     failMail: false,
+    workerFailure: false,
+    workerLostAck: false,
+    workerStarts: 0,
+    auditFailure: false,
     deleted: [] as string[],
-    session: { role: "SUPER_ADMIN", userId: 1, isSuperAdmin: true },
+    session: { role: "SUPER_ADMIN", userId: 1, isSuperAdmin: true, planDeviceSessionId: "synthetic-device-session" },
   };
   (globalThis as any).__databaseRecovery = state;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(String(url), "http://postgres-backup:8788/start");
+    if (state.workerFailure) throw Error("Synthetic worker unavailable");
+    const { runId } = JSON.parse(String(options?.body));
+    await state.query("UPDATE central_backup_jobs SET status='RUNNING',started_at=now() WHERE run_id=$1 AND status='PENDING'", [runId]);
+    state.workerStarts++;
+    if (state.workerLostAck) throw Error("Synthetic acknowledgement lost");
+    return Response.json({ started: true, runId }, { status: 202 });
+  };
   const mocks: Record<string, string> = {
     "@/db":
       "export const pool={query:(...args)=>globalThis.__databaseRecovery.query(...args)};",
@@ -222,7 +237,7 @@ test("central backup setup, OTP, queue, encrypted password delivery, retries and
       "export const verifyCentralDriveFile=async()=>true;export const deleteDriveFile=async id=>{globalThis.__databaseRecovery.deleted.push(id)};",
     "@/lib/rbac": `export const requireRole=(_roles,handler)=>async(req,context={})=>{const session=globalThis.__databaseRecovery.session;if(session.role!=='SUPER_ADMIN'||!session.isSuperAdmin)return Response.json({error:'Forbidden'},{status:403});return handler(req,{...context,session});};`,
     "@/lib/rate-limit": "export const withRateLimit=async()=>({success:true});",
-    "@/lib/audit": "export const logAudit=async()=>{};",
+    "@/lib/audit": "export const logAudit=async()=>{if(globalThis.__databaseRecovery.auditFailure)throw Error('Synthetic audit failure')};",
   };
   try {
     await memory.exec(
@@ -307,6 +322,118 @@ test("central backup setup, OTP, queue, encrypted password delivery, retries and
         );
       },
     );
+    await t.test("recovery email API distinguishes password and mail failures, clears unsent codes and accepts trimmed addresses", async () => {
+      const settings = await load<typeof import("../src/app/api/sa/central-backup/settings/route")>(
+        "src/app/api/sa/central-backup/settings/route.ts", mocks,
+      );
+      const request = (action: string, extra: Record<string, string>) => settings.PUT(new NextRequest(
+        "https://example.test/api/sa/central-backup/settings",
+        { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, currentPassword: "correct-current-password", ...extra }) },
+      ), {});
+      const mailCount = state.mail.length;
+      const wrongPassword = await request("send-code", { email: "recovery@example.test", currentPassword: "wrong" });
+      assert.equal(wrongPassword.status, 400);
+      assert.match((await wrongPassword.json()).error, /password is incorrect/);
+      assert.equal(state.mail.length, mailCount);
+      assert.equal((await request("send-code", { email: "invalid" })).status, 400);
+      state.failMail = true;
+      const failed = await request("send-code", { email: "replacement@example.test" });
+      assert.equal(failed.status, 503);
+      assert.equal(failed.headers.get("cache-control"), "no-store");
+      assert.match((await failed.json()).error, /Could not send the verification email/);
+      const unchanged = await config.getBackupSettings();
+      assert.equal(unchanged!.pending_recovery_email, null);
+      assert.equal(unchanged!.email_verification_hash, null);
+      assert.equal(unchanged!.recovery_email, "recovery@example.test");
+      assert.ok(unchanged!.recovery_email_verified_at);
+      state.failMail = false;
+      const sent = await request("send-code", { email: "  Recovery@Example.test  " });
+      assert.equal(sent.status, 200);
+      assert.equal(state.mail.at(-1)!.to, "recovery@example.test");
+      const sentCode = state.mail.at(-1)!.text.match(/Verification code: ([A-F0-9]{8})/)![1];
+      const invalid = await request("verify-code", { code: sentCode === "00000000" ? "FFFFFFFF" : "00000000" });
+      assert.equal(invalid.status, 400);
+      assert.match((await invalid.json()).error, /invalid, expired or already used/);
+      assert.equal((await request("verify-code", { code: sentCode })).status, 200);
+    });
+    await t.test("one password confirmation covers backup actions and reloads; expired, forged and other-session proofs fail closed", async () => {
+      const confirmation = await load<typeof import("../src/lib/backup-confirmation")>("src/lib/backup-confirmation.ts", mocks);
+      const settings = await load<typeof import("../src/app/api/sa/central-backup/settings/route")>("src/app/api/sa/central-backup/settings/route.ts", mocks);
+      const jobs = await load<typeof import("../src/app/api/sa/central-backup/jobs/route")>("src/app/api/sa/central-backup/jobs/route.ts", mocks);
+      const connect = await load<typeof import("../src/app/api/sa/central-backup/google-drive/connect/route")>("src/app/api/sa/central-backup/google-drive/connect/route.ts", mocks);
+      const session = { role: "SUPER_ADMIN" as const, userId: 1, isSuperAdmin: true, planDeviceSessionId: "synthetic-device-session" };
+      const request = (body?: Record<string, unknown>, cookie?: string, endpoint = "settings") => new NextRequest(
+        "https://example.test/api/sa/central-backup/" + endpoint,
+        { method: body ? endpoint === "settings" ? "PUT" : "POST" : "GET", headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(cookie ? { cookie } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) },
+      );
+      const locked = await settings.PUT(request({ action: "enable", enabled: false }), {});
+      assert.equal(locked.status, 403);
+      assert.equal((await locked.json()).code, "BACKUP_CONFIRMATION_REQUIRED");
+      const priorDeployment = process.env.DEPLOYMENT_ENV;
+      process.env.DEPLOYMENT_ENV = "production";
+      let granted: Awaited<ReturnType<typeof confirmation.confirmBackupAdministrator>>;
+      let cookie: string;
+      try {
+        granted = await confirmation.confirmBackupAdministrator(request(), session, "correct-current-password");
+        const response = confirmation.withBackupConfirmation(NextResponse.json({}), granted);
+        const header = response.headers.get("set-cookie")!;
+        assert.match(header, /HttpOnly/i);
+        assert.match(header, /Secure/i);
+        assert.match(header, /SameSite=lax/i);
+        assert.match(header, /Path=\/api\/sa\/central-backup/i);
+        cookie = header.split(";")[0];
+        assert.ok(Date.parse(granted.expiresAt) - Date.now() <= 900_000);
+      } finally {
+        if (priorDeployment === undefined) delete process.env.DEPLOYMENT_ENV;
+        else process.env.DEPLOYMENT_ENV = priorDeployment;
+      }
+      const reload = await settings.GET(request(undefined, cookie), {});
+      assert.equal((await reload.json()).confirmationExpiresAt, granted.expiresAt);
+      const sent = await settings.PUT(request({ action: "send-code", email: "recovery@example.test" }, cookie), {});
+      assert.equal(sent.status, 200);
+      const code = state.mail.at(-1)!.text.match(/Verification code: ([A-F0-9]{8})/)![1];
+      assert.equal((await settings.PUT(request({ action: "verify-code", code }, cookie), {})).status, 200);
+      for (const enabled of [true, false, true]) {
+        const changed = await settings.PUT(request({ action: "enable", enabled }, cookie), {});
+        assert.equal(changed.status, 200);
+        assert.equal((await changed.json()).confirmationExpiresAt, granted.expiresAt, "Actions do not extend the confirmation window");
+        assert.equal(changed.headers.get("set-cookie"), null);
+      }
+      assert.equal((await jobs.POST(request({}, cookie, "jobs"), {})).status, 202);
+      await state.query("UPDATE central_backup_jobs SET status='COMPLETED'");
+      const oauthNames = ["GOOGLE_DRIVE_CENTRAL_CLIENT_ID", "GOOGLE_DRIVE_CENTRAL_CLIENT_SECRET", "GOOGLE_DRIVE_CENTRAL_REDIRECT_URI"] as const;
+      const oauthPrior = oauthNames.map(name => process.env[name]);
+      try {
+        process.env.GOOGLE_DRIVE_CENTRAL_CLIENT_ID = "synthetic-client";
+        process.env.GOOGLE_DRIVE_CENTRAL_CLIENT_SECRET = "synthetic-client-secret";
+        process.env.GOOGLE_DRIVE_CENTRAL_REDIRECT_URI = "https://example.test/api/sa/central-backup/google-drive/callback";
+        const connected = await connect.POST(request({}, cookie, "google-drive/connect"), {});
+        assert.equal(connected.status, 200);
+        assert.equal(new URL((await connected.json()).authorizationUrl).origin, "https://accounts.google.com");
+        assert.equal((await settings.GET(request(undefined, cookie), {})).status, 200);
+      } finally {
+        oauthNames.forEach((name, index) => { if (oauthPrior[index] === undefined) delete process.env[name]; else process.env[name] = oauthPrior[index]; });
+      }
+      assert.equal(await confirmation.backupConfirmationExpiresAt(request(undefined, cookie), { ...session, userId: 2 }), null);
+      assert.equal(await confirmation.backupConfirmationExpiresAt(request(undefined, cookie), { ...session, planDeviceSessionId: "another-session" }), null);
+      assert.equal(await confirmation.backupConfirmationExpiresAt(request(undefined, cookie), { ...session, role: "EMPLOYEE" }), null);
+      await assert.rejects(() => confirmation.confirmBackupAdministrator(request(undefined, cookie), { ...session, planDeviceSessionId: undefined }, "correct-current-password"));
+      const token = granted.token!.split(".");
+      token[2] = (token[2][0] === "A" ? "B" : "A") + token[2].slice(1);
+      const forged = "nisaab360_backup_confirmation=" + token.join(".");
+      assert.equal((await settings.PUT(request({ action: "enable", enabled: false }, forged), {})).status, 403);
+      const now = Math.floor(Date.now() / 1000);
+      const expiredToken = await new SignJWT({ device: session.planDeviceSessionId }).setProtectedHeader({ alg: "HS256" })
+        .setSubject("1").setAudience("central-backup-actions").setIssuer("nisaab360").setIssuedAt(now - 901).setExpirationTime(now - 1)
+        .sign(new TextEncoder().encode(process.env.JWT_SECRET!));
+      const expired = "nisaab360_backup_confirmation=" + expiredToken;
+      assert.equal((await settings.PUT(request({ action: "enable", enabled: false }, expired), {})).status, 403);
+      assert.equal((await jobs.POST(request({}, expired, "jobs"), {})).status, 403);
+      assert.equal((await connect.POST(request({}, expired, "google-drive/connect"), {})).status, 403);
+      state.session = { ...state.session, isSuperAdmin: false };
+      assert.equal((await settings.PUT(request({ action: "enable", enabled: false }, cookie), {})).status, 403);
+      state.session = { ...state.session, isSuperAdmin: true };
+    });
     await t.test(
       "manual requests deduplicate while active and completed nightly identity is not queued twice",
       async () => {
@@ -328,6 +455,42 @@ test("central backup setup, OTP, queue, encrypted password delivery, retries and
         assert.ok(nightly.run_id.startsWith("nightly-"));
       },
     );
+    await t.test("manual backups start immediately, report unavailable workers, preserve lost acknowledgements and expire abandoned history", async () => {
+      const start = await load<typeof import("../src/lib/central-backup-start")>("src/lib/central-backup-start.ts", mocks);
+      await state.query("UPDATE central_backup_jobs SET status='COMPLETED' WHERE status IN ('PENDING','RUNNING')");
+      const before = state.workerStarts;
+      const begun = await start.startManualDatabaseBackup(1);
+      assert.equal(begun.status, "RUNNING");
+      assert.equal(state.workerStarts, before + 1);
+      assert.equal((await start.startManualDatabaseBackup(1)).run_id, begun.run_id);
+      assert.equal(state.workerStarts, before + 1, "Repeated clicks reuse the running backup");
+      await state.query("UPDATE central_backup_jobs SET status='COMPLETED' WHERE run_id=$1", [begun.run_id]);
+      state.workerFailure = true;
+      await assert.rejects(() => start.startManualDatabaseBackup(1), /backup service could not start/i);
+      assert.equal((await state.query("SELECT * FROM central_backup_jobs WHERE kind='MANUAL' AND status='PENDING'")).rows.length, 0);
+      state.workerFailure = false;
+      state.workerLostAck = true;
+      const acknowledgedLate = await start.startManualDatabaseBackup(1);
+      assert.equal(acknowledgedLate.status, "RUNNING", "Do not fail a backup that started before its response was lost");
+      state.workerLostAck = false;
+      await state.query("UPDATE central_backup_jobs SET status='COMPLETED' WHERE run_id=$1", [acknowledgedLate.run_id]);
+      const jobs = await load<typeof import("../src/app/api/sa/central-backup/jobs/route")>("src/app/api/sa/central-backup/jobs/route.ts", mocks);
+      state.auditFailure = true;
+      const startedDespiteAudit = await jobs.POST(new NextRequest("https://example.test/api/sa/central-backup/jobs", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: "correct-current-password" }),
+      }), {});
+      state.auditFailure = false;
+      assert.equal(startedDespiteAudit.status, 202, "An unrelated audit failure must not report an already-started backup as unstarted");
+      await state.query("UPDATE central_backup_jobs SET status='COMPLETED' WHERE status='RUNNING'");
+      await state.query("INSERT INTO central_backup_jobs(run_id,kind,status,created_at) VALUES('abandoned-manual','MANUAL','PENDING',now()-interval '3 days')");
+      await state.query("INSERT INTO central_database_backups(run_id,file_name,status,created_at,started_at,drive_file_id) VALUES('abandoned-artifact','old.dump.enc','PENDING',now()-interval '3 days',now()-interval '3 days','preserved-old-file'),('legacy-complete','legacy.dump.enc','COMPLETED',now()-interval '2 days',now()-interval '2 days','preserved-legacy-file')");
+      await config.reconcileBackupHistory();
+      assert.equal(((await state.query("SELECT status FROM central_backup_jobs WHERE run_id='abandoned-manual'")).rows[0] as {status: string}).status, "FAILED");
+      const historical = (await state.query("SELECT status,drive_file_id FROM central_database_backups WHERE run_id='abandoned-artifact'")).rows[0] as {status: string; drive_file_id: string};
+      assert.equal(historical.status, "FAILED");
+      assert.equal(historical.drive_file_id, "preserved-old-file");
+      assert.equal(((await state.query("SELECT status FROM central_database_backups WHERE run_id='legacy-complete'")).rows[0] as {status: string}).status, "COMPLETED");
+    });
     await t.test(
       "failed SMTP retains encrypted recovery material and old copies; retry sends matching password then retains latest two",
       async () => {
@@ -422,7 +585,7 @@ test("central backup setup, OTP, queue, encrypted password delivery, retries and
         const recent = await (await jobs.GET(request, {})).json();
         assert.ok(recent.backups.some((backup: {run_id: string}) => backup.run_id === 'run-1'));
         assert.ok(recent.backups.some((backup: {run_id: string}) => backup.run_id === 'run-2'));
-        state.session = { role: "EMPLOYEE", userId: 1, isSuperAdmin: false };
+        state.session = { role: "EMPLOYEE", userId: 1, isSuperAdmin: false, planDeviceSessionId: "synthetic-device-session" };
         assert.equal((await jobs.GET(request, {})).status, 403);
         assert.equal((await settings.GET(request, {})).status, 403);
       },
@@ -457,7 +620,7 @@ test("central backup setup, OTP, queue, encrypted password delivery, retries and
             },
           );
         assert.equal((await settings.PUT(request(), {})).status, 403);
-        state.session = { role: "SUPER_ADMIN", userId: 1, isSuperAdmin: true };
+        state.session = { role: "SUPER_ADMIN", userId: 1, isSuperAdmin: true, planDeviceSessionId: "synthetic-device-session" };
         assert.equal((await settings.PUT(request(), {})).status, 200);
         assert.equal(await gate.databaseRecoveryPaused(), false);
         const unavailable = await load<
@@ -470,6 +633,7 @@ test("central backup setup, OTP, queue, encrypted password delivery, retries and
       },
     );
   } finally {
+    globalThis.fetch = previousFetch;
     await memory.close();
     delete (globalThis as any).__databaseRecovery;
   }

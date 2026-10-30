@@ -9,47 +9,47 @@ import {
   backupReady,
   beginRecoveryEmail,
   confirmRecoveryEmail,
-  verifyBackupAdministrator,
   nextNightlyBackup,
 } from "@/lib/central-backup-config";
+import { backupConfirmationExpiresAt, confirmBackupAdministrator, withBackupConfirmation, backupConfirmationError } from "@/lib/backup-confirmation";
 const input = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("finish-recovery-review"),
-      currentPassword: z.string().min(1).max(1024),
+      currentPassword: z.string().max(1024).optional(),
     })
     .strict(),
   z
     .object({
       action: z.literal("send-code"),
-      email: z.email().max(254),
-      currentPassword: z.string().min(1).max(1024),
+      email: z.string().trim().pipe(z.email().max(254)),
+      currentPassword: z.string().max(1024).optional(),
     })
     .strict(),
   z
     .object({
       action: z.literal("verify-code"),
       code: z.string().regex(/^[a-fA-F0-9]{8}$/),
-      currentPassword: z.string().min(1).max(1024),
+      currentPassword: z.string().max(1024).optional(),
     })
     .strict(),
   z
     .object({
       action: z.literal("enable"),
       enabled: z.boolean(),
-      currentPassword: z.string().min(1).max(1024),
+      currentPassword: z.string().max(1024).optional(),
     })
     .strict(),
   z
     .object({
       action: z.literal("disconnect-drive"),
-      currentPassword: z.string().min(1).max(1024),
+      currentPassword: z.string().max(1024).optional(),
     })
     .strict(),
 ]);
 export const GET = requireRole(
   ["SUPER_ADMIN"],
-  async () => {
+  async (req, { session }) => {
     const s = await getBackupSettings();
     return NextResponse.json(
       {
@@ -68,6 +68,7 @@ export const GET = requireRole(
         timeZone: "Asia/Karachi",
         nextBackupAt: s?.enabled ? nextNightlyBackup() : null,
         retention: 2,
+        confirmationExpiresAt: await backupConfirmationExpiresAt(req, session),
       },
       { headers: { "Cache-Control": "no-store" } },
     );
@@ -94,9 +95,10 @@ export const PUT = requireRole(
         { error: "Invalid recovery settings" },
         { status: 400 },
       );
+    let confirmation: Awaited<ReturnType<typeof confirmBackupAdministrator>> | undefined;
     try {
       const value = parsed.data;
-      await verifyBackupAdministrator(session.userId, value.currentPassword);
+      confirmation = await confirmBackupAdministrator(req, session, value.currentPassword);
       if (value.action === "send-code")
         await beginRecoveryEmail(
           value.email.trim().toLowerCase(),
@@ -121,18 +123,18 @@ export const PUT = requireRole(
         await pool.query(
           "UPDATE central_backup_settings SET enabled=false,drive_credentials_encrypted=NULL,drive_email=NULL,drive_folder_id=NULL,updated_at=now() WHERE id=1",
         );
-      return NextResponse.json(
-        { success: true },
+      return withBackupConfirmation(NextResponse.json(
+        { success: true, confirmationExpiresAt: confirmation.expiresAt },
         { headers: { "Cache-Control": "no-store" } },
-      );
-    } catch {
-      return NextResponse.json(
-        {
-          error:
-            "Could not update settings. Check your current password, verification code and mail configuration.",
-        },
-        { status: 400 },
-      );
+      ), confirmation);
+    } catch (error) {
+      if (!confirmation)
+        return backupConfirmationError(error, confirmation, "Could not verify your current Super Admin password. Please try again.", 503);
+      if (parsed.data.action === "send-code")
+        return backupConfirmationError(error, confirmation, "Could not send the verification email. Check the server's Gmail sender and app-password settings, then try again.", 503);
+      if (parsed.data.action === "verify-code")
+        return backupConfirmationError(error, confirmation, "The verification code is invalid, expired or already used. Request a new code and try again.");
+      return backupConfirmationError(error, confirmation, "Could not update settings. Connect Drive and verify your recovery email before enabling backups.");
     }
   },
   { permission: "platform.security" },
