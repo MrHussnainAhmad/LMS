@@ -4,6 +4,7 @@ import { pool } from "@/db";
 import { requireRole } from "@/lib/rbac";
 import { getJwtSecret } from "@/lib/jwt-secret";
 import {
+  centralDriveClientConfig,
   exchangeCentralDriveCode,
   prepareCentralDriveFolder,
 } from "@/lib/central-drive-backups";
@@ -15,7 +16,9 @@ export const GET = requireRole(
   ["SUPER_ADMIN"],
   async (req, { session }) => {
     const query = req.nextUrl.searchParams;
-    const result = new URL("/sa/backups", req.url);
+    // Standalone requests can carry the container's listener address behind
+    // Caddy. Use the configured OAuth origin, never request/forwarded hosts.
+    const result = new URL("/sa/backups", centralDriveClientConfig().redirectUri);
     try {
       if (query.get("error") || !query.get("code") || !query.get("state"))
         throw Error("Consent not completed");

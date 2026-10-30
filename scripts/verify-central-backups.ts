@@ -12,6 +12,7 @@ import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { getTableConfig, PgDialect, type PgTable } from 'drizzle-orm/pg-core';
 import { build } from 'esbuild';
 import { NextRequest } from 'next/server';
+import { SignJWT } from 'jose';
 import * as schema from '../src/db/schema';
 import { encryptCentralDump, decryptCentralDump, backupFileSha256 } from '../src/lib/central-backup-crypto';
 
@@ -169,6 +170,89 @@ async function isolatedModule<T>(entry: string, mocks: Record<string,string>): P
   }}]});
   const loaded={exports:{} as T};new Function('require','module','exports',result.outputFiles[0].text)(require,loaded,loaded.exports);return loaded.exports;
 }
+
+test('Drive OAuth callback uses the configured public origin behind a proxy on success, denial and replay', async () => {
+  const previousFetch = globalThis.fetch;
+  const names = ['GOOGLE_DRIVE_CENTRAL_CLIENT_ID', 'GOOGLE_DRIVE_CENTRAL_CLIENT_SECRET', 'GOOGLE_DRIVE_CENTRAL_REDIRECT_URI'] as const;
+  const previousEnvironment = names.map(name => process.env[name]);
+  const fixture = {
+    secret: new TextEncoder().encode('synthetic-oauth-signing-key-at-least-32-characters'),
+    pending: true,
+    providerFailure: false,
+    requests: 0,
+    saved: [] as unknown[],
+    async query(sql: string, values: unknown[]) {
+      if (sql.includes('oauth_state_hash=NULL')) {
+        const rowCount = this.pending ? 1 : 0;
+        this.pending = false;
+        return { rowCount, rows: rowCount ? [{ id: 1 }] : [] };
+      }
+      assert.match(sql, /drive_credentials_encrypted/);
+      this.saved = values;
+      return { rowCount: 1, rows: [] };
+    },
+  };
+  const globals = globalThis as typeof globalThis & { __driveRedirectFixture?: typeof fixture };
+  globals.__driveRedirectFixture = fixture;
+  process.env.GOOGLE_DRIVE_CENTRAL_CLIENT_ID = 'synthetic-client';
+  process.env.GOOGLE_DRIVE_CENTRAL_CLIENT_SECRET = 'synthetic-client-secret';
+  process.env.GOOGLE_DRIVE_CENTRAL_REDIRECT_URI = 'https://sa.example.test/api/sa/central-backup/google-drive/callback';
+  globalThis.fetch = async (input, options) => {
+    fixture.requests++;
+    const url = new URL(String(input));
+    if (url.origin === 'https://oauth2.googleapis.com') {
+      if (fixture.providerFailure) return Response.json({}, { status: 502 });
+      const grant = new URLSearchParams(String(options?.body)).get('grant_type');
+      return Response.json(grant === 'authorization_code' ? { refresh_token: 'private-refresh-token' } : { access_token: 'private-access-token' });
+    }
+    assert.equal(url.origin, 'https://www.googleapis.com');
+    return Response.json(url.pathname.endsWith('/about')
+      ? { user: { emailAddress: 'synthetic@example.test' } }
+      : { files: [{ id: 'synthetic-folder' }] });
+  };
+  try {
+    const { GET } = await isolatedModule<{ GET: (req: NextRequest) => Promise<Response> }>(
+      'src/app/api/sa/central-backup/google-drive/callback/route.ts', {
+        '@/db': 'export const pool={query:(...args)=>globalThis.__driveRedirectFixture.query(...args)};',
+        '@/lib/rbac': 'export const requireRole=(_roles,handler)=>req=>handler(req,{session:{userId:1,planDeviceSessionId:"synthetic-device"}});',
+        '@/lib/jwt-secret': 'export const getJwtSecret=()=>globalThis.__driveRedirectFixture.secret;',
+        '@/lib/central-backup-config': 'export const secretHash=()=>"synthetic-state-hash";export const encryptStreamingCredentials=()=>"encrypted-token";',
+      },
+    );
+    const state = await new SignJWT({ purpose: 'central-google-drive-setup', nonce: 'synthetic-nonce', device: 'synthetic-device' })
+      .setProtectedHeader({ alg: 'HS256' }).setSubject('1').setExpirationTime('15m').sign(fixture.secret);
+    const request = (query: string) => new NextRequest(`http://0.0.0.0:3000/api/sa/central-backup/google-drive/callback?${query}`, {
+      headers: { host: 'untrusted.example', 'x-forwarded-host': 'untrusted.example', 'x-forwarded-proto': 'http' },
+    });
+    const assertRedirect = (response: Response, expected: string) => {
+      assert.equal(response.status, 307);
+      assert.equal(response.headers.get('location'), expected);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    };
+    const query = new URLSearchParams({ code: 'private-auth-code', state }).toString();
+    assertRedirect(await GET(request(query)), 'https://sa.example.test/sa/backups?drive=connected');
+    assert.deepEqual(fixture.saved, ['encrypted-token', 'synthetic-folder', 'synthetic@example.test']);
+    assert.equal(fixture.requests, 4);
+    assertRedirect(await GET(request(query)), 'https://sa.example.test/sa/backups?drive=failed');
+    assertRedirect(await GET(request('error=access_denied')), 'https://sa.example.test/sa/backups?drive=failed');
+    assertRedirect(await GET(request('code=private-auth-code&state=invalid')), 'https://sa.example.test/sa/backups?drive=failed');
+    assert.equal(fixture.requests, 4, 'Replay, denial and invalid state must not contact Google');
+    fixture.pending = true;
+    fixture.providerFailure = true;
+    assertRedirect(await GET(request(query)), 'https://sa.example.test/sa/backups?drive=failed');
+    assert.equal(fixture.requests, 5);
+    process.env.GOOGLE_DRIVE_CENTRAL_REDIRECT_URI = 'http://localhost:3000/api/sa/central-backup/google-drive/callback';
+    assertRedirect(await GET(request('error=access_denied')), 'http://localhost:3000/sa/backups?drive=failed');
+  } finally {
+    globalThis.fetch = previousFetch;
+    names.forEach((name, index) => {
+      if (previousEnvironment[index] === undefined) delete process.env[name];
+      else process.env[name] = previousEnvironment[index];
+    });
+    delete globals.__driveRedirectFixture;
+  }
+});
 
 test('central endpoint: auth, missing IDs, checksum, database failure, retry, idempotency and replica exclusion', async () => {
   const memory=await PGlite.create();const dir=await mkdtemp(path.join(tmpdir(),'n360-endpoint-'));
