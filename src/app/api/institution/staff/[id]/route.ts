@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
@@ -42,7 +43,7 @@ export const DELETE = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (r
 export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { params, session }) => {
   const { id } = await params;
   const staffId = Number(id);
-  const { customRoleId } = await req.json();
+  const { customRoleId } = await readBoundedJson(req);
   const tenantId = getTenantContext(session);
   if (!Number.isInteger(staffId) || (customRoleId !== null && !Number.isInteger(Number(customRoleId)))) {
     return NextResponse.json({ error: "Invalid staff or role ID" }, { status: 400 });

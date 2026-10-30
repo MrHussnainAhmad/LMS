@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
@@ -103,7 +104,7 @@ async function updatePasswordForSession(role: string, userId: number, passwordHa
 }
 
 export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN', 'EMPLOYEE', 'STAFF', 'STUDENT', 'PARENT'], async (req: NextRequest, { session }) => {
-  // Bounded read: two short passwords. Previously an un-caught `req.json()`,
+  // Bounded read: two short passwords. Previously an un-caught `readBoundedJson(req)`,
   // which both buffered an unbounded body and turned malformed JSON into a 500.
   const bodyResult = await readJsonBody(req, AUTH_MAX_BODY_BYTES);
   if (!bodyResult.ok) {

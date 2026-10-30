@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
 
   let body: unknown;
   try {
-    body = await req.json();
+    body = await readBoundedJson(req);
   } catch {
     return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 });
   }

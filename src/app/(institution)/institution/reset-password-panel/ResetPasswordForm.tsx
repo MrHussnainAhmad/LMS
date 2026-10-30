@@ -10,7 +10,7 @@ export function ResetPasswordForm() {
   const [identifier, setIdentifier] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [successData, setSuccessData] = useState<{name: string, phone: string | null} | null>(null);
+  const [successData, setSuccessData] = useState<{name: string, phone: string | null, password: string} | null>(null);
   const [copied, setCopied] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,7 +39,7 @@ export function ResetPasswordForm() {
 
       setSuccessData({
         name: data.name,
-        phone: data.phone
+        phone: data.phone, password: data.temporaryPassword
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to reset password");
@@ -52,7 +52,7 @@ export function ResetPasswordForm() {
     if (!successData) return "";
     return `Dear ${successData.name},
 
-Per your request, we have reset your account password. You can now login with the temporary password "1234567890".
+Per your request, we have reset your account password. You can now login with the temporary password "${successData.password}".
 
 For security reasons, please ensure you update it immediately upon logging in.
 
@@ -128,7 +128,7 @@ Administration`;
               <div>
                 <h3 className="font-bold text-green-900">Password Reset Successfully!</h3>
                 <p className="text-sm text-green-700 mt-1">
-                  The password for <strong>{successData.name}</strong> has been reset to <strong>1234567890</strong>.
+                  The password for <strong>{successData.name}</strong> has been reset to <strong>{successData.password}</strong>.
                   {successData.phone ? ` You can send this message to their registered phone number: ${successData.phone}` : " (No phone number registered for this user)"}
                 </p>
               </div>

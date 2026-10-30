@@ -6,6 +6,7 @@ const checks=[
   ['node_modules/typescript/bin/tsc','--noEmit'],
   ['scripts/audit-tenant-scope.mjs'],
   ['--import','tsx','--test','scripts/verify-central-backups.ts'],
+  ['--import','tsx','--test','scripts/verify-database-recovery.ts'],
   ['--import','tsx','--test','scripts/verify-online-payments.ts'],
   ['scripts/verify-request-costs.cjs'],
   ['--import','tsx','scripts/verify-form-validation.ts'],

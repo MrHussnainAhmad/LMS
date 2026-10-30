@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { AdmissionCampusError, admissionOfferingOwners, listAdmissionCampuses, selectAdmissionCampus, requireOpenAdmissionCampus, type AdmissionCampus } from "@/lib/admission-campus";
 import { admissionCalendarDateSql } from '@/lib/admission-calendar';
@@ -98,7 +99,7 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
 export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
   let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
+  try { body = await readBoundedJson(req); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
   const parsed = publicAdmissionApplicationSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 });
   if (parsed.data.dateOfBirth > new Date().toISOString().slice(0, 10)) return NextResponse.json({ error: 'Date of birth cannot be in the future' }, { status: 400 });

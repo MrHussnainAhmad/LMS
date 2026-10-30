@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { AdmissionArchiveError, setAdmissionCycleArchived } from "@/lib/admission-cycle-archive";
 import { admissionOfferingOwners, listAdmissionCampuses, canConfigureAdmissions } from "@/lib/admission-campus";
@@ -54,7 +55,7 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
   }
   let body: unknown;
   try {
-    body = await req.json();
+    body = await readBoundedJson(req);
   } catch {
     return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 });
   }

@@ -106,12 +106,13 @@ export async function settlePayment(id:string,evidence:PaymentEvidence) {
     return updated;
   });
 }
-export async function refreshPayment(id:string) {
+export async function refreshPayment(id:string,foreground=false) {
   const attempt=await getPaymentAttempt(id);
   if(attempt.status!=='PENDING'||attempt.closedAt||attempt.gateway!=='easypaisa'||!attempt.initiationStartedAt)return attempt;
   // A DB compare-and-set limits polling across both app replicas.
+  const minimumSeconds=foreground?1:5;
   const claimed=await db.update(attempts).set({lastCheckedAt:new Date()}).where(and(eq(attempts.id,id),eq(attempts.status,'PENDING'),
-    sql`(${attempts.lastCheckedAt} IS NULL OR ${attempts.lastCheckedAt}<(now() AT TIME ZONE 'UTC')-interval '15 seconds')`)).returning({id:attempts.id});
+    sql`(${attempts.lastCheckedAt} IS NULL OR ${attempts.lastCheckedAt}<(now() AT TIME ZONE 'UTC')-${minimumSeconds}*interval '1 second')`)).returning({id:attempts.id});
   if(!claimed.length)return attempt;
   const config=attemptCredentials(attempt);
   const evidence=await inquireEasypaisa(attempt,config.credentials);

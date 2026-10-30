@@ -374,7 +374,7 @@ export const pricingNoticeReads = pgTable('pricing_notice_reads', {
 
 export const planDeviceSessions = pgTable('plan_device_sessions', {
   id: varchar('id', { length: 36 }).primaryKey(),
-  institutionId: integer('institution_id').notNull().references(() => institutions.id, { onDelete: 'cascade' }),
+  institutionId: integer('institution_id').references(() => institutions.id, { onDelete: 'cascade' }),
   userRole: varchar('user_role', { length: 32 }).notNull(),
   userId: integer('user_id').notNull(),
   refreshTokenHash: varchar('refresh_token_hash', { length: 64 }).notNull().unique(),
@@ -2850,6 +2850,11 @@ export const centralDatabaseBackups = pgTable(
     // SHA-256 hex of the encrypted file computed locally before upload.
     sha256: text("sha256"),
     sourceSha256: varchar("source_sha256", { length: 64 }),
+    deliveryAttempts: integer("delivery_attempts").default(0).notNull(), nextDeliveryAt: timestamp("next_delivery_at", {withTimezone:true}),
+    passwordEncrypted: text("password_encrypted"), recoveryEmail: text("recovery_email"),
+    passwordSentAt: timestamp("password_sent_at", { withTimezone: true }),
+    driveVerifiedAt: timestamp("drive_verified_at", { withTimezone: true }), driveFolderId: text("drive_folder_id"),
+    packageVersion: integer("package_version").default(0).notNull(), deletedAt: timestamp("deleted_at", { withTimezone: true }),
     sourceSizeBytes: bigint("source_size_bytes", { mode: "number" }),
     status: text("status")
       .$type<"PENDING" | "UPLOADING" | "COMPLETED" | "FAILED">()
@@ -2879,8 +2884,25 @@ export const centralDatabaseBackups = pgTable(
 export const centralBackupSettings = pgTable("central_backup_settings", {
   id: integer("id").primaryKey().default(1),
   databasePasswordEncrypted: text("database_password_encrypted"),
+  enabled: boolean("enabled").default(false).notNull(),
+  restoreReviewRequired: boolean("restore_review_required").default(false).notNull(),
+  driveCredentialsEncrypted: text("drive_credentials_encrypted"),
+  driveEmail: text("drive_email"), driveFolderId: text("drive_folder_id"),
+  recoveryEmail: text("recovery_email"), recoveryEmailVerifiedAt: timestamp("recovery_email_verified_at", { withTimezone: true }),
+  pendingRecoveryEmail: text("pending_recovery_email"), emailVerificationHash: text("email_verification_hash"),
+  emailVerificationExpiresAt: timestamp("email_verification_expires_at", { withTimezone: true }),
+  emailVerificationAttempts: integer("email_verification_attempts").default(0).notNull(),
+  oauthStateHash: text("oauth_state_hash"), oauthStateExpiresAt: timestamp("oauth_state_expires_at", { withTimezone: true }),
   updatedByEmployee: integer("updated_by_employee").references(() => employees.id, { onDelete: "set null" }),
   updatedBy: integer("updated_by").references(() => superAdmins.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const centralBackupJobs = pgTable("central_backup_jobs", {
+  runId: text("run_id").primaryKey(), kind: text("kind").$type<"NIGHTLY" | "MANUAL">().notNull(),
+  status: text("status").$type<"PENDING" | "RUNNING" | "COMPLETED" | "FAILED">().default("PENDING").notNull(),
+  attempts: integer("attempts").default(0).notNull(), createdAt: timestamp("created_at", {withTimezone:true}).defaultNow().notNull(),
+  startedAt: timestamp("started_at", {withTimezone:true}), completedAt: timestamp("completed_at", {withTimezone:true}), error: text("error"),
+  requestedBy: integer("requested_by").references(()=>superAdmins.id,{onDelete:"set null"}),
+}, t=>({kindCheck:check("central_backup_jobs_kind_check",sql`${t.kind} IN ('NIGHTLY','MANUAL')`),statusCheck:check("central_backup_jobs_status_check",sql`${t.status} IN ('PENDING','RUNNING','COMPLETED','FAILED')`),oneActive:uniqueIndex("central_backup_jobs_one_active_idx").on(t.kind).where(sql`${t.status} IN ('PENDING','RUNNING')`)}));

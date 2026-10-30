@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
@@ -50,7 +51,7 @@ export const POST = requireRole(["INSTITUTION"], async (req: NextRequest, { sess
   const institutionId = getTenantContext(session);
   
   try {
-    const body = await req.json();
+    const body = await readBoundedJson(req);
 
     if (body.action === "updateGraduatedAccess") {
       const { allowGraduatedStudentAccess } = body;

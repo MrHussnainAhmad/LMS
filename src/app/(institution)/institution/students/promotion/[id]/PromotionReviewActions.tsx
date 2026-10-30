@@ -1,5 +1,7 @@
 "use client";
 
+import { csvCell } from "@/lib/csv";
+
 import { Download, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -12,10 +14,6 @@ export type PromotionReviewCsvRow = {
   subjects: Record<string, string>;
 };
 
-function csvEscape(value: unknown) {
-  const text = String(value ?? "");
-  return `"${text.replace(/"/g, "\"\"")}"`;
-}
 
 export function PromotionReviewActions({
   fileName,
@@ -29,7 +27,7 @@ export function PromotionReviewActions({
   const downloadCsv = () => {
     const header = ["Roll", "Student", ...subjects, "Total", "Percentage", "Status"];
     const lines = [
-      header.map(csvEscape).join(","),
+      header.map(csvCell).join(","),
       ...rows.map((row) => [
         row.roll,
         row.student,
@@ -37,7 +35,7 @@ export function PromotionReviewActions({
         row.total,
         row.percentage.toFixed(2),
         row.status,
-      ].map(csvEscape).join(",")),
+      ].map(csvCell).join(",")),
     ];
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);

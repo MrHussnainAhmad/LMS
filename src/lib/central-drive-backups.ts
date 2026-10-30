@@ -12,6 +12,7 @@
 
 import { createReadStream, statSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { getStoredCentralDriveCredentials } from "./central-backup-config";
 import { pipeline } from "node:stream/promises";
 import { createReadStream as fsCreateReadStream } from "node:fs";
 
@@ -45,8 +46,8 @@ export function centralDriveClientConfig() {
   };
 }
 
-export function centralDriveFolderId(): string {
-  return requiredEnv("CENTRAL_DATABASE_BACKUP_DRIVE_FOLDER_ID");
+export async function centralDriveFolderId(): Promise<string> {
+  return (await getStoredCentralDriveCredentials())?.folderId || requiredEnv("CENTRAL_DATABASE_BACKUP_DRIVE_FOLDER_ID");
 }
 
 export function centralInstitutionBackupFolderId(): string {
@@ -120,9 +121,9 @@ export async function exchangeCentralDriveCode(code: string): Promise<{ refreshT
  * with grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer). All callers
  * remain unchanged.
  */
-export async function getCentralAccessToken(signal?: AbortSignal): Promise<string> {
+export async function getCentralAccessToken(signal?: AbortSignal, environmentOnly = false): Promise<string> {
   const config = centralDriveClientConfig();
-  const refreshToken = requiredEnv("GOOGLE_DRIVE_CENTRAL_REFRESH_TOKEN");
+  const refreshToken = (environmentOnly ? undefined : (await getStoredCentralDriveCredentials())?.refreshToken) || requiredEnv("GOOGLE_DRIVE_CENTRAL_REFRESH_TOKEN");
   const response = await driveFetch(TOKEN_ENDPOINT, {
     signal,
     method: "POST",
@@ -482,4 +483,21 @@ export async function sha256OfFile(filePath: string): Promise<string> {
   const hash = createHash("sha256");
   await pipeline(fsCreateReadStream(filePath), hash);
   return hash.digest("hex");
+}
+
+/** Consent-time token/folder setup; refresh material is never returned to the browser. */
+export async function prepareCentralDriveFolder(refreshToken:string) {
+ const config=centralDriveClientConfig();
+ const exchanged=await driveFetch(TOKEN_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:config.clientId,client_secret:config.clientSecret,refresh_token:refreshToken,grant_type:'refresh_token'})});
+ if(!exchanged.ok)throw Error('Drive authorization failed');
+ const {access_token:token}=await exchanged.json();if(typeof token!=='string')throw Error('Drive authorization failed');
+ const about=await driveRequest<{user:{emailAddress:string}}>(token,DRIVE_FILES.replace('/files','/about')+'?fields=user(emailAddress)');
+ let root=await findChildFolder(token,'Nisaab360 Database Backups','root');
+ if(!root)root=await createChildFolder(token,'Nisaab360 Database Backups','root');
+ return {folderId:root.id,email:about.user.emailAddress};
+}
+export async function downloadCentralBackup(driveFileId:string,signal?:AbortSignal) {
+ const token=await getCentralAccessToken(signal);
+ const result=await driveFetch(`${DRIVE_FILES}/${encodeURIComponent(driveFileId)}?alt=media&supportsAllDrives=true`,{headers:{Authorization:`Bearer ${token}`},signal});
+ if(!result.ok||!result.body)throw Error('Backup download failed');return result;
 }

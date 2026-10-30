@@ -1,3 +1,4 @@
+import { sessionRestriction } from './request-security';
 import { SignJWT } from 'jose';
 import { cookies, headers } from 'next/headers';
 import type { NextRequest } from 'next/server';
@@ -37,7 +38,7 @@ async function getCookieScope() {
   const requestHeaders = await headers();
   const host = (requestHeaders.get('host') || '').split(':')[0].toLowerCase();
   const domain = host === 'nisaab360.app' || host.endsWith('.nisaab360.app') ? '.nisaab360.app' : undefined;
-  const secure = domain !== undefined && (requestHeaders.get('x-forwarded-proto') === 'https' || process.env.NODE_ENV === 'production');
+  const secure = process.env.NODE_ENV === 'production' || requestHeaders.get('x-forwarded-proto') === 'https';
   return { domain, secure };
 }
 
@@ -118,6 +119,7 @@ export async function rotateRefreshToken(presentedToken: string): Promise<Refres
       return { status: 'REUSED' } as const;
     }
 
+    if (!deviceSession) return { status: 'INVALID' } as const;
     if (deviceSession && (deviceSession.revokedAt || deviceSession.expiresAt <= now)) return { status: 'EXPIRED' } as const;
 
     if (record.expiresAt <= now) {
@@ -240,6 +242,7 @@ export const getSession = cache(async (): Promise<JWTPayload | null> => {
   }
 
   if (!session) return null;
+  if (!await (await import('./plan-device-sessions')).isPlanDeviceSessionActive(session)) return null;
   if (!await mobileAppAccessAllowed(session, Boolean(bearerToken))) return null;
   if (!bearerToken && sessionHeader && session.qrSessionId && !await (await import('./qr-session')).isQrSessionActive(session)) return null;
 
@@ -248,6 +251,10 @@ export const getSession = cache(async (): Promise<JWTPayload | null> => {
 
   const cookieStore = await cookies();
   const scoped = await resolveCampusSession(session, headersList.get('x-campus-view') || cookieStore.get(CAMPUS_VIEW_COOKIE)?.value);
+  const apiPath = headersList.get('x-nisaab-request-path');
+  if (scoped && apiPath?.startsWith('/api/') && sessionRestriction(enrichFreshStudentSession(scoped, student)!, apiPath)) return null;
+  if (scoped?.role === 'STUDENT' && student?.academicStatus === 'GRADUATED' && headersList.has('next-action')) throw new Error('Graduate access is restricted.');
+  if (scoped?.mustChangePassword && headersList.has('next-action')) throw new Error('PASSWORD_CHANGE_REQUIRED');
   if (scoped?.campusReadOnly && headersList.has('next-action')) throw new Error(CAMPUS_READ_ONLY_ERROR);
   return scoped ? enrichFreshStudentSession(scoped, student) : null;
 });
@@ -284,11 +291,7 @@ export function getWarmSessionFromRequest(_req: NextRequest): JWTPayload | null 
 
 /** Heartbeat/unread endpoints retain the same fresh account authorization gate. */
 export async function getLightSessionFromRequest(req: NextRequest): Promise<JWTPayload | null> {
-  const authorization = req.headers.get('authorization');
-  const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
-  const session = bearerToken ? await verifyAccessToken(bearerToken) : await getSessionEdge(req.cookies);
-  if (!session || !await mobileAppAccessAllowed(session, Boolean(bearerToken)) || !await verifyUserExistsFresh(session.role, session.userId, session.institutionId)) return null;
-  return resolveCampusSession(session, req.headers.get('x-campus-view') || req.cookies.get(CAMPUS_VIEW_COOKIE)?.value);
+  return getSessionFromRequest(req);
 }
 
 export async function setCampusViewCookie(token: string) {
@@ -297,9 +300,11 @@ export async function setCampusViewCookie(token: string) {
   store.set(CAMPUS_VIEW_COOKIE, token, { ...scope, httpOnly: true, sameSite: 'lax', path: '/', maxAge: 5 * 24 * 60 * 60 });
 }
 
-export async function revokeAllSessions(role: UserRole, userId: number) {
-  await db.update(planDeviceSessions).set({ revokedAt: new Date() }).where(and(eq(planDeviceSessions.userRole, role), eq(planDeviceSessions.userId, userId), isNull(planDeviceSessions.revokedAt)));
-  await db
+export async function revokeAllSessions(role: UserRole, userId: number, store: Pick<typeof db, 'update'> = db) {
+  await store.update(qrLoginSessions).set({ revokedAt: new Date() }).where(and(eq(qrLoginSessions.userRole, role), eq(qrLoginSessions.userId, userId), isNull(qrLoginSessions.revokedAt)));
+  await store.update(pushDevices).set({ revokedAt: new Date() }).where(and(eq(pushDevices.userRole, role), eq(pushDevices.userId, userId)));
+  await store.update(planDeviceSessions).set({ revokedAt: new Date() }).where(and(eq(planDeviceSessions.userRole, role), eq(planDeviceSessions.userId, userId), isNull(planDeviceSessions.revokedAt)));
+  await store
     .update(refreshTokens)
     .set({ revokedAt: new Date() })
     .where(and(

@@ -1,3 +1,5 @@
+import { privateFileUrl } from '@/lib/submission-file';
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { saveStudentSubmission } from "@/app/actions/assessment-actions";
@@ -114,8 +116,9 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
     const submissionMap = new Map(studentSubmissions.map(sub => [sub.assignmentId, sub]));
     const result = studentAssignments.map(a => ({
       ...a,
+      referenceFileUrl: privateFileUrl(a.referenceFileUrl),
       submission: submissionMap.has(a.id)
-        ? submissionMap.get(a.id)!
+        ? { ...submissionMap.get(a.id)!, fileUrl: privateFileUrl(submissionMap.get(a.id)!.fileUrl) }
         : null,
     }));
 
@@ -137,7 +140,7 @@ export const GET = requireRole(["STUDENT"], async (req: NextRequest, { session }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const assignmentId = Number(body.assignmentId);
     const fileKey = String(body.fileKey || "").trim();
 

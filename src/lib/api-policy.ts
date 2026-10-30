@@ -1,3 +1,4 @@
+import { unsafeOrigin } from './request-security';
 import type { NextRequest } from 'next/server';
 import { applyCorsHeaders } from './cors';
 import { stripSessionHeaders } from './session-header';
@@ -8,6 +9,7 @@ import type { NativeJsonResponse } from './native-json-response';
 /** Keep API transport policy in guarded routes so hot endpoints can skip Proxy. */
 export function withApiPolicy<TContext, TResult extends Response | NativeJsonResponse = Response>(handler: (req: NextRequest, context: TContext) => Promise<TResult>) {
   return async (req: NextRequest, context: TContext) => {
+    if (unsafeOrigin(req)) return Response.json({ error: 'Forbidden origin' }, { status: 403 });
     stripSessionHeaders(req.headers);
     try {
       return applyCorsHeaders(req, await handler(req, context));

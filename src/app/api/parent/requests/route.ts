@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { and, eq } from "drizzle-orm";
@@ -16,7 +17,7 @@ const schema = z.discriminatedUnion("kind", [
 export const POST = requireRole(["PARENT"], async (req: NextRequest, { session }) => {
   const institutionId = session.institutionId!;
   try {
-    const input = schema.parse(await req.json());
+    const input = schema.parse(await readBoundedJson(req));
     const [linked] = await db.select({ studentId: students.id, studentName: students.name, sectionId: students.sectionId })
       .from(parentStudents).innerJoin(students, eq(parentStudents.studentId, students.id))
       .where(and(eq(parentStudents.institutionId, institutionId), eq(parentStudents.parentId, session.userId), eq(parentStudents.studentId, input.studentId), eq(students.institutionId, institutionId))).limit(1);

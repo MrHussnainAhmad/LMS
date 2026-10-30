@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -8,6 +9,7 @@ import { startPayment,refreshPayment } from '@/lib/payments/service';
 import { paymentResponse } from '@/lib/payments/http';
 import { PaymentError } from '@/lib/payments/config';
 import { withRateLimit } from '@/lib/rate-limit';
+import { issueNativeCheckout } from '@/lib/payments/native-checkout';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const access = await paymentAccess(req); const { id } = await params;
@@ -25,9 +27,13 @@ export async function POST(req:NextRequest,{params}:{params:Promise<{id:string}>
     const [owned]=await db.select({id:gatewayPaymentAttempts.id,gateway:gatewayPaymentAttempts.gateway}).from(gatewayPaymentAttempts).where(and(access,eq(gatewayPaymentAttempts.id,id)));
     if(!owned)throw new PaymentError('Payment not found.',404);
     if(!(await withRateLimit(req,'upload',`payment-action:${id}`)).success)throw new PaymentError('Try again shortly.',429);
-    const body=await req.json().catch(()=>null);
+    const body=await readBoundedJson(req).catch(()=>null);
+    if(body?.action==='browserCheckout') {
+      if(owned.gateway!=='jazzcash')throw new PaymentError('This gateway uses in-app payment.',409);
+      return NextResponse.json(await issueNativeCheckout(id),{headers:{'Cache-Control':'no-store'}});
+    }
     if(body?.action==='refresh') {
-      await refreshPayment(id);
+      await refreshPayment(id,body.foreground===true);
       return NextResponse.json({success:true},{headers:{'Cache-Control':'no-store'}});
     }
     if(body?.action==='resetSandbox') {

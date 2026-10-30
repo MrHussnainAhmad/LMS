@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/build.mjs",
+    "build:local": "node scripts/build-local.mjs",
+    "local:docker": "node scripts/start-local-docker.mjs",
     "start": "node scripts/start-local.mjs",
     "start:server-only": "node scripts/prepare-standalone.mjs && node --env-file=.env scripts/standalone-server.cjs",
     "lint": "eslint",
@@ -32,7 +34,11 @@
     "verify:qr-attendance": "node --import tsx scripts/verify-qr-attendance.ts",
     "verify:qr-login": "node --import tsx scripts/verify-qr-login.ts",
     "verify:notifications": "node --import tsx scripts/verify-mobile-notifications.ts",
-    "verify:institution-apps": "node --import tsx --test scripts/verify-institution-apps.ts"
+    "verify:institution-apps": "node --import tsx --test scripts/verify-institution-apps.ts",
+    "verify:security": "node --import tsx scripts/verify-security-remediation.ts",
+    "recovery:database": "node --import tsx scripts/database-recovery-server.ts",
+    "verify:database-recovery": "node --import tsx --test scripts/verify-database-recovery.ts",
+    "verify:database-backup-ui": "node scripts/verify-database-backup-ui.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",

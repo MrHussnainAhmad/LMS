@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
@@ -8,7 +9,7 @@ import { and, eq } from "drizzle-orm";
 
 export const POST = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await req.json();
+  const body = await readBoundedJson(req);
   const parsed = staffProfileChangeRequestSchema.safeParse(body);
 
   if (!parsed.success) {

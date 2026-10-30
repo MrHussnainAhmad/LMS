@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { FeeBillingError, issueMonthlyFees, issueOneTimeFees } from "@/lib/fee-billing";
 import { reviewStudentFeeProof } from '@/lib/manual-fee-submissions';
@@ -220,7 +221,7 @@ export const POST = requireRole(
     const institutionId = getTenantContext(session);
     let json: unknown;
     try {
-      json = await req.json();
+      json = await readBoundedJson(req);
     } catch {
       return NextResponse.json(
         { error: "Request body must be valid JSON" },

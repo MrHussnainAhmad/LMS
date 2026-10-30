@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/rbac';
 import { withRateLimit } from '@/lib/rate-limit';
@@ -13,7 +14,7 @@ export const GET=requireRole(['STUDENT','PARENT'],async(req,{session})=>paymentR
 }));
 export const POST=requireRole(['STUDENT','PARENT'],async(req,{session})=>paymentResponse(async()=>{
   if(!(await withRateLimit(req,'upload',`online-payment:${session.institutionId}:${session.userId}`)).success)throw new PaymentError('Too many requests. Try again shortly.',429);
-  const body=await req.json().catch(()=>null);const gateway=gatewayId.safeParse(body?.gateway);
+  const body=await readBoundedJson(req).catch(()=>null);const gateway=gatewayId.safeParse(body?.gateway);
   if(!gateway.success)throw new PaymentError('Select JazzCash or Easypaisa.');
   const target=await studentPaymentTarget(req,session,positiveId(body?.invoiceId));
   const attempt=await createPaymentAttempt(target,gateway.data,paymentPortalOrigin(req));

@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
 import { and, asc, count, eq } from "drizzle-orm";
@@ -39,7 +40,7 @@ export const GET = requireRole(["STAFF"], async (req, { session }) => {
 });
 
 export const POST = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
-  const parsed = createSchema.safeParse(await req.json().catch(() => null));
+  const parsed = createSchema.safeParse(await readBoundedJson(req).catch(() => null));
   if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 });
   const institutionId = getTenantContext(session);
   if (!(await isInstitutionCourseStreamingConfigured(institutionId))) {

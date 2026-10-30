@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
@@ -68,7 +69,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN", "STAFF"], as
 });
 
 export const PUT = requireRole(["INSTITUTION", "STAFF"], async (req: NextRequest, { session }) => {
-  const parsed = schema.safeParse(await req.json().catch(() => null));
+  const parsed = schema.safeParse(await readBoundedJson(req).catch(() => null));
   if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 });
   const institutionId = getTenantContext(session);
   let credentials: Record<string, string>;

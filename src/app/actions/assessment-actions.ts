@@ -21,16 +21,12 @@ import { getSession } from "@/lib/auth";
 import { getTenantContext } from "@/lib/rbac";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import cloudinary from "@/lib/cloudinary";
-import type { JWTPayload } from "@/lib/auth-types";
-import { ownsUploadPublicId } from "@/lib/upload-ownership";
+import { verifyCloudinarySubmission } from "@/lib/submission-file";
 import Papa from "papaparse";
 import { invalidateStudentMarksCaches } from "@/lib/redis";
 
 const STAFF_TEST_TYPES = new Set(["DAILY", "WEEKLY", "QUIZ"]);
 const INSTITUTION_EXAM_TYPES = new Set(["MONTHLY", "MID", "FINAL", "PROMOTION"]);
-const MAX_SUBMISSION_BYTES = 5 * 1024 * 1024;
-const ALLOWED_SUBMISSION_FORMATS = new Set(["pdf", "docx", "txt", "jpg", "jpeg", "png", "webp"]);
 
 function parseLocalDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
@@ -679,33 +675,4 @@ export async function saveStudentSubmission(assignmentId: number, fileKey: strin
   });
 
   revalidatePath("/student/submissions");
-}
-
-export async function verifyCloudinarySubmission(fileKey: string, session: JWTPayload) {
-  if (!fileKey || fileKey.includes("://") || !ownsUploadPublicId(session, fileKey)) {
-    throw new ActionInputError("Invalid uploaded file reference");
-  }
-
-  const resource = await getCloudinaryResource(fileKey);
-  const bytes = Number(resource.bytes || 0);
-  const format = String(resource.format || "").toLowerCase();
-
-  if (bytes <= 0 || bytes > MAX_SUBMISSION_BYTES) {
-    throw new ActionInputError("Uploaded file exceeds the allowed size");
-  }
-  if (!ALLOWED_SUBMISSION_FORMATS.has(format)) {
-    throw new ActionInputError("Uploaded file type is not allowed");
-  }
-  return resource;
-}
-
-async function getCloudinaryResource(publicId: string) {
-  for (const resourceType of ["image", "raw"] as const) {
-    try {
-      return await cloudinary.api.resource(publicId, { resource_type: resourceType });
-    } catch {
-      // Cloudinary separates images and raw documents; try both before rejecting.
-    }
-  }
-  throw new ActionInputError("Uploaded file could not be verified");
 }

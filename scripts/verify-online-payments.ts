@@ -15,17 +15,20 @@ const require=createRequire(import.meta.url);
 
 test('online payments: migration, configuration, access, provider verification and atomic receipts',async t=>{
   const memory=await PGlite.create({extensions:{pg_trgm}});const db=drizzle(memory);
-  const state={db,session:{role:'INSTITUTION',userId:1,institutionId:1,mustChangePassword:false},applicant:null as null|{applicantId:number;institutionId:number;sessionVersion:number}};
+  const state={db,session:{role:'INSTITUTION',userId:1,institutionId:1,mustChangePassword:false},applicant:null as null|{applicantId:number;institutionId:number;sessionVersion:number},redisStatus:'ready',checkoutTickets:new Map<string,{value:string;expires:number}>()};
   (globalThis as {__onlinePaymentFixture?:typeof state}).__onlinePaymentFixture=state;
   const mocks:Record<string,string>={
     '../notification-delivery':'export const createNotification=async()=>undefined;export const createBulkNotifications=async()=>[];',
     '@/lib/notification-delivery':'export const createNotification=async()=>undefined;export const createBulkNotifications=async()=>[];',
     '@/db':'export const db=globalThis.__onlinePaymentFixture.db;',
-    '@/lib/auth':'export const getSessionFromRequest=async()=>globalThis.__onlinePaymentFixture.session;export const timingSafeEqual=(a,b)=>a===b;',
+    '@/lib/auth':'export const getSessionFromRequest=async()=>globalThis.__onlinePaymentFixture.session;export const getLightSessionFromRequest=getSessionFromRequest;export const getWarmSessionFromRequest=()=>null;export const timingSafeEqual=(a,b)=>a===b;',
     '@/lib/admission-auth':'export const getAdmissionSessionFromRequest=async()=>globalThis.__onlinePaymentFixture.applicant;',
     '@/lib/public-site-domain':"export const getPublicSiteBaseDomain=async()=> 'example.test';",
     '@/lib/rate-limit':'export const withRateLimit=async()=>({success:true});',
+    '@/lib/redis':`export const redis={get status(){return globalThis.__onlinePaymentFixture.redisStatus},async set(key,value,_ex,ttl){globalThis.__onlinePaymentFixture.checkoutTickets.set(key,{value,expires:Date.now()+ttl*1000});return 'OK'},async getdel(key){const tickets=globalThis.__onlinePaymentFixture.checkoutTickets;const value=tickets.get(key);tickets.delete(key);return value&&value.expires>Date.now()?value.value:null}};`,
   };
+  mocks['./auth']=mocks['@/lib/auth'];
+  mocks['./rate-limit']=mocks['@/lib/rate-limit'];
   async function load<T>(entry:string):Promise<T>{
     const result=await build({entryPoints:[entry],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',logLevel:'silent',plugins:[{name:'payment-fixtures',setup(b){
       b.onResolve({filter:/.*/},args=>mocks[args.path]?{path:args.path,namespace:'fixture'}:undefined);
@@ -58,6 +61,8 @@ test('online payments: migration, configuration, access, provider verification a
     const [schoolClass]=await db.insert(schema.classes).values({institutionId:root.id,name:'Class A'}).returning();
     const [section]=await db.insert(schema.sections).values({institutionId:root.id,classId:schoolClass.id,name:'A'}).returning();
     const [student]=await db.insert(schema.students).values({institutionId:root.id,name:'Student',loginRollNumber:'fixture-student',passwordHash:'fixture',classId:schoolClass.id,sectionId:section.id,yearOfJoining:2026,classRollNumber:'1'}).returning();
+    const [parent]=await db.insert(schema.parentAccounts).values({institutionId:root.id,email:'parent@example.test',passwordHash:'fixture',status:'ACTIVE',mustChangePassword:false}).returning();
+    await db.insert(schema.parentStudents).values({institutionId:root.id,parentId:parent.id,studentId:student.id,linkedById:root.id,linkedByRole:'INSTITUTION'});
     const invoice=async()=> (await db.insert(schema.feeInvoices).values({institutionId:root.id,studentId:student.id,billingMonth:'2026-10',billingKey:randomUUID(),billingKind:'ONE_TIME',billingLabel:'Fixture',dueDate:'2026-10-31',subtotal:1000,totalAmount:1000,paidAmount:0,status:'DUE'}).returning())[0];
     const fee=await invoice();
     const config=await load<typeof import('../src/lib/payments/config')>('src/lib/payments/config.ts');
@@ -67,13 +72,15 @@ test('online payments: migration, configuration, access, provider verification a
     const target={institutionId:root.id,studentId:student.id,invoiceId:fee.id};
     const jazz={merchantId:'MID-FIXTURE',password:'fixture-password',integritySalt:'fixture-salt'};
     const easy={storeId:'123',accountNum:'456',username:'fixture-api',password:'fixture-password'};
-    await t.test('institution credentials enable production without a platform activation flag or endpoint setup',async()=>{
+    const feeOptions=await load<typeof import('../src/app/api/student/fees/pay/route')>('src/app/api/student/fees/pay/route.ts');
+    await t.test('Easypaisa credentials enable production; password-bearing JazzCash checkout remains unavailable',async()=>{
       for (const name of ['JAZZCASH_CHECKOUT_URL','EASYPAISA_INITIATE_URL','EASYPAISA_INQUIRY_URL']) delete process.env[name];
       assert.equal((await config.readPaymentConfig(root.id)).mode,'MANUAL');assert.deepEqual(config.GATEWAYS,['jazzcash','easypaisa']);
       await assert.rejects(()=>config.updatePaymentConfig(root.id,{action:'mode',mode:'ONLINE'}));
       await assert.rejects(()=>config.updatePaymentConfig(root.id,{action:'gateway',gateway:'hblpay',enabled:true,environment:'sandbox',credentials:jazz}));
-      for (const [gateway, credentials] of [['jazzcash',jazz],['easypaisa',easy]] as const) {
-        const saved=await config.updatePaymentConfig(root.id,{action:'gateway',gateway,enabled:true,environment:'production',credentials});
+      for (const [gateway, credentials] of [['easypaisa',easy]] as const) {
+        const saved=await config.updatePaymentConfig(root.id,{action:'gateway',gateway,enabled:true,environment:'production',credentials,activateOnline:true});
+        assert.equal(saved.mode,'ONLINE','A single gateway save must also activate Online payments');
         const visible=saved.gateways.find(value=>value.id===gateway)!;
         assert.equal(visible.configured,true);
         assert.equal(visible.ready,true);
@@ -81,38 +88,87 @@ test('online payments: migration, configuration, access, provider verification a
         assert.equal((await config.readPaymentConfig(root.id)).gateways[gateway]?.environment,'production');
         assert.ok(!JSON.stringify(saved).includes('fixture-password'));
         assert.ok(!JSON.stringify(saved).includes('fixture-salt'));
-        await config.updatePaymentConfig(root.id,{action:'mode',mode:'ONLINE'});
+        for (const [role,userId] of [['STUDENT',student.id],['PARENT',parent.id]] as const) {
+          state.session={role,userId,institutionId:root.id,mustChangePassword:false};
+          const options=await feeOptions.GET(new NextRequest(`https://example.test/api/student/fees/pay?invoiceId=${fee.id}&studentId=${student.id}`),{});
+          assert.equal(options.status,200);
+          const body=await options.json();
+          assert.equal(body.mode,'ONLINE');
+          assert.ok(body.gateways.some((value:{id:string})=>value.id===gateway));
+          assert.ok(!JSON.stringify(body).includes('fixture-password'));
+        }
+        state.session={role:'INSTITUTION',userId:root.id,institutionId:root.id,mustChangePassword:false};
         const productionFee=await invoice();
         const payment=await service.createPaymentAttempt({...target,invoiceId:productionFee.id},gateway);
         assert.equal(payment.environment,'production');
-        assert.equal(payment.merchantId,gateway==='jazzcash'?jazz.merchantId:easy.storeId);
+        assert.equal(payment.merchantId,easy.storeId);
         assert.equal(payment.institutionId,root.id);
         await config.updatePaymentConfig(root.id,{action:'mode',mode:'MANUAL'});
       }
+      assert.equal(endpoints.endpointsReady('jazzcash','production'),false);
+      const contained=await config.updatePaymentConfig(root.id,{action:'gateway',gateway:'jazzcash',enabled:true,environment:'production',credentials:jazz,activateOnline:true});
+      assert.equal(contained.gateways.find(value=>value.id==='jazzcash')?.ready,false);
+      await assert.rejects(async()=>service.createPaymentAttempt({...target,invoiceId:(await invoice()).id},'jazzcash'));
+      await config.updatePaymentConfig(root.id,{action:'mode',mode:'MANUAL'});
+      assert.throws(()=>providers.jazzCashCheckout({} as never,jazz),/disabled/);
       assert.equal(endpoints.gatewayEndpoint('jazzcash','production','checkout'),'https://payments.jazzcash.com.pk/CustomerPortal/transactionmanagement/merchantform/');
       assert.equal(endpoints.gatewayEndpoint('easypaisa','production','initiate'),'https://easypay.easypaisa.com.pk/easypay-service/rest/v4/initiate-ma-transaction');
       assert.equal(endpoints.gatewayEndpoint('easypaisa','production','inquiry'),'https://easypay.easypaisa.com.pk/easypay-service/rest/v4/inquire-transaction');
     });
+    await t.test('automatic Online activation preserves manual proof review and rolls back a rejected save',async()=>{
+      const before=await config.readPaymentConfig(root.id);
+      const [proof]=await db.insert(schema.feePaymentSubmissions).values({institutionId:root.id,invoiceId:fee.id,studentId:student.id,amount:1000,sourceBankName:'Fixture',transactionId:'manual-fixture',proofFileKey:'fixture-proof',status:'SUBMITTED'}).returning();
+      await assert.rejects(()=>config.updatePaymentConfig(root.id,{action:'gateway',gateway:'easypaisa',enabled:true,environment:'production',credentials:{...easy,storeId:'999'},activateOnline:true}),/Review pending manual payments/);
+      assert.deepEqual(await config.readPaymentConfig(root.id),before);
+      await db.delete(schema.feePaymentSubmissions).where(eq(schema.feePaymentSubmissions.id,proof.id));
+      const disabled=await config.updatePaymentConfig(root.id,{action:'gateway',gateway:'easypaisa',enabled:false,environment:'production',credentials:easy,activateOnline:true});
+      assert.equal(disabled.mode,'MANUAL');
+    });
     await t.test('both credentials encrypted/masked; blank secrets preserved; tenant isolation',async()=>{
       await config.updatePaymentConfig(root.id,{action:'gateway',gateway:'jazzcash',enabled:true,environment:'sandbox',credentials:jazz});
       const publicConfig=await config.updatePaymentConfig(root.id,{action:'gateway',gateway:'easypaisa',enabled:true,environment:'sandbox',credentials:easy});
-      assert.ok(!JSON.stringify(publicConfig).includes('fixture-password'));assert.equal(publicConfig.gateways.filter(g=>g.ready).length,2);
+      assert.ok(!JSON.stringify(publicConfig).includes('fixture-password'));assert.equal(publicConfig.gateways.filter(g=>g.ready).length,1);
       const [row]=await db.select().from(schema.institutionPaymentGateways);assert.ok(!row.credentialsEncrypted.includes('fixture-salt'));
       await config.updatePaymentConfig(root.id,{action:'gateway',gateway:'jazzcash',enabled:true,environment:'sandbox',credentials:{merchantId:jazz.merchantId,password:'',integritySalt:''}});
       assert.equal((await config.readPaymentConfig(root.id)).gateways.jazzcash?.credentials.password,jazz.password);
       assert.equal((await config.readPaymentConfig(other.id)).mode,'MANUAL');
       await config.updatePaymentConfig(root.id,{action:'mode',mode:'ONLINE'});
     });
-    const attempt=await service.createPaymentAttempt(target,'jazzcash','https://student.example.test');
+    // Historical pending attempts still need authenticated callbacks and settlement after containment.
+    async function legacyAttempt(invoiceId:number) {
+      return (await db.insert(schema.gatewayPaymentAttempts).values({id:'N'+Math.random().toString(36).slice(2,16).toUpperCase(),institutionId:root.id,invoiceId,gateway:'jazzcash',environment:'sandbox',merchantId:jazz.merchantId,
+        amount:1000,credentialsEncrypted:service.credentialSnapshot({enabled:true,environment:'sandbox',credentials:jazz}),returnUrl:'https://example.test/api/payments/jazzcash/return',portalOrigin:'https://student.example.test',
+        institutionName:root.name,payerName:student.name,description:'Historical fixture',expiresAt:new Date(Date.now()+100000)}).returning())[0];
+    }
+    const attempt=await legacyAttempt(fee.id);
     await t.test('unique attempt reuses pending order; gateway changes blocked',async()=>{
-      assert.equal((await service.createPaymentAttempt(target,'jazzcash')).id,attempt.id);
-      await assert.rejects(()=>service.createPaymentAttempt(target,'easypaisa'));
+      const openTarget={...target,invoiceId:(await invoice()).id};
+      const pending=await service.createPaymentAttempt(openTarget,'easypaisa');
+      assert.equal((await service.createPaymentAttempt(openTarget,'easypaisa')).id,pending.id);
+      await assert.rejects(()=>service.createPaymentAttempt(openTarget,'jazzcash'));
       assert.equal(attempt.amount,1000);assert.equal(attempt.institutionId,root.id);
     });
     const fields=(payment:typeof attempt,reference='RRN-FIXTURE')=>{
       const value={pp_TxnRefNo:payment.id,pp_MerchantID:payment.merchantId,pp_Amount:String(payment.amount*100),pp_TxnCurrency:'PKR',pp_ResponseCode:'000',pp_RetreivalReferenceNo:reference,pp_SecureHash:''};
       value.pp_SecureHash=providers.jazzCashHash(value,jazz.integritySalt);return value;
     };
+    await t.test('native handoff cannot mint a capability or expose a merchant password for a disabled integration',async()=>{
+      const native=await load<typeof import('../src/lib/payments/native-checkout')>('src/lib/payments/native-checkout.ts');
+      const resource=await load<typeof import('../src/app/api/payments/[id]/route')>('src/app/api/payments/[id]/route.ts');
+      const payment=await legacyAttempt((await invoice()).id);
+      const context={params:Promise.resolve({id:payment.id})};
+      const request=()=>new NextRequest(`https://example.test/api/payments/${payment.id}`,{method:'POST',body:JSON.stringify({action:'browserCheckout'})});
+      state.session={role:'STUDENT',userId:student.id,institutionId:other.id,mustChangePassword:false};
+      assert.equal((await resource.POST(request(),context)).status,404);
+      state.session.institutionId=root.id;
+      const denied=await resource.POST(request(),context);assert.equal(denied.status,409);
+      assert.ok(!(await denied.text()).includes('fixture-password'));
+      assert.equal(state.checkoutTickets.size,0);
+      await assert.rejects(()=>native.issueNativeCheckout(payment.id),/unavailable/);
+      await assert.rejects(()=>service.startPayment(payment.id,{phone:'',email:''}));
+      assert.equal((await service.getPaymentAttempt(payment.id)).initiationStartedAt,null);
+      state.session={role:'INSTITUTION',userId:root.id,institutionId:root.id,mustChangePassword:false};
+    });
     await t.test('official HMAC vector, wrong signature, wrong amount and wrong merchant rejected',async()=>{
       assert.equal(providers.jazzCashHash({pp_MerchantID:'MER123',pp_OrderInfo:'A48cvE28',pp_Amount:'2995'},'0F5DD14AE2'),'C7689CDA7474EB1ADCD343FD0C0B676BAD0BA66361CC46DB589BDB0DA4C1C867');
       assert.throws(()=>providers.verifyJazzCash({...fields(attempt),pp_SecureHash:'0'.repeat(64)},attempt,jazz));
@@ -157,6 +213,30 @@ test('online payments: migration, configuration, access, provider verification a
       await assert.rejects(()=>providers.inquireEasypaisa(easyTerms,easy));
       assert.equal((await db.select().from(schema.feePayments)).length,0);
     });
+    await t.test('returning from a wallet verifies promptly without initiating a second payment',async()=>{
+      const next=await invoice();
+      const pending=await service.createPaymentAttempt({...target,invoiceId:next.id},'easypaisa');
+      let inquiries=0,initiations=0;
+      globalThis.fetch=async(input,init)=>{
+        const body=JSON.parse(String(init?.body));
+        if(String(input).endsWith('initiate-ma-transaction')) { initiations++; return Response.json({orderId:body.orderId,storeId:'123',responseCode:'0000'}); }
+        inquiries++;
+        return Response.json({orderId:body.orderId,storeId:'123',accountNum:'456',transactionAmount:'1000.00',paymentMode:'MA',transactionStatus:inquiries===1?'PENDING':'PAID',responseCode:'0000',transactionId:'EP-RETURN'});
+      };
+      await service.startPayment(pending.id,{phone:'03001234567',email:'fixture@example.test'});
+      assert.equal((await service.getPaymentAttempt(pending.id)).status,'PENDING');
+      assert.equal(inquiries,1);
+      await db.update(schema.gatewayPaymentAttempts).set({lastCheckedAt:new Date(Date.now()-2500)}).where(eq(schema.gatewayPaymentAttempts.id,pending.id));
+      await service.refreshPayment(pending.id);
+      assert.equal(inquiries,1,'Ordinary polls retain their five-second throttle');
+      await service.refreshPayment(pending.id,true);
+      assert.equal((await service.getPaymentAttempt(pending.id)).status,'PAID');
+      assert.equal(inquiries,2);
+      assert.equal(initiations,1,'Foreground return performs inquiry, never another debit');
+      await service.refreshPayment(pending.id,true);
+      assert.equal(inquiries,2,'Confirmed receipts do not poll the provider again');
+      globalThis.fetch=originalFetch;
+    });
     await t.test('endpoint allowlist rejects redirects/custom hosts and wrong protocol versions',async()=>{
       const previous=process.env.EASYPAISA_SANDBOX_INQUIRY_URL;
       for(const url of ['http://easypaystg.easypaisa.com.pk/private','https://attacker.test/easypay-service/rest/v4/inquire-transaction','https://easypayst.easypaisa.com.pk/easypay-service/rest/v5/inquire-transaction']){
@@ -182,8 +262,8 @@ test('online payments: migration, configuration, access, provider verification a
       const response=await route.POST(request(xml(fields(attempt))));assert.equal(response.status,200);assert.match(await response.text(),/UpdatePaymentStatusResult>000Success/);
     });
     await t.test('Manual switch blocks new initiation and proof overlap but preserves signed late settlement',async()=>{
-      const next=await invoice();const pending=await service.createPaymentAttempt({institutionId:root.id,studentId:student.id,invoiceId:next.id},'jazzcash');
-      await service.startPayment(pending.id,{phone:'',email:''});
+      const next=await invoice();const pending=await legacyAttempt(next.id);
+      await db.update(schema.gatewayPaymentAttempts).set({initiationStartedAt:new Date()}).where(eq(schema.gatewayPaymentAttempts.id,pending.id));
       await config.updatePaymentConfig(root.id,{action:'mode',mode:'MANUAL'});
       await assert.rejects(()=>service.createPaymentAttempt(target,'jazzcash'));
       const manual=await load<typeof import('../src/lib/payments/manual-mode')>('src/lib/payments/manual-mode.ts');
@@ -193,7 +273,7 @@ test('online payments: migration, configuration, access, provider verification a
       await config.updatePaymentConfig(root.id,{action:'mode',mode:'ONLINE'});
     });
     await t.test('disabling a gateway blocks initiation of an already prepared checkout',async()=>{
-      const next=await invoice();const pending=await service.createPaymentAttempt({institutionId:root.id,studentId:student.id,invoiceId:next.id},'jazzcash');
+      const next=await invoice();const pending=await legacyAttempt(next.id);
       await config.updatePaymentConfig(root.id,{action:'gateway',gateway:'jazzcash',enabled:false,environment:'sandbox',credentials:{}});
       await assert.rejects(()=>service.startPayment(pending.id,{phone:'',email:''}));
       assert.equal((await service.getPaymentAttempt(pending.id)).initiationStartedAt,null);

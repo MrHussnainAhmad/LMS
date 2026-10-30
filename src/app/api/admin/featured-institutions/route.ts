@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextResponse } from "next/server";
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const result = featuredInstSchema.safeParse(body);
 
     if (!result.success) {

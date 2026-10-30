@@ -1,3 +1,5 @@
+import { readBoundedJson } from '@/lib/http';
+import { temporaryPassword } from '@/lib/temporary-password';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from 'next/server';
@@ -16,7 +18,7 @@ const createEmployeeSchema = z.object({
 }).strict();
 
 export const POST = requireRole(['SUPER_ADMIN'], async (req: NextRequest, { session }) => {
-  const body = await req.json();
+  const body = await readBoundedJson(req);
   const parsed = createEmployeeSchema.safeParse(body);
   
   if (!parsed.success) {
@@ -24,7 +26,7 @@ export const POST = requireRole(['SUPER_ADMIN'], async (req: NextRequest, { sess
   }
 
   const { name, email } = parsed.data;
-  const initialPassword = '1234567890';
+  const initialPassword = temporaryPassword();
   const passwordHash = await hash(initialPassword);
 
   try {

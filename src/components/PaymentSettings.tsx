@@ -18,14 +18,14 @@ export function PaymentSettings() {
     setBusy(true);setMessage('');
     try {
       const response=await fetch(endpoint,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      const data=await response.json();if(!response.ok)throw Error(data.error);setSettings(data);setMessage('Payment settings saved.');return true;
+      const data=await response.json();if(!response.ok)throw Error(data.error);setSettings(data);setMode(data.mode);setMessage(data.mode==='ONLINE'?'Payment settings saved. Online payments are active.':'Payment settings saved.');return true;
     }catch(error){setMessage(error instanceof Error?error.message:'Could not save payment settings.');return false;}
     finally{setBusy(false);}
   }
   async function saveGateway(event:FormEvent<HTMLFormElement>,gateway:Gateway) {
     event.preventDefault();const form=event.currentTarget;const values=new FormData(form);
     const credentials=Object.fromEntries((gateway.id==='jazzcash'?['merchantId','password','integritySalt']:['storeId','accountNum','username','password']).map(key=>[key,String(values.get(key)||'')]));
-    if(await save({action:'gateway',gateway:gateway.id,enabled:values.get('enabled')==='on',environment:values.get('environment'),credentials},gateway.id)) {
+    if(await save({action:'gateway',gateway:gateway.id,enabled:values.get('enabled')==='on',environment:values.get('environment'),credentials,activateOnline:true},gateway.id)) {
       for(const name of ['password','integritySalt']){const field=form.elements.namedItem(name);if(field instanceof HTMLInputElement)field.value='';}
     }
   }
@@ -44,7 +44,7 @@ export function PaymentSettings() {
       {gateway.notReadyReason&&<p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm" role="status">{gateway.notReadyReason}</p>}
       <fieldset disabled={busy} className="space-y-3">
         <label className="block text-xs font-medium">Environment<select name="environment" defaultValue={gateway.environment} className={input}><option value="sandbox">Sandbox testing</option><option value="production">Production</option></select></label>
-        <p className="text-xs text-stone-500">Save your merchant credentials and enable the gateway, then choose Use Online payments.</p>
+        <p className="text-xs text-stone-500">Saving an enabled gateway also activates Online payments for your institution.</p>
         <label className="block text-xs font-medium">{gateway.id==='jazzcash'?'Merchant ID':'Store ID'}<input name={gateway.id==='jazzcash'?'merchantId':'storeId'} defaultValue={gateway.merchantId} maxLength={160} required className={input}/></label>
         {gateway.id==='easypaisa'&&<><label className="block text-xs font-medium">EWP account number<input name="accountNum" defaultValue={gateway.accountNum} maxLength={32} required className={input}/></label><label className="block text-xs font-medium">API username<input name="username" defaultValue={gateway.username} maxLength={160} required className={input}/></label></>}
         <label className="block text-xs font-medium">Merchant / API password<input name="password" type="password" autoComplete="new-password" maxLength={256} required={!gateway.configured} placeholder={gateway.configured?'Saved — leave blank to keep':'Provider-issued password'} className={input}/></label>

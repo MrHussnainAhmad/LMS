@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -55,7 +56,7 @@ export const POST = requireRole(["STUDENT", "PARENT"], async (req: NextRequest, 
   const limited = await withRateLimit(req, "upload", `student-fee:${institutionId}:${session.userId}`);
   if (!limited.success) return NextResponse.json({ error: "Too many payment submissions. Please wait and try again." }, { status: 429 });
   let body: unknown;
-  try { body = await req.json(); }
+  try { body = await readBoundedJson(req); }
   catch { return NextResponse.json({ error: "Request body must be valid JSON" }, { status: 400 }); }
   if (!body || typeof body !== "object" || !("action" in body)) return NextResponse.json({ error: "Invalid payment action" }, { status: 400 });
   if (body.action === "signature") {

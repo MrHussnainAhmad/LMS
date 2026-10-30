@@ -1,20 +1,11 @@
 #!/bin/sh
 set -eu
 umask 077
-
 if [ "${1:-}" = '--init-volume' ]; then exec /init-volume.sh; fi
 export TZ=UTC
-schedule="${SCHEDULE:-0 0 * * *}"
-case "${schedule}" in *[!0-9\ ,*/-]*) echo 'Invalid numeric cron schedule' >&2; exit 1 ;; esac
-test "$(printf '%s' "${schedule}" | awk '{ print NF }')" = 5 || { echo 'Expected five cron fields' >&2; exit 1; }
-printf '%s %s\n' "${schedule}" '/backup.sh >> /proc/1/fd/1 2>> /proc/1/fd/2' > /etc/crontabs/root
-# Independently bound plaintext lifetime after SIGKILL/OOM/host reboot.
-printf '%s\n' '17 * * * * /backup.sh --cleanup >> /proc/1/fd/1 2>> /proc/1/fd/2' >> /etc/crontabs/root
-
-if [ "${BACKUP_ON_STARTUP:-true}" = "true" ]; then
-  if ! /backup.sh; then
-    echo "Initial backup failed; the scheduled job will retry at ${schedule}." >&2
-  fi
-fi
-
+# Pakistan is UTC+05:00. One scheduled job at 02:00 Asia/Karachi.
+printf '%s\n' '0 21 * * * /backup.sh --nightly >> /proc/1/fd/1 2>> /proc/1/fd/2' > /etc/crontabs/root
+# Poll only manually queued jobs and retry password delivery; this does not create extra snapshots.
+printf '%s\n' '* * * * * /backup.sh --poll >> /proc/1/fd/1 2>> /proc/1/fd/2' >> /etc/crontabs/root
+su-exec 1001:1001 sh -c 'date -u +%s > /backups/worker-started'
 exec crond -f -d 8

@@ -1,3 +1,4 @@
+import { databaseRecoveryPaused } from '@/lib/database-recovery-state';
 import { processNextInstitutionRestore } from '@/lib/institution-restores';
 import { gracefulShutdown } from '@/lib/process-lifecycle';
 
@@ -6,7 +7,7 @@ let timer: NodeJS.Timeout | undefined;
 let running: Promise<void> | undefined;
 async function tick() {
   running = (async () => {
-    try { await processNextInstitutionRestore(); }
+    try { if(!await databaseRecoveryPaused())await processNextInstitutionRestore(); }
     catch { console.error('Institution restore service unavailable; check migration 0061 and DIRECT_URL.'); }
   })();
   await running;

@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
@@ -45,7 +46,7 @@ export const PATCH = requireRole(["STAFF"], async (req: NextRequest, { session, 
   if (!Number.isInteger(testId)) return NextResponse.json({ error: "Invalid test ID" }, { status: 400 });
 
   try {
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const title = String(body.title || "").trim();
     const durationMinutes = Number(body.durationMinutes);
 

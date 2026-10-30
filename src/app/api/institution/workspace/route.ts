@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -27,7 +28,7 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (_req
 
 const ownerSchema = z.object({ name: z.string().trim().min(1).max(255), gender: z.enum(['MALE', 'FEMALE', 'OTHER']), email: z.email().max(255), contactNumber: z.string().trim().min(1).max(50) }).strict();
 export const POST = requireRole(['INSTITUTION'], async (req, { session }) => {
-  const parsed = ownerSchema.safeParse(await req.json().catch(() => null));
+  const parsed = ownerSchema.safeParse(await readBoundedJson(req).catch(() => null));
   if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 });
   const institutionId = getTenantContext(session);
   const created = await db.transaction(async tx => {

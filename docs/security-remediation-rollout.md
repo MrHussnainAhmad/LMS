@@ -1,0 +1,72 @@
+# Security remediation rollout
+
+The later full-database backup feature adds migration 0087. Apply all current migrations before credential-key rotation; its new encrypted Drive/password columns are included by the rotation utility. See [Database Backup & Recovery](database-backup-recovery.md) for the current 02:00 PKT schedule and per-backup password delivery.
+
+These are operator instructions for the reviewed security changes. They were **not executed** against any deployment. Source changes alone do not revoke old public documents, reissue credentials or change existing database grants.
+
+## Release prerequisites
+
+1. Take an encrypted backup and rehearse restoration in an isolated environment. Preserve current encryption/signing/QR keys in restricted recovery escrow. Inventory old clients and any desktop unsynced writes before changing authentication/storage behavior.
+2. Stage one matching app/migrator/worker release. Migration `0086_security_sessions.sql` is supplemental and tracked by name/hash in `scripts/migrate-production.mjs`. It deliberately revokes every existing refresh, device, QR and push binding once. Never edit a migration after it has been applied. Verify the exact new migrator artifact contains 0086 before starting new runtime replicas.
+3. Generate separate random credentials for `DATABASE_RUNTIME_PASSWORD` and `VALKEY_PASSWORD` (64 or more hexadecimal characters each). Keep `POSTGRES_USER`/`POSTGRES_PASSWORD` exclusively for migration, backup and operator tasks. Supply actual values through the deployment secret store, never Git or command-line literals. Compose rejects missing runtime/Valkey passwords.
+4. Set a dedicated random `STREAMING_CREDENTIALS_SECRET` of at least 32 characters, different from `JWT_SECRET`, and a new unique `STREAMING_CREDENTIALS_KEY_ID`. Preserve prior named v2 keys in the JSON array `STREAMING_CREDENTIALS_PREVIOUS_KEYS` (maximum 8). For v1 records encrypted under a former key, set `STREAMING_CREDENTIALS_LEGACY_SECRET` to the actual former key. Do not remove old JWT-derived decryption material just because a new dedicated key was configured.
+5. Configure `CLOUDINARY_CONTENT_UPLOAD_PRESET` as a signed-only preset (`unsigned=false`) with `settings.max_file_size` at most `5242880`. Check it with provider Admin API in the intended account; the signature endpoint refuses absent/unsafe settings. New signatures bind `public_id`, `overwrite=false`, `type`, `folder`, `allowed_formats` and `upload_preset`. Updated web, desktop and Taleem clients send all those values. Coordinate their release; old clients cannot omit newly signed fields.
+6. Review the enforced nonce CSP and allowed provider/video endpoints in staging. Confirm browser hydration, public pages, tenant/custom-domain pages, uploads, downloads, printing and Easypaisa checkout. Root layout now reads request headers for the nonce, so public pages can become dynamic. Inline styles remain allowed for existing UI. Do not weaken script restrictions to hide compatibility errors.
+
+## Operator tools and execution order
+
+The following scripts are reviewable, explicit operator tools. None loads `.env` automatically. Their default invocation does not connect or apply changes; role provisioning also requires valid synthetic or actual role/password variables even in dry-run mode. `--apply` enables changes. Load secrets using an approved private environment mechanism and choose a maintenance window before executing them.
+
+| Order | Tool | Required environment / effect |
+| --- | --- | --- |
+| 1 | `node scripts/provision-runtime-role.mjs` | `DIRECT_URL` must be the actual migration-owner/operator connection, plus `DATABASE_RUNTIME_USER` and hex `DATABASE_RUNTIME_PASSWORD`. With `--apply`, creates/restricts runtime role, denies superuser/role/database/replication/bypass privileges, rejects pre-existing ownership/memberships, removes public-schema CREATE and grants runtime DML/sequence access. Future default grants apply to the provisioner's role; run as the migration owner. Review other owners/schemas/functions separately. |
+| 2 | Existing production migration command, using matching new migrator artifact | Migration `0086` makes platform device-session institution nullable and revokes all old session/binding types. Migration startup must use operator credentials, not the runtime `DIRECT_URL`. Confirm migration ledger and new schema. |
+| 3 | Coordinated app/worker/PgBouncer/Valkey restart | Runtime services use the new non-owner role in both pooled and direct URLs. Valkey and all consumers must agree on its new password. Production Next startup refuses dangerous role attributes, database/schema ownership, memberships or DDL grants. Verify readiness on every replica and worker connectivity. |
+| 4 | `node --import tsx scripts/rotate-credential-key.ts` | Current/previous/legacy encryption-key variables and operator `DIRECT_URL`. With `--apply`, re-encrypts stored streaming, merchant, backup and restore credentials under the active key using optimistic row comparisons. No plaintext is printed. A missing/unreadable old key stops migration; keep old keys and investigate. |
+| 5 | `node --import tsx scripts/migrate-private-files.ts` | Operator `DIRECT_URL`, Cloudinary cloud name/key/secret. With `--apply`, moves assignment/reference and submission objects from public `upload` to `authenticated`, invalidates old URLs and stores private descriptors. It can make partial progress; retry is designed to recognize already moved assets. Unexpected legacy URLs/formats stop for manual review. |
+| 6 | `node scripts/security-reset-account.mjs` | Operator `DIRECT_URL`, one explicit `SECURITY_RESET_ROLE` (`INSTITUTION`, `EMPLOYEE`, `STAFF`, `STUDENT`), numeric `SECURITY_RESET_ID` and absolute private `SECURITY_CREDENTIAL_EXPORT_PATH` outside public directories. With `--apply`, writes a restricted new credential file, resets only that account and transactionally revokes sessions. The file contains a prepared record followed by a committed receipt. If receipt writing fails, inspect database state before retrying. Never put the credential file in served folders or build artifacts; on Windows verify its ACL explicitly. |
+
+`DATABASE_URL` and runtime `DIRECT_URL` in `.env.example` intentionally describe the restricted runtime login. Do not reuse those URLs for migration/provisioning. The Compose migrator receives the bootstrap/operator login separately. Existing databases must be provisioned before starting the changed runtime configuration; setting a password variable does not create a PostgreSQL role.
+
+## Existing credentials and sessions
+
+- The former shared initial password is rejected at main login, even for existing accounts. Recover affected users through an authorized institution reset or the explicit one-account operator tool. This contains known-default takeover but can require support for previously provisioned accounts. Do not send credentials automatically to an unverified requester.
+- New student/staff creation and reset return unique temporary credentials with `Cache-Control: no-store`. The web/desktop screens display them; imports download a credentials CSV. Treat these exports as secrets and distribute only to verified owners, then delete retained copies under the organization's policy.
+- Desktop student/staff creation and resets now require a live server response so a queued action cannot silently lose a generated credential. They are not offline-queued.
+- All roles, including platform accounts, now require revocable tracked sessions. Legacy JWTs without tracking fail closed. Access JWT lifetime remains five days, with session revocation checked on every online authenticated request. Sign in again and re-register push devices after the cutover.
+- Check old web, native and QR access tokens against an isolated deployed replica after logout/reset: none may retain access. Test refresh reuse and simultaneous rotation. Existing local tests use serialized in-memory PostgreSQL; multi-connection concurrency validation is still needed.
+
+## Private files and keys
+
+- Legacy public document links are no longer returned by assignment/submission UI paths; they are unavailable until migrated. This does not prevent someone with an old link from contacting the provider directly. The provider migration and CDN invalidation are required for confidentiality.
+- After migration, test anonymous requests to **both original and transformed** old URLs using a synthetic file. They must fail. Confirm students see only assigned references/own submissions, staff see assigned classes only, and five-minute download URLs expire. Anyone possessing an unexpired signed URL can use it; do not log/share it as a permanent link.
+- Confirm actual account upload policies cannot override signed folder/public ID/delivery intent. Enforce provider-side size constraints and storage-cost alerts. Apply orphan-retention cleanup only after determining which assets are still referenced; no automatic deletion was added here.
+- Validate every encrypted column can be read after key rotation. Rehearse restoring an older encrypted backup before retiring legacy/current-prior keys. Existing backups may contain old ciphertext even when live rows have been migrated. Keep recovery keys protected for their complete retention window.
+
+## Desktop migration
+
+- Release the updated desktop only after staging account activation against the updated backend. No installer was built by this task.
+- Tokens live only in renderer/main-process memory; starting the application requires online login. Active, unexpired authorization is required to read the selected local workspace. Server-side revocation cannot be learned while offline; device policy and the expiry window still matter.
+- Tenant/account snapshots use AES-GCM and an OS-protected wrapping key. Real Electron/SQLite persistence/isolation was tested, but OS keystore wrapping was mocked. Verify Windows DPAPI/macOS keychain/Linux secure storage on every supported packaged target. The application refuses unavailable/basic-text protection.
+- On first launch, old unpartitioned SQLite data is encrypted into `nisaab360-local.sqlite.quarantine.enc` before removing the ordinary SQLite/WAL/SHM files. This data is not assigned to an assumed tenant. Back up the encrypted quarantine and OS key securely; reconcile unsynced work using a reviewed operator procedure. No automatic tenant reconstruction or upload of legacy queued writes was implemented.
+- Removing a file does not erase SSD remnants or external backups. Use full-disk encryption and restricted OS profiles. An attacker controlling the same OS account is outside the protection provided by storage wrapping.
+- Test account A -> logout -> account B with denied/failed pulls and jobs in flight. Account A's rows and writes must never appear in B. Confirm logout, token expiry, tampered snapshots and untrusted IPC senders fail closed. A five-second snapshot interval means a crash can lose the latest local edits; normal logout/exit checkpoints explicitly.
+
+## Payment containment
+
+New JazzCash initiation and browser/native handoffs are disabled because the current form requires exposing reusable merchant credentials. Existing historical signed callbacks and settlement protections are retained. This is an availability tradeoff, not a finished replacement integration. Obtain merchant-specific official documentation and implement/test a supported server-to-server or credential-free hosted flow before enabling it again. Do not simply restore `pp_Password` client fields. Easypaisa's existing approved-contract adapter remains subject to merchant configuration and sandbox/live verification; no real payment was made here.
+
+## Staging acceptance and open operational checks
+
+- Run local security, QR, payment, campus, role, password and desktop cache regressions. Backend and mobile TypeScript checks, desktop `check:types`, parent/desktop lint passed locally; Taleem-wide lint still reports 47 errors and 26 warnings. Resolve/review those errors before declaring all validation green.
+- Validate the exact Caddyfile using the deployed Caddy binary and test streamed/chunked over-limit requests for 413. Configuration syntax follows the [official request-body directive](https://caddyserver.com/docs/caddyfile/directives/request_body); no Caddy binary was available for runtime validation here. Preserve the larger bounded restore-upload exception.
+- Test same-origin cookie writes, rejected sibling/cross-origin cookie writes, bearer native calls, mandatory password changes, graduate restrictions and read-only campus behavior against every externally reachable entry point. Verify actual CORS origins/trusted forwarding configuration and public-site availability.
+- Inspect actual listeners, IPv6, cloud firewall and Docker firewall chains; confirm PostgreSQL is loopback/private and Valkey/application ports are not externally published. Check TLS requirements for the real host/network boundary; these edits do not add internal PostgreSQL/Valkey TLS or disk encryption.
+- Confirm image digests, migration/worker compatibility, privilege separation, backup permissions/retention and restoration. Review the remaining shared plaintext temporary-backup-volume exposure and isolate mounts/processes according to the operational design.
+- Review the local Firebase service-account key's permissions and sharing history and revoke/reissue through its provider if needed. Nothing in this task rotated that external key.
+- Privileged independent MFA/SSO, incident alerts, audit retention/integrity and the full lockfile advisory assessment remain open. Mutable fallback image/action tags should be reviewed against the actual digest-pinned release path.
+- Complete the branch/device coverage listed in the original audit; local regression results do not certify the unreviewed application surface.
+
+## Rollback constraints
+
+Keep encrypted backups and previous decryption keys before rollout. Rolling back application code can reintroduce the reported vulnerabilities. Do not undo session revocation, restore shared passwords, use a superuser runtime login, make migrated documents public, or decrypt desktop files as a shortcut. Earlier clients may be incompatible with signed upload fields/private delivery and tracked sessions. Prefer rolling forward with corrected configuration and matching artifacts; otherwise contain affected features while restoring compatibility in an isolated rehearsal.

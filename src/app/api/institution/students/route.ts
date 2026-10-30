@@ -1,3 +1,5 @@
+import { readBoundedJson } from '@/lib/http';
+import { temporaryPassword } from '@/lib/temporary-password';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { after, NextRequest, NextResponse } from 'next/server';
@@ -54,7 +56,7 @@ async function getOrCreateWholeClassSection(institutionId: number, classId: numb
 export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
   try {
     const tenantId = getTenantContext(session);
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const parsed = createStudentSchema.safeParse(body);
     
     if (!parsed.success) {
@@ -111,7 +113,7 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
     const [admissionSequence] = await allocateAdmissionSequences(tenantId, yearOfJoining);
     const loginRollNumber = generateStudentLoginRollNumber({ institution: loginInstitution, yearOfJoining, admissionSequence });
 
-    const initialPassword = '1234567890';
+    const initialPassword = temporaryPassword();
     const passwordHash = await hash(initialPassword);
     const name = `${firstName} ${lastName}`.trim();
     

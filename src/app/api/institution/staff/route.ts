@@ -1,3 +1,5 @@
+import { readBoundedJson } from '@/lib/http';
+import { temporaryPassword } from '@/lib/temporary-password';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from 'next/server';
@@ -55,7 +57,7 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req:
 
 export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
   const tenantId = getTenantContext(session);
-  const body = await req.json();
+  const body = await readBoundedJson(req);
   const parsed = createStaffSchema.safeParse(body);
   
   if (!parsed.success) {
@@ -112,7 +114,7 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
     generatedEmail = `${localPart}${count}@${domain}`;
   }
 
-  const initialPassword = '1234567890';
+  const initialPassword = temporaryPassword();
   const passwordHash = await hash(initialPassword);
 
   try {

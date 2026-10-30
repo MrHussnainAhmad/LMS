@@ -1,3 +1,4 @@
+import { ActionInputError } from './action-input-error';
 import { NextResponse } from 'next/server';
 
 /**
@@ -91,4 +92,28 @@ export async function readJsonBody<T = unknown>(
   } catch {
     return INVALID_JSON;
   }
+}
+
+export async function readBoundedJson(req: Request): Promise<any> {
+  const parsed = await readJsonBody(req);
+  if (!parsed.ok) throw Object.assign(new ActionInputError(parsed.error), { status: parsed.status });
+  return parsed.data;
+}
+
+/** Bounded multipart parser, including bodies without Content-Length. */
+export async function readBoundedFormData(req: Request, maxBytes = DEFAULT_MAX_BODY_BYTES): Promise<FormData> {
+  if (exceedsDeclaredBodyLimit(req, maxBytes)) throw Object.assign(new ActionInputError('Request body too large'), { status: 413 });
+  const reader = req.body?.getReader();
+  if (!reader) throw new ActionInputError('Missing request body');
+  const chunks: Uint8Array[] = []; let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) { await reader.cancel().catch(() => {}); throw Object.assign(new ActionInputError('Request body too large'), { status: 413 }); }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total); let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new Response(bytes.buffer, { headers: { 'Content-Type': req.headers.get('Content-Type') || '' } }).formData();
 }

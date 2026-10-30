@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { positiveInteger } from '@/lib/pagination';
 import { NextResponse } from 'next/server';
 import { and, eq, desc } from 'drizzle-orm';
@@ -37,7 +38,7 @@ export const GET = requireRole(['STAFF'], async (req, { session }) => {
 });
 export const POST = requireRole(['STAFF'], async (req) => {
   try {
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     if (
       !body ||
       typeof body.title !== 'string' ||

@@ -63,7 +63,7 @@ async function main() {
     'next/server': 'export const NextResponse=globalThis.__qrLogin.server.NextResponse;export const after=fn=>globalThis.__qrLogin.after.push(fn);',
     'next/headers': `export const cookies=async()=>({get:name=>{const value=globalThis.__qrLogin.cookies.get(name);return value?{value}:undefined},set:(key,value)=>globalThis.__qrLogin.cookies.set(key,value),delete:key=>globalThis.__qrLogin.cookies.delete(key)});export const headers=async()=>new Headers({host:'localhost:3000'});`,
     redis: `export const redis={get status(){return globalThis.__qrLogin.redisStatus},get:async()=>null,setex:async()=>{},multi(){let key;return {incr(k){key=k;return this},expire(){return this},async exec(){const s=globalThis.__qrLogin;const n=(s.counts.get(key)||0)+1;s.counts.set(key,n);return [[null,n],[s.expireError?new Error('fixture'):null,1]]}}}};`,
-    user: 'export const getFreshStudent=async()=>null;export const verifyUserExistsFresh=async()=>true;export const getUserCreatedAt=async()=>new Date();',
+    user: 'export const invalidateUserValidity=async()=>{};export const getFreshStudent=async()=>null;export const verifyUserExistsFresh=async()=>true;export const getUserCreatedAt=async()=>new Date();',
     'auth-student': 'export const enrichFreshStudentSession=x=>x;',
     'campus-workspaces': 'export const resolveCampusSession=async x=>x;',
     'notification-events': 'export const notifySecurity=async()=>{};',
@@ -94,7 +94,7 @@ async function main() {
       CREATE TYPE user_role AS ENUM ('SUPER_ADMIN','EMPLOYEE','INSTITUTION','INSTITUTION_ADMIN','STAFF','STUDENT','PARENT');
       CREATE TABLE institutions (id integer PRIMARY KEY, status text NOT NULL DEFAULT 'APPROVED', deleted_at timestamp,
         parent_institution_id integer, allow_graduated_student_access boolean NOT NULL DEFAULT false);
-      CREATE TABLE students (id integer PRIMARY KEY, institution_id integer NOT NULL, password_hash text NOT NULL,
+      CREATE TABLE students (id integer PRIMARY KEY, institution_id integer NOT NULL, password_hash text NOT NULL, name text DEFAULT 'Synthetic student', phone text,
         must_change_password boolean DEFAULT false, is_active boolean DEFAULT true, deleted_at timestamp,
         academic_status text DEFAULT 'ACTIVE', login_roll_number text DEFAULT 'fixture-student', created_at timestamp NOT NULL DEFAULT now());
       CREATE TABLE staff (id integer PRIMARY KEY, institution_id integer NOT NULL, password_hash text NOT NULL,
@@ -111,7 +111,7 @@ async function main() {
       UPDATE students SET login_roll_number='fixture-other-student' WHERE id=2;
       INSERT INTO staff(id,institution_id,password_hash,campus_id) VALUES (10,1,'staff-password-hash',7);
     `);
-    await memory.exec('CREATE TABLE push_devices(id serial PRIMARY KEY, session_token_hash varchar(64), revoked_at timestamptz, updated_at timestamptz)');
+    await memory.exec('CREATE TABLE push_devices(id serial PRIMARY KEY, user_role text, user_id integer, session_token_hash varchar(64), revoked_at timestamptz, updated_at timestamptz)');
     const migration = readFileSync('drizzle/0078_qr_account_login.sql', 'utf8');
     await memory.exec(migration);
     await memory.exec(migration);
@@ -122,6 +122,7 @@ async function main() {
     await memory.exec("ALTER TABLE institutions ADD COLUMN pricing_plan varchar(20) NOT NULL DEFAULT 'BASIC'");
     await memory.exec(readFileSync('drizzle/0082_institution_agreement_acceptance.sql', 'utf8'));
     await memory.exec(readFileSync('drizzle/0083_admin_managed_plans.sql', 'utf8'));
+    await memory.exec(readFileSync('drizzle/0086_security_sessions.sql', 'utf8'));
     const indexes = await memory.query<{ indexname: string }>("SELECT indexname FROM pg_indexes WHERE tablename='qr_login_challenges'");
     for (const name of ['qr_login_challenges_pkey', 'qr_login_challenges_source_idx', 'qr_login_challenges_expiry_idx']) assert.ok(indexes.rows.some(row => row.indexname === name));
     const columns = await memory.query<{ column_name: string }>("SELECT column_name FROM information_schema.columns WHERE table_name='qr_login_challenges'");
@@ -141,6 +142,39 @@ async function main() {
       const tokens = await auth.createTokens({ userId, institutionId, role });
       return { tokens, owner: await service.readQrOwner(tokens.accessToken, tokens.refreshToken) };
     }
+    const edge = await load<typeof import('../src/lib/auth-edge')>('src/lib/auth-edge.ts');
+    for (const role of ['SUPER_ADMIN','EMPLOYEE'] as const) {
+      const platform = await auth.createTokens({ role, userId: 900, isSuperAdmin: role === 'SUPER_ADMIN' });
+      assert.ok((await edge.verifyAccessToken(platform.accessToken))?.planDeviceSessionId);
+      const rotated = await auth.rotateRefreshToken(platform.refreshToken);
+      assert.equal(rotated.status,'ROTATED');
+      assert.equal((await auth.rotateRefreshToken(platform.refreshToken)).status,'REUSED');
+      assert.equal(await edge.verifyAccessToken(platform.accessToken),null,'cached platform access must fail after refresh replay');
+      if (rotated.status === 'ROTATED') assert.notEqual((await auth.rotateRefreshToken(rotated.refreshToken)).status,'ROTATED');
+      const logoutSession = await auth.createTokens({role,userId:900});
+      assert.ok(await edge.verifyAccessToken(logoutSession.accessToken));
+      await auth.revokeRefreshToken(logoutSession.refreshToken);
+      assert.equal(await edge.verifyAccessToken(logoutSession.accessToken),null,'logout must revoke cached platform access');
+    }
+    const legacy = await auth.createAccessToken({role:'EMPLOYEE',userId:900});
+    assert.equal(await edge.verifyAccessToken(legacy),null,'tokens without revocable sessions are retired');
+    pass('platform accounts have revocable sessions; cached access fails after logout/replay and legacy access tokens are refused');
+    const resetRoute = await load<{POST(req:NextRequest):Promise<Response>}>('src/app/api/institution/reset-password/route.ts');
+    const actor = await auth.createTokens({role:'INSTITUTION_ADMIN',userId:42,institutionId:1});
+    state.cookies.set('access_token',actor.accessToken);
+    const beforeResetToken = await auth.createTokens({role:'STUDENT',userId:1,institutionId:1});
+    assert.ok(await edge.verifyAccessToken(beforeResetToken.accessToken));
+    const resetRequest = () => new NextRequest('http://localhost/api/institution/reset-password',{method:'POST',body:JSON.stringify({userType:'STUDENT',identifier:'fixture-student'})});
+    const resetResponse = await resetRoute.POST(resetRequest());assert.equal(resetResponse.status,200);
+    const firstReset = await resetResponse.json();assert.match(firstReset.temporaryPassword,/^[A-Za-z0-9_-]{24}$/);
+    assert.equal(await edge.verifyAccessToken(beforeResetToken.accessToken),null);
+    assert.notEqual((await auth.rotateRefreshToken(beforeResetToken.refreshToken)).status,'ROTATED');
+    const secondReset = await (await resetRoute.POST(resetRequest())).json();assert.notEqual(firstReset.temporaryPassword,secondReset.temporaryPassword);
+    const wrongTenant = await auth.createTokens({role:'INSTITUTION_ADMIN',userId:42,institutionId:2});state.cookies.set('access_token',wrongTenant.accessToken);
+    assert.equal((await resetRoute.POST(resetRequest())).status,404);
+    state.cookies.clear();
+    await memory.exec("UPDATE students SET password_hash='student-password-hash',must_change_password=false WHERE id=1");
+    pass('actual password-reset handler issues distinct credentials, revokes cached access and refresh tokens, and denies a foreign institution');
     const student = await owner();
     const teacher = await owner('STAFF', 10);
     const other = await owner('STUDENT', 2, 2);

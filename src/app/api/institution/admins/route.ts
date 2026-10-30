@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { and, count, eq, sql } from "drizzle-orm";
@@ -27,7 +28,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (_req
 export const POST = requireRole(["INSTITUTION"], async (req: NextRequest, { session }) => {
   try {
     const institutionId = getTenantContext(session);
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const name = String(body.name || "").trim();
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "");
@@ -35,8 +36,8 @@ export const POST = requireRole(["INSTITUTION"], async (req: NextRequest, { sess
     if (!name || !email || !password) {
       return NextResponse.json({ error: "Name, email, and password are required" }, { status: 400 });
     }
-    if (password.length < 8) {
-      return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
+    if (password.length < 8 || password.length > 1024 || password === "1234567890") {
+      return NextResponse.json({ error: "Use a unique password between 8 and 1024 characters" }, { status: 400 });
     }
 
     const passwordHash = await hash(password);

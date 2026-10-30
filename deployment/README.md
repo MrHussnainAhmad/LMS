@@ -1,5 +1,7 @@
 # Release and tenant-host setup
 
+For the current 02:00 Pakistan-time full database backup, per-backup emailed passwords and new-server recovery, read [Database Backup & Recovery](../docs/database-backup-recovery.md). This supersedes older fixed-password central-backup setup instructions.
+
 For the central-backup schema/volume repair, staging requirements, existing-server
 upgrade sequence and rollback, read
 [the production fix report](../CENTRAL_BACKUP_PRODUCTION_FIX_REPORT.md).

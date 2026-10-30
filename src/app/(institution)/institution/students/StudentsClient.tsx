@@ -1,4 +1,5 @@
 "use client";
+import { csvCell } from "@/lib/csv";
 
 import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
@@ -30,12 +31,13 @@ type StudentRow = {
 type CreateStudentResponse = {
   credentials?: {
     loginRollNumber?: string;
+    initialPassword?: string;
   };
 };
 
 type ImportStudentsResponse = {
   imported?: number;
-  initialPassword?: string;
+  credentials?: { loginRollNumber: string; temporaryPassword: string }[];
   error?: string;
   errors?: string[];
 };
@@ -82,6 +84,7 @@ export function StudentsClient({
 
   // Modals state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newCredentials, setNewCredentials] = useState<{ loginRollNumber: string; initialPassword: string } | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [importStep, setImportStep] = useState<"guide" | "upload">("guide");
@@ -173,6 +176,7 @@ export function StudentsClient({
         description: `Login ID generated: ${res.credentials?.loginRollNumber || 'Success'}`, 
         variant: "success" 
       });
+      if (res.credentials?.loginRollNumber && res.credentials.initialPassword) setNewCredentials({ loginRollNumber: res.credentials.loginRollNumber, initialPassword: res.credentials.initialPassword });
       setIsCreateOpen(false);
 
       router.refresh();
@@ -223,14 +227,19 @@ export function StudentsClient({
         throw new Error(result.error || "Could not import students");
       }
 
+      if (result.credentials?.length) {
+        const csv = ['Login ID,Temporary password', ...result.credentials.map(item => [item.loginRollNumber, item.temporaryPassword].map(csvCell).join(','))].join('\n');
+        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+        const link = document.createElement('a'); link.href = url; link.download = 'student-credentials.csv'; link.click(); URL.revokeObjectURL(url);
+      }
       toast({
         title: "Students Imported",
-        description: `${result.imported || 0} students imported. Initial password: ${result.initialPassword || "1234567890"}`,
+        description: `${result.imported || 0} students imported. Unique credentials downloaded; share each password privately.`,
         variant: "success",
       });
       setImportFile(null);
       setIsImportOpen(false);
-      // Bulk import returns only a count — refresh to load the new page of rows.
+      // Bulk import returns credentials and a count — refresh to load the new page of rows.
       router.refresh();
     } catch (err: unknown) {
       toast({ title: "Import failed", description: errorMessage(err), variant: "destructive" });
@@ -475,6 +484,15 @@ export function StudentsClient({
       </Dialog>
 
       {/* CREATE MODAL */}
+      <Dialog open={!!newCredentials} onOpenChange={open => { if (!open) setNewCredentials(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Student login created</DialogTitle></DialogHeader>
+          <p>Login: <code>{newCredentials?.loginRollNumber}</code></p>
+          <p>Temporary password: <code className="break-all">{newCredentials?.initialPassword}</code></p>
+          <p className="text-sm text-stone-600">Share these credentials privately. The student must change the password after signing in.</p>
+          <Button type="button" onClick={() => setNewCredentials(null)}>Done</Button>
+        </DialogContent>
+      </Dialog>
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="max-h-[92vh] overflow-y-auto p-0 sm:max-w-[820px]">
           <div className="border-b border-border px-6 py-5">

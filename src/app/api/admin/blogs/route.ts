@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextResponse } from "next/server";
@@ -10,7 +11,7 @@ import { z } from "zod";
 const blogSchema = z.object({
   title: z.string().min(1).max(255),
   slug: z.string().min(1).max(255),
-  content: z.string(),
+  content: z.string().max(100000),
   metaTitle: z.string().max(255).optional(),
   metaDescription: z.string().optional(),
   excerpt: z.string().optional(),
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const result = blogSchema.safeParse(body);
 
     if (!result.success) {

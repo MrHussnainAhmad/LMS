@@ -2,7 +2,7 @@ FROM postgres:16-alpine
 
 # Google Drive uploads use the application's authenticated cron endpoint.
 # No MinIO client is needed for this deployment.
-RUN apk add --no-cache curl openssl su-exec flock \
+RUN apk add --no-cache curl openssl su-exec flock jq \
     && addgroup -g 1001 backup \
     && adduser -D -H -u 1001 -G backup backup
 ENV TZ=UTC

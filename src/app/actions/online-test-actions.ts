@@ -293,6 +293,8 @@ async function markOnlineTestFailed(
 }
 
 export async function expireStaleOnlineSubmissions(institutionId: number) {
+  const session = await getSession();
+  if (!session || session.mustChangePassword || session.institutionId !== institutionId) throw new ActionInputError('Unauthorized');
   const cutoff = new Date(Date.now() - HEARTBEAT_STALE_MS);
   const rows = await db.select({
     submissionId: onlineTestSubmissions.id,
@@ -429,8 +431,8 @@ export async function startOnlineTestAttemptAction(onlineTestId: number) {
   return { expiresAt: getAttemptExpiresAt(now, row.onlineTest.durationMinutes).toISOString() };
 }
 
-export async function heartbeatOnlineTestAction(onlineTestId: number, providedSession?: { userId: number; role: string; institutionId?: number | null }) {
-  const session = providedSession ?? await getSession();
+export async function heartbeatOnlineTestAction(onlineTestId: number) {
+  const session = await getSession();
   if (!session || session.role !== "STUDENT" || !session.institutionId) throw new ActionInputError("Unauthorized");
 
   // Use Valkey for ephemeral liveness instead of DB WAL churn

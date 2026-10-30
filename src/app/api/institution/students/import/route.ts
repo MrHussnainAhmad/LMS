@@ -1,3 +1,5 @@
+import { readBoundedFormData } from '@/lib/http';
+import { temporaryPassword } from '@/lib/temporary-password';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { assertStudentPlanCapacity } from '@/lib/plan-entitlements';
 import { parseStudentCsv, studentImportRollErrors, type ImportRoll } from "@/lib/student-import-csv";
@@ -78,7 +80,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
     }
 
     const tenantId = getTenantContext(session);
-    const formData = await req.formData();
+    const formData = await readBoundedFormData(req);
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
@@ -124,7 +126,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
 
     const errors: string[] = [];
     const preparedRows: PreparedStudentRow[] = [];
-    const initialPassword = "1234567890";
+    const credentials = new Map<PreparedStudentRow, string>();
     const rollRows: ImportRoll[] = [];
 
     for (const { rowNumber, values: row } of rows) {
@@ -193,7 +195,11 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
     };
     const previewErrors = await findConflicts(db);
     if (previewErrors.length) return NextResponse.json({ error: "Fix the conflicting student rows and try again.", errors: previewErrors }, { status: 409 });
-    const passwordHash = await hash(initialPassword);
+    for (const row of preparedRows) {
+      const password = temporaryPassword();
+      credentials.set(row, password);
+      row.passwordHash = await hash(password);
+    }
     const loginInstitution = await resolveStudentLoginInstitution(inst);
     let inserted: Array<{ id: number }>;
     try {
@@ -205,7 +211,6 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
         const wholeClassByClass = new Map<number, number>();
         const rowsByYear = new Map<number, PreparedStudentRow[]>();
         for (const row of preparedRows) {
-          row.passwordHash = passwordHash;
           if (!row.sectionId) {
             row.sectionId = wholeClassByClass.get(row.classId) ?? (await getOrCreateWholeClassSection(tx, tenantId, row.classId)).id;
             wholeClassByClass.set(row.classId, row.sectionId);
@@ -251,8 +256,8 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
     return NextResponse.json({
       message: "Students imported successfully",
       imported: inserted.length,
-      initialPassword,
-    }, { status: 201 });
+      credentials: preparedRows.map(row => ({ loginRollNumber: row.loginRollNumber, temporaryPassword: credentials.get(row) })),
+    }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (err: unknown) {
     const publicInputError = inputErrorResponse(err);
     if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });

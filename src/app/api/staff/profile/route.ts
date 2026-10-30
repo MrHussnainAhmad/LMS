@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
@@ -41,7 +42,7 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
 
 export const PATCH = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await req.json();
+  const body = await readBoundedJson(req);
   const parsed = (await import("@/lib/validators/staff")).updateStaffProfileSchema.safeParse(body);
 
   if (!parsed.success) {

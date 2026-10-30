@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -15,7 +16,7 @@ function muxAuthorization(credentials: Record<string, string>) {
 }
 
 export const POST = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
-  const parsed = createSchema.safeParse(await req.json().catch(() => null));
+  const parsed = createSchema.safeParse(await readBoundedJson(req).catch(() => null));
   if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 });
   const institutionId = getTenantContext(session);
   const settings = await getEffectiveCourseStreamingSettings(institutionId, session.userId);

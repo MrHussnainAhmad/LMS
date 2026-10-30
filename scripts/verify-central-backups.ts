@@ -16,7 +16,7 @@ import * as schema from '../src/db/schema';
 import { encryptCentralDump, decryptCentralDump, backupFileSha256 } from '../src/lib/central-backup-crypto';
 
 const require = createRequire(import.meta.url);
-const targetTables = [schema.centralDatabaseBackups, schema.centralBackupSettings, schema.institutionBackups,
+const targetTables = [schema.centralDatabaseBackups, schema.centralBackupSettings, schema.centralBackupJobs, schema.institutionBackups,
   schema.institutionGoogleDriveBackups, schema.institutionRestoreRequests];
 const repairName = '0076_central_backup_reconciliation.sql';
 
@@ -153,7 +153,7 @@ test('Compose orders migration/volume initialization; runtime identity and reten
   for(const name of ['app','app2']) {
     assert.equal(compose.services[name].depends_on['backup-volume-init'].condition,'service_completed_successfully');
     assert.equal(compose.services[name].depends_on.migrate.condition,'service_completed_successfully');
-    assert.equal(compose.services[name].environment.CENTRAL_DATABASE_BACKUP_KEEP_DAILY,'${CENTRAL_DATABASE_BACKUP_KEEP_DAILY:-30}');
+    assert.equal(compose.services[name].environment.CENTRAL_DATABASE_BACKUP_KEEP_DAILY,undefined);
   }
   assert.equal(compose.services['backup-volume-init'].network_mode,'none');
   assert.equal(compose.services['postgres-backup'].depends_on.app.condition,'service_healthy');
@@ -164,8 +164,8 @@ test('Compose orders migration/volume initialization; runtime identity and reten
 
 async function isolatedModule<T>(entry: string, mocks: Record<string,string>): Promise<T> {
   const result=await build({entryPoints:[entry],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',logLevel:'silent',plugins:[{name:'backup-fixtures',setup(b){
-    b.onResolve({filter:/.*/},args=>mocks[args.path]?{path:args.path,namespace:'fixture'}:undefined);
-    b.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:mocks[args.path],loader:'js'}));
+    b.onResolve({filter:/.*/},args=>{if(args.path==='./central-backup-config'&&!mocks[args.path])return {path:'central-config-empty',namespace:'fixture'};return mocks[args.path]?{path:args.path,namespace:'fixture'}:undefined;});
+    b.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='central-config-empty'?'export const getStoredCentralDriveCredentials=async()=>null;':mocks[args.path],loader:'js'}));
   }}]});
   const loaded={exports:{} as T};new Function('require','module','exports',result.outputFiles[0].text)(require,loaded,loaded.exports);return loaded.exports;
 }
@@ -182,10 +182,13 @@ test('central endpoint: auth, missing IDs, checksum, database failure, retry, id
   (globalThis as typeof globalThis & {__backupFixture?:typeof state}).__backupFixture=state;
   const mocks={
     '@/lib/auth':`export const timingSafeEqual=(a,b)=>a===b;`,
+    '@/lib/central-backup-config':`export const getBackupSettings=async()=>({enabled:true,drive_credentials_encrypted:'fixture',drive_folder_id:'fixture-folder',recovery_email:'recovery@example.test',recovery_email_verified_at:new Date()});export const backupReady=()=>true;export const encryptStreamingCredentials=()=> 'encrypted-password';`,
+    '@/lib/database-recovery-package':`export const createRecoveryPackage=async()=>({});`,
+    '@/lib/central-backup-delivery':`export async function deliverBackupPassword(client,runId){await client.query("UPDATE central_database_backups SET status='COMPLETED',password_sent_at=now() WHERE run_id=$1",[runId]);}export const retainLatestDatabaseBackups=async()=>{};`,
     '@/lib/streaming-credentials':`export const decryptStreamingCredentials=()=>({password:'fixture-backup-password'});`,
     '@/lib/central-backup-lock':`export class BackupBusyError extends Error{};export async function withCentralBackupLock(work){const s=globalThis.__backupFixture;if(s.locked)throw new BackupBusyError();if(s.dbFail)throw Object.assign(Error('SECRET must not leak'),{code:'42703'});s.locked=true;try{return await work(s.client,new AbortController().signal)}finally{s.locked=false}}`,
-    'node:fs/promises':`export * from 'fs/promises';import * as fs from 'fs/promises';const mapped=p=>p.endsWith('.enc')?globalThis.__backupFixture.encryptedPath:globalThis.__backupFixture.realPath;export const lstat=p=>fs.lstat(mapped(p));export const realpath=async p=>p;export const unlink=p=>fs.unlink(mapped(p));`,
-    '@/lib/central-backup-crypto':`export const backupFileSha256=p=>globalThis.__backupFixture.hash(p.endsWith('.enc')?globalThis.__backupFixture.encryptedPath:globalThis.__backupFixture.realPath);export const encryptCentralDump=(_i,_o,password,signal)=>globalThis.__backupFixture.encrypt(globalThis.__backupFixture.realPath,globalThis.__backupFixture.encryptedPath,password,signal);`,
+    'node:fs/promises':`export * from 'fs/promises';import * as fs from 'fs/promises';const mapped=p=>p.endsWith('.enc')?globalThis.__backupFixture.encryptedPath:p.endsWith('.package')?globalThis.__backupFixture.realPath+'.package':globalThis.__backupFixture.realPath;export const lstat=p=>fs.lstat(mapped(p));export const realpath=async p=>p;export const unlink=p=>fs.unlink(mapped(p));`,
+    '@/lib/central-backup-crypto':`export const generateBackupPassword=()=> 'synthetic-random-password';export const backupFileSha256=p=>globalThis.__backupFixture.hash(p.endsWith('.enc')?globalThis.__backupFixture.encryptedPath:globalThis.__backupFixture.realPath);export const encryptCentralDump=(_i,_o,password,signal)=>globalThis.__backupFixture.encrypt(globalThis.__backupFixture.realPath,globalThis.__backupFixture.encryptedPath,password,signal);`,
     '@/lib/central-drive-backups':`export const centralDriveFolderId=()=> 'fixture-folder';export const reserveCentralDriveFileId=async()=> 'reserved-id';export const applyCentralDriveRetention=async()=>({kept:1,deleted:0,errors:0});export async function verifyCentralDriveFile(o){const r=globalThis.__backupFixture.remote.get(o.driveFileId);if(!r)throw Object.assign(Error('not found'),{status:404});return r.size===o.expectedSize&&r.hash===o.expectedSha256}export async function uploadCentralBackupFile(o){const s=globalThis.__backupFixture;s.uploads++;if(s.uploadFail)throw Error('SECRET provider message');const fs=await import('fs/promises');const crypto=await import('crypto');const data=await fs.readFile(s.encryptedPath);s.remote.set(o.driveFileId,{size:data.length,hash:crypto.createHash('sha256').update(data).digest('hex')});return {driveFileId:o.driveFileId,size:data.length};}`,
   };
   try {
@@ -201,6 +204,8 @@ test('central endpoint: auth, missing IDs, checksum, database failure, retry, id
     assert.equal((await call({...body,filePath:'/backups/../secret'})).status,400);
     assert.equal((await call()).status,500,'Legacy missing columns must produce a controlled database failure');
     await memory.exec(await readFile(`drizzle/${repairName}`,'utf8'));
+    await memory.exec('CREATE TABLE super_admins(id integer PRIMARY KEY)');
+    await memory.exec(await readFile('drizzle/0087_database_backup_recovery.sql','utf8'));
     assert.equal((await call({...body,sha256:'0'.repeat(64)})).status,400);
     state.dbFail=true;const dbFailure=await call();assert.equal(dbFailure.status,500);assert.ok(!(await dbFailure.text()).includes('SECRET'));state.dbFail=false;
     state.locked=true;assert.equal((await call()).status,409);state.locked=false;

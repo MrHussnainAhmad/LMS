@@ -697,7 +697,7 @@ export function ApplicationsReviewPanel({
   function exportCsv() {
     const escape = (value: unknown) => {
       const raw = String(value ?? "");
-      const safe = /^[=+\-@]/.test(raw) ? `'${raw}` : raw;
+      const safe = /^[\s\u0000-\u001f]*[=+@-]/.test(raw) ? `'${raw}` : raw;
       return `"${safe.replaceAll('"', '""')}"`;
     };
     const rows = [

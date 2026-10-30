@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
@@ -73,7 +74,7 @@ export async function PATCH(req: NextRequest) {
     const session = await getSessionFromRequest(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const testNotifications = booleanOrUndefined(body.testNotifications);
     const announcementNotifications = booleanOrUndefined(body.announcementNotifications);
 

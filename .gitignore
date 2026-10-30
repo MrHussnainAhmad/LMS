@@ -58,6 +58,15 @@ google_drive_setup_guide.md
 *.db
 *.sqlite
 *.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
 
 # Local-only root repair/database scripts
 /check*.js
@@ -78,6 +87,8 @@ google_drive_setup_guide.md
 /scripts/**
 !/scripts/audit-tenant-scope.mjs
 !/scripts/build.mjs
+!/scripts/build-local.mjs
+!/scripts/start-local-docker.mjs
 !/scripts/build-release.mjs
 !/scripts/email-outbox-worker.ts
 !/scripts/hot-lane-request.cjs
@@ -87,6 +98,14 @@ google_drive_setup_guide.md
 !/scripts/push-receipt-worker.ts
 !/scripts/release-preflight.mjs
 !/scripts/restore-central-drive-backup.ts
+!/scripts/database-recovery-server.ts
+!/scripts/verify-database-recovery.ts
+!/scripts/verify-central-backups.ts
+!/scripts/verify-security-remediation.ts
+!/scripts/provision-runtime-role.mjs
+!/scripts/rotate-credential-key.ts
+!/scripts/migrate-private-files.ts
+!/scripts/security-reset-account.mjs
 !/scripts/start-local.mjs
 !/scripts/verify-admission-campus.tsx
 !/scripts/verify-admissions.ts
@@ -241,6 +260,11 @@ client_secret*.json
 tokens.json
 tokens-*.json
 users.csv
+# Generated account-password exports
+credentials*.csv
+*-credentials.csv
+credentials*.txt
+/credential-exports/
 /deployment/release.env
 /deployment/releases/
 
@@ -256,3 +280,13 @@ users.csv
 !/scripts/verify-institution-apps.ts
 # Local standalone plan-verification script; keep it off GitHub.
 /scripts/verify-plans.ts
+
+# Encrypted backups and decrypted recovery material remain private.
+*.n360backup
+*.dump
+*.dump.enc
+/recovery-output/
+recovery-secrets.json
+
+!/scripts/verify-database-backup-ui.cjs
+!/deployment/compose.local-test.yml

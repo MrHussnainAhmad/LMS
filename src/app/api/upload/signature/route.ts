@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextResponse } from 'next/server';
 import cloudinary from '@/lib/cloudinary';
 import { getCloudinaryConfig } from '@/lib/cloudinary-config';
 import { requireRole } from '@/lib/rbac';
-import { withRateLimit } from '@/lib/rate-limit';
+import { withRateLimit, withUploadGrantLimit } from '@/lib/rate-limit';
 import { bodyTooLargeResponse, readJsonBody } from '@/lib/http';
 import { ownedUploadFolder } from '@/lib/upload-ownership';
 
@@ -17,7 +18,7 @@ import { ownedUploadFolder } from '@/lib/upload-ownership';
  * The server now assigns every account a tenant/role/user namespace. Clients receive
  * that signed folder in the response and cannot request a different destination.
  */
-const ALLOWED_FORMATS = 'jpg,jpeg,png,webp,pdf,docx,txt';
+const DOCUMENT_FORMATS = 'jpg,jpeg,png,webp,pdf,docx,txt';
 
 /** The endpoint accepts no client-selected upload parameters. */
 const MAX_SIGNATURE_BODY_BYTES = 1024;
@@ -31,6 +32,8 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'INSTITUTION
       return NextResponse.json({ error: 'Too many upload requests. Please try again in a moment.' }, { status: 429 });
     }
 
+    const grantLimit = await withUploadGrantLimit(`${session.role}:${session.userId}`);
+    if (!grantLimit.success) return NextResponse.json({ error: grantLimit.unavailable ? 'Upload authorization is temporarily unavailable' : 'Upload limit reached. Try again later.' }, { status: grantLimit.unavailable ? 503 : 429 });
     const { cloudName, apiKey, apiSecret } = getCloudinaryConfig();
 
     if (!cloudName || !apiKey || !apiSecret) {
@@ -46,13 +49,25 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'INSTITUTION
     }
 
     // Most callers POST with no body at all, which is treated as "use the default".
-    const body = await readJsonBody<{ folder?: unknown }>(req, MAX_SIGNATURE_BODY_BYTES);
+    const body = await readJsonBody<{ folder?: unknown; purpose?: unknown; format?: unknown }>(req, MAX_SIGNATURE_BODY_BYTES);
     if (!body.ok && body.status === 413) return bodyTooLargeResponse();
 
     if (body.ok && body.data?.folder !== undefined) {
       return NextResponse.json({ error: 'Upload folders are assigned by the server' }, { status: 400 });
     }
+    const document = body.ok && body.data?.purpose === 'document';
+    const format = body.ok && typeof body.data?.format === 'string' ? body.data.format.toLowerCase() : '';
+    const allowedFormats = document ? DOCUMENT_FORMATS : 'jpg,jpeg,png,webp';
+    if (document && !allowedFormats.split(',').includes(format)) return NextResponse.json({ error: 'Invalid document format' }, { status: 400 });
+    // The provider enforces the byte limit before storing an object, including abandoned uploads.
+    const uploadPreset = process.env.CLOUDINARY_CONTENT_UPLOAD_PRESET?.trim();
+    if (!uploadPreset) return NextResponse.json({ error: 'Secure upload preset is not configured' }, { status: 503 });
+    const preset = await cloudinary.api.upload_preset(uploadPreset);
+    const maxBytes = Number(preset.settings?.max_file_size);
+    if (preset.unsigned !== false || !Number.isFinite(maxBytes) || maxBytes <= 0 || maxBytes > 5 * 1024 * 1024) return NextResponse.json({ error: 'Upload preset must require signatures and enforce a maximum of 5 MB' }, { status: 503 });
     const folder = ownedUploadFolder(session);
+    const publicId = randomUUID() + (['docx','txt'].includes(format) ? '.' + format : '');
+    const deliveryType = document ? 'authenticated' : 'upload';
 
     const timestamp = Math.round(Date.now() / 1000);
 
@@ -61,7 +76,11 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'INSTITUTION
       {
         timestamp: timestamp,
         folder: folder,
-        allowed_formats: ALLOWED_FORMATS,
+        allowed_formats: allowedFormats,
+        public_id: publicId,
+        overwrite: false,
+        type: deliveryType,
+        upload_preset: uploadPreset,
       },
       apiSecret
     );
@@ -73,7 +92,11 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'INSTITUTION
         cloudName,
         apiKey,
         folder,
-        allowedFormats: ALLOWED_FORMATS,
+        allowedFormats,
+        publicId,
+        overwrite: false,
+        deliveryType,
+        uploadPreset,
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );

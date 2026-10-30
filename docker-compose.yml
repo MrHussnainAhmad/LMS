@@ -90,8 +90,8 @@ services:
     restart: unless-stopped
     environment:
       DB_HOST: postgres
-      DB_USER: ${POSTGRES_USER:-app}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_USER: ${DATABASE_RUNTIME_USER:-nisaab_runtime}
+      DB_PASSWORD: ${DATABASE_RUNTIME_PASSWORD:?Set a separate runtime database password}
       DB_NAME: ${POSTGRES_DB:-app}
       AUTH_TYPE: scram-sha-256
       POOL_MODE: transaction
@@ -116,7 +116,7 @@ services:
       - backend
       - appnet
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U ${POSTGRES_USER:-app}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U ${DATABASE_RUNTIME_USER:-nisaab_runtime}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -127,13 +127,15 @@ services:
     init: true
     restart: unless-stopped
     # 260MB is enough for short-TTL dashboard/auth/rate-limit keys; rest of RAM goes to Next/Postgres.
-    command: valkey-server --maxmemory 260mb --maxmemory-policy allkeys-lru --save ""
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?Set a separate hex Valkey password}
+    command: ["sh", "-c", 'exec valkey-server --requirepass "$$VALKEY_PASSWORD" --maxmemory 260mb --maxmemory-policy allkeys-lru --save ""']
     volumes:
       - valkey_data:/data
     networks:
       - appnet
     healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
+      test: ["CMD-SHELL", 'VALKEYCLI_AUTH="$$VALKEY_PASSWORD" valkey-cli ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -192,11 +194,11 @@ services:
       HOT_PATH_LIGHT_REQUEST: ${HOT_PATH_LIGHT_REQUEST:-1}
       DB_PREPARED_STATEMENTS: ${DB_PREPARED_STATEMENTS:-1}
       # App -> PgBouncer, NOT direct to postgres
-      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
+      DATABASE_URL: postgres://${DATABASE_RUNTIME_USER:-nisaab_runtime}:${DATABASE_RUNTIME_PASSWORD:?Set a separate runtime database password}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
       # Direct postgres URL for migrations (Prisma/Drizzle)
-      DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
+      DIRECT_URL: postgres://${DATABASE_RUNTIME_USER:-nisaab_runtime}:${DATABASE_RUNTIME_PASSWORD:?Set a separate runtime database password}@postgres:5432/${POSTGRES_DB:-app}
       # Valkey - 100% Redis compatible
-      REDIS_URL: redis://valkey:6379
+      REDIS_URL: redis://:${VALKEY_PASSWORD:?Set a separate hex Valkey password}@valkey:6379
       # Explicit DB pool max limit per replica
       DB_POOL_MAX: ${DB_POOL_MAX:-15}
       # Shared auth secret
@@ -209,7 +211,10 @@ services:
       STUDENT_QR_LEGACY_VALID_UNTIL: ${STUDENT_QR_LEGACY_VALID_UNTIL:-}
       # Dedicated at-rest encryption key for Bunny/Mux credentials. JWT_SECRET
       # remains the compatibility fallback when this optional value is empty.
-      STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:-}
+      STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:?Set a dedicated credential encryption key}
+      STREAMING_CREDENTIALS_KEY_ID: ${STREAMING_CREDENTIALS_KEY_ID:-primary}
+      STREAMING_CREDENTIALS_PREVIOUS_KEYS: ${STREAMING_CREDENTIALS_PREVIOUS_KEYS:-[]}
+      STREAMING_CREDENTIALS_LEGACY_SECRET: ${STREAMING_CREDENTIALS_LEGACY_SECRET:-}
       # Required for the authenticated/manual push-receipt endpoint.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
       PAYMENT_PUBLIC_ORIGIN: ${PAYMENT_PUBLIC_ORIGIN:-https://nisaab360.app}
@@ -232,6 +237,7 @@ services:
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:?Set CLOUDINARY_CLOUD_NAME or NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}}
       NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:-}}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:?CLOUDINARY_API_KEY must be set}
+      CLOUDINARY_CONTENT_UPLOAD_PRESET: ${CLOUDINARY_CONTENT_UPLOAD_PRESET:?Configure the signed 5 MB upload preset}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:?CLOUDINARY_API_SECRET must be set}
       # Optional secondary storage; Google Drive does not require B2.
       B2_REGION: ${B2_REGION:-}
@@ -240,8 +246,6 @@ services:
       B2_BUCKET_NAME: ${B2_BUCKET_NAME:-}
       NEXT_PUBLIC_APP_DOMAIN: ${NEXT_PUBLIC_APP_DOMAIN:-nisaab360.app}
       PUBLIC_SITE_BASE_DOMAIN: ${PUBLIC_SITE_BASE_DOMAIN:-nisaab360.app}
-      CENTRAL_DATABASE_BACKUP_KEEP_DAILY: ${CENTRAL_DATABASE_BACKUP_KEEP_DAILY:-30}
-      CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY: ${CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY:-12}
       APP_DOMAIN: ${APP_DOMAIN:-nisaab360.app}
       GMAIL_USER: ${GMAIL_USER:?GMAIL_USER must be set}
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:?GMAIL_APP_PASSWORD must be set}
@@ -290,9 +294,9 @@ services:
       HOT_PATH_NATIVE_WARM: ${HOT_PATH_NATIVE_WARM:-1}
       HOT_PATH_LIGHT_REQUEST: ${HOT_PATH_LIGHT_REQUEST:-1}
       DB_PREPARED_STATEMENTS: ${DB_PREPARED_STATEMENTS:-1}
-      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
-      DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
-      REDIS_URL: redis://valkey:6379
+      DATABASE_URL: postgres://${DATABASE_RUNTIME_USER:-nisaab_runtime}:${DATABASE_RUNTIME_PASSWORD:?Set a separate runtime database password}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
+      DIRECT_URL: postgres://${DATABASE_RUNTIME_USER:-nisaab_runtime}:${DATABASE_RUNTIME_PASSWORD:?Set a separate runtime database password}@postgres:5432/${POSTGRES_DB:-app}
+      REDIS_URL: redis://:${VALKEY_PASSWORD:?Set a separate hex Valkey password}@valkey:6379
       # Explicit DB pool max limit per replica
       DB_POOL_MAX: ${DB_POOL_MAX:-15}
       # Shared auth secret
@@ -303,7 +307,10 @@ services:
       STUDENT_QR_PREVIOUS_KEYS: ${STUDENT_QR_PREVIOUS_KEYS:-}
       STUDENT_QR_LEGACY_SECRET: ${STUDENT_QR_LEGACY_SECRET:-}
       STUDENT_QR_LEGACY_VALID_UNTIL: ${STUDENT_QR_LEGACY_VALID_UNTIL:-}
-      STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:-}
+      STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:?Set a dedicated credential encryption key}
+      STREAMING_CREDENTIALS_KEY_ID: ${STREAMING_CREDENTIALS_KEY_ID:-primary}
+      STREAMING_CREDENTIALS_PREVIOUS_KEYS: ${STREAMING_CREDENTIALS_PREVIOUS_KEYS:-[]}
+      STREAMING_CREDENTIALS_LEGACY_SECRET: ${STREAMING_CREDENTIALS_LEGACY_SECRET:-}
       # Required for the authenticated/manual push-receipt endpoint.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
       PAYMENT_PUBLIC_ORIGIN: ${PAYMENT_PUBLIC_ORIGIN:-https://nisaab360.app}
@@ -325,6 +332,7 @@ services:
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:?Set CLOUDINARY_CLOUD_NAME or NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}}
       NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:-}}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:?CLOUDINARY_API_KEY must be set}
+      CLOUDINARY_CONTENT_UPLOAD_PRESET: ${CLOUDINARY_CONTENT_UPLOAD_PRESET:?Configure the signed 5 MB upload preset}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:?CLOUDINARY_API_SECRET must be set}
       B2_REGION: ${B2_REGION:-}
       B2_APPLICATION_KEY_ID: ${B2_APPLICATION_KEY_ID:-}
@@ -335,8 +343,6 @@ services:
       NEXT_PUBLIC_APP_DOMAIN: ${NEXT_PUBLIC_APP_DOMAIN:-nisaab360.app}
       PUBLIC_SITE_BASE_DOMAIN: ${PUBLIC_SITE_BASE_DOMAIN:-nisaab360.app}
       APP_DOMAIN: ${APP_DOMAIN:-nisaab360.app}
-      CENTRAL_DATABASE_BACKUP_KEEP_DAILY: ${CENTRAL_DATABASE_BACKUP_KEEP_DAILY:-30}
-      CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY: ${CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY:-12}
       GMAIL_USER: ${GMAIL_USER:?GMAIL_USER must be set}
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:?GMAIL_APP_PASSWORD must be set}
       API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-https://nisaab360.app}
@@ -381,14 +387,14 @@ services:
       # keeps stack traces pointing at the TypeScript sources now that the entry
       # point is a compiled bundle (see the push-receipt-worker stage in Dockerfile).
       NODE_OPTIONS: --max-old-space-size=384 --enable-source-maps
-      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
-      DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
+      DATABASE_URL: postgres://${DATABASE_RUNTIME_USER:-nisaab_runtime}:${DATABASE_RUNTIME_PASSWORD:?Set a separate runtime database password}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true&connection_limit=1
+      DIRECT_URL: postgres://${DATABASE_RUNTIME_USER:-nisaab_runtime}:${DATABASE_RUNTIME_PASSWORD:?Set a separate runtime database password}@postgres:5432/${POSTGRES_DB:-app}
       # Without this, every cache invalidation the worker triggers (fee-voucher
       # announcements and notifications invalidate student dashboard/announcement
       # keys) silently connected to 127.0.0.1:6379 inside the worker container,
       # failed, and was swallowed — so the two web replicas kept serving stale
       # cached data until the TTL expired. The worker is already on appnet.
-      REDIS_URL: redis://valkey:6379
+      REDIS_URL: redis://:${VALKEY_PASSWORD:?Set a separate hex Valkey password}@valkey:6379
       # Receipt processing is intentionally low-concurrency and must not add a
       # second five-connection application pool behind PgBouncer.
       DB_POOL_MAX: 1
@@ -399,7 +405,10 @@ services:
       STUDENT_QR_PREVIOUS_KEYS: ${STUDENT_QR_PREVIOUS_KEYS:-}
       STUDENT_QR_LEGACY_SECRET: ${STUDENT_QR_LEGACY_SECRET:-}
       STUDENT_QR_LEGACY_VALID_UNTIL: ${STUDENT_QR_LEGACY_VALID_UNTIL:-}
-      STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:-}
+      STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:?Set a dedicated credential encryption key}
+      STREAMING_CREDENTIALS_KEY_ID: ${STREAMING_CREDENTIALS_KEY_ID:-primary}
+      STREAMING_CREDENTIALS_PREVIOUS_KEYS: ${STREAMING_CREDENTIALS_PREVIOUS_KEYS:-[]}
+      STREAMING_CREDENTIALS_LEGACY_SECRET: ${STREAMING_CREDENTIALS_LEGACY_SECRET:-}
       GOOGLE_DRIVE_CENTRAL_CLIENT_ID: ${GOOGLE_DRIVE_CENTRAL_CLIENT_ID:-}
       GOOGLE_DRIVE_CENTRAL_CLIENT_SECRET: ${GOOGLE_DRIVE_CENTRAL_CLIENT_SECRET:-}
       GOOGLE_DRIVE_CENTRAL_REDIRECT_URI: ${GOOGLE_DRIVE_CENTRAL_REDIRECT_URI:-}
@@ -440,9 +449,9 @@ services:
     environment:
       NODE_ENV: production
       NODE_OPTIONS: --max-old-space-size=1024 --enable-source-maps
-      DIRECT_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-app}
-      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true
-      REDIS_URL: redis://valkey:6379
+      DIRECT_URL: postgres://${DATABASE_RUNTIME_USER:-nisaab_runtime}:${DATABASE_RUNTIME_PASSWORD:?Set a separate runtime database password}@postgres:5432/${POSTGRES_DB:-app}
+      DATABASE_URL: postgres://${DATABASE_RUNTIME_USER:-nisaab_runtime}:${DATABASE_RUNTIME_PASSWORD:?Set a separate runtime database password}@pgbouncer:6432/${POSTGRES_DB:-app}?pgbouncer=true
+      REDIS_URL: redis://:${VALKEY_PASSWORD:?Set a separate hex Valkey password}@valkey:6379
       DB_POOL_MAX: 1
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       STUDENT_QR_SIGNING_SECRET: ${STUDENT_QR_SIGNING_SECRET:-}
@@ -450,7 +459,10 @@ services:
       STUDENT_QR_PREVIOUS_KEYS: ${STUDENT_QR_PREVIOUS_KEYS:-}
       STUDENT_QR_LEGACY_SECRET: ${STUDENT_QR_LEGACY_SECRET:-}
       STUDENT_QR_LEGACY_VALID_UNTIL: ${STUDENT_QR_LEGACY_VALID_UNTIL:-}
-      STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:-}
+      STREAMING_CREDENTIALS_SECRET: ${STREAMING_CREDENTIALS_SECRET:?Set a dedicated credential encryption key}
+      STREAMING_CREDENTIALS_KEY_ID: ${STREAMING_CREDENTIALS_KEY_ID:-primary}
+      STREAMING_CREDENTIALS_PREVIOUS_KEYS: ${STREAMING_CREDENTIALS_PREVIOUS_KEYS:-[]}
+      STREAMING_CREDENTIALS_LEGACY_SECRET: ${STREAMING_CREDENTIALS_LEGACY_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -537,16 +549,12 @@ services:
       POSTGRES_DATABASE: ${POSTGRES_DB:-app}
       POSTGRES_USER: ${POSTGRES_USER:-app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      # Run a verified backup on startup and daily at midnight UTC.
-      SCHEDULE: ${SCHEDULE:-0 0 * * *}
-      BACKUP_ON_STARTUP: ${BACKUP_ON_STARTUP:-true}
+      # One snapshot at 02:00 Asia/Karachi; manual-job/email polling does not create scheduled extras.
       TZ: UTC
-      BACKUP_HEALTH_MAX_AGE_SECONDS: ${BACKUP_HEALTH_MAX_AGE_SECONDS:-129600}
-      # Start only after central OAuth and the UI encryption password are ready.
+      BACKUP_HEALTH_MAX_AGE_SECONDS: ${BACKUP_HEALTH_MAX_AGE_SECONDS:-97200}
+      # Enable from Super Admin after Drive connection and recovery email verification.
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
       CENTRAL_DATABASE_BACKUP_DRIVE_FOLDER_ID: ${CENTRAL_DATABASE_BACKUP_DRIVE_FOLDER_ID:-}
-      CENTRAL_DATABASE_BACKUP_KEEP_DAILY: ${CENTRAL_DATABASE_BACKUP_KEEP_DAILY:-30}
-      CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY: ${CENTRAL_DATABASE_BACKUP_KEEP_MONTHLY:-12}
     depends_on:
       postgres:
         condition: service_healthy

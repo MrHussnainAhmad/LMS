@@ -37,6 +37,7 @@ const mocks: Record<string, string> = {
   performance: 'export const measurePerformancePhase=async(_name,fn)=>fn();',
   'api-policy': 'export const withApiPolicy=fn=>fn;',
   audit: 'export const logAudit=async()=>{};',
+  'notification-delivery': 'export const createNotification=async()=>{};export const createBulkNotifications=async()=>[];',
   user: 'export const invalidateUserValidity=async()=>{};export const resolveUserCreatedAt=async()=>new Date();',
   redis: 'export const invalidateStudentEnrichCache=async()=>{};export const getCachedOrFetch=async(_key,_ttl,fetch)=>fetch();export const redis={status:"ready",del:async()=>{}};',
   cloudinary: 'export default {api:{resource:async id=>({secure_url:"https://example.test/"+id,format:"png",bytes:1024})}};',
@@ -59,7 +60,7 @@ const evidence: string[] = [];
 process.env.NEXT_PUBLIC_APP_DOMAIN='nisaab360.app';
 try {
   const dialect = new PgDialect();
-  const tables = [schema.institutions, schema.campuses, schema.institutionAdmins, schema.institutionOwners, schema.staff, schema.students, schema.employees, schema.superAdmins, schema.parentAccounts, schema.classes, schema.institutionPublicProfiles, schema.admissionCycles, schema.admissionCycleCampuses];
+  const tables = [schema.institutions, schema.campuses, schema.institutionAdmins, schema.institutionOwners, schema.staff, schema.students, schema.employees, schema.superAdmins, schema.parentAccounts, schema.classes, schema.institutionPublicProfiles, schema.admissionCycles, schema.admissionCycleCampuses, schema.institutionAgreementAcceptances, schema.subscriptionPlans];
   for (const table of tables) {
     const config = getTableConfig(table);
     const columns = config.columns.filter((column) => config.name !== 'institutions' || !['parent_institution_id', 'campus_name', 'must_change_password'].includes(column.name)).map((column) => {
@@ -73,6 +74,7 @@ try {
     });
     await memory.exec(`CREATE TABLE "${config.name}" (${columns.join(',')});`);
   }
+  await testDb.insert(schema.subscriptionPlans).values(['BASIC','STANDARD','PREMIUM','ENTERPRISE'].map((id,index)=>({id,kind:'PUBLIC' as const,name:id,campusLimit:[1,3,5,null][index],platformManagedCampuses:id==='ENTERPRISE',platforms:[],audience:'Synthetic'})));
   const rootPassword = await hash('fixture-main-password');
   const rootValues = { name: 'National College', type: 'COLLEGE' as const, username: 'national', country: 'Pakistan', city: 'Lahore', address: 'Main address', contactEmail: 'main@example.test', contactPhone: '03001234567', registrationNumber: 'NCS01', pricingPlan: 'PREMIUM' as const, logoKey: 'fixture-logo', proofDocumentKey: 'fixture-proof', adminPasswordHash: rootPassword, status: 'APPROVED' as const };
   // Pre-migration insert must not reference the newly introduced columns.
@@ -98,20 +100,24 @@ try {
   const campusRequest = (body: unknown) => new NextRequest('http://localhost/api/institution/campuses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const setup = await campusesRoute.POST(campusRequest({ name: 'Green', address: 'Green address', loginEmail: 'GREEN@example.test', registrationNumber: 'GREEN-001', existingCampusId: 2 }), {});
   assert.equal(setup.status, 201, await setup.clone().text());
-  assert.equal((await setup.json()).loginEmail, 'green@example.test');
+  const setupCredentials = await setup.json();
+  assert.equal(setupCredentials.loginEmail, 'green@example.test');
+  assert.equal(setupCredentials.defaultPassword.length,24);
+  assert.notEqual(setupCredentials.defaultPassword,'1234567890');
   const greenRow = (await testDb.select().from(schema.institutions).where(eq(schema.institutions.parentInstitutionId, 1)))[0];
   assert.ok(greenRow);
   assert.equal(greenRow.username, 'green');
   assert.equal(greenRow.registrationNumber, 'GREEN-001');
   assert.equal(greenRow.mustChangePassword, true);
-  assert.equal(await verify(greenRow.adminPasswordHash, '1234567890'), true);
+  assert.equal(await verify(greenRow.adminPasswordHash, setupCredentials.defaultPassword), true);
+  assert.equal(await verify(greenRow.adminPasswordHash, '1234567890'), false);
   assert.equal((await testDb.select().from(schema.campuses).where(eq(schema.campuses.id, 2)))[0].institutionId, greenRow.id);
   assert.equal((await testDb.select().from(schema.institutionOwners).where(eq(schema.institutionOwners.institutionId, greenRow.id))).length, 1);
   assert.equal((await campusesRoute.POST(campusRequest({ name: 'Other', address: 'Other address', loginEmail: 'MAIN@example.test' }), {})).status, 409);
   assert.equal((await campusesRoute.POST(campusRequest({ name: 'green', address: 'Other address', loginEmail: 'unused@example.test' }), {})).status, 409);
   assert.equal((await campusesRoute.POST(campusRequest({ name: '', address: 'x', loginEmail: 'invalid' }), {})).status, 400);
   assert.equal((await testDb.select().from(schema.institutions)).length, 2, 'invalid requests roll back their workspace');
-  evidence.push('Existing-campus login setup is atomic, keeps campus ID, normalizes email, rejects duplicate names/emails and hashes the default password.');
+  evidence.push('Existing-campus login setup is atomic, keeps campus ID, normalizes email, rejects duplicate names/emails and hashes a unique random temporary password.');
   const forced = await service.resolveCampusSession({ role: 'INSTITUTION', userId: greenRow.id, institutionId: greenRow.id, mustChangePassword: false });
   assert.equal(forced.mustChangePassword, true, 'stale/forged password-change claim cannot bypass database flag');
   const rbac = await load('src/lib/rbac.ts');
@@ -122,14 +128,14 @@ try {
   const passwordRequest = (currentPassword: string, newPassword: string) => new NextRequest('http://localhost/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPassword, newPassword }) });
   assert.equal((await passwordRoute.POST(passwordRequest('1234567890', '1234567890'), {})).status, 400);
   assert.equal((await passwordRoute.POST(passwordRequest('wrong-password', 'fixture-green-password'), {})).status, 400);
-  assert.equal((await passwordRoute.POST(passwordRequest('1234567890', 'fixture-green-password'), {})).status, 200);
+  assert.equal((await passwordRoute.POST(passwordRequest(setupCredentials.defaultPassword, 'fixture-green-password'), {})).status, 200);
   const changed = (await testDb.select().from(schema.institutions).where(eq(schema.institutions.id, greenRow.id)))[0];
   assert.equal(changed.mustChangePassword, false);
   assert.equal(await verify(changed.adminPasswordHash, 'fixture-green-password'), true);
   assert.equal(await verify(changed.adminPasswordHash, '1234567890'), false);
   assert.equal((await testDb.select().from(schema.institutions).where(eq(schema.institutions.id, 1)))[0].adminPasswordHash, rootPassword);
   assert.equal(state.revocations, 1);
-  evidence.push('First-login password requirement is read fresh from the DB; password update verifies the default, changes only that campus and revokes refresh sessions.');
+  evidence.push('First-login password requirement is read fresh from the DB; password update verifies the temporary credential, changes only that campus and revokes refresh sessions.');
   const loginHelper = await load('src/lib/student-login-institution.ts');
   const identifiers = await load('src/lib/login-identifiers.ts');
   const mainInstitution = (await testDb.select().from(schema.institutions).where(eq(schema.institutions.id, 1)))[0];

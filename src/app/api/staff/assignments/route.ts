@@ -1,10 +1,11 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { assignments, classes, sections, subjects, staffAssignments, submissions, students } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { eq, and, desc, inArray, lt, or } from "drizzle-orm";
-import { verifyCloudinarySubmission } from "@/app/actions/assessment-actions";
+import { verifyCloudinarySubmission, privateFileUrl } from "@/lib/submission-file";
 
 export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -29,7 +30,7 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
       const [submittedRows, roster] = await Promise.all([
         db.select({
           submissionId: submissions.id, studentId: students.id, studentName: students.name,
-          rollNumber: students.classRollNumber, fileKey: submissions.fileKey, submittedAt: submissions.createdAt,
+          rollNumber: students.classRollNumber, fileKey: submissions.fileUrl, submittedAt: submissions.createdAt,
         }).from(submissions).innerJoin(students, eq(submissions.studentId, students.id))
           .where(and(eq(submissions.institutionId, session.institutionId), eq(submissions.assignmentId, assignmentId))),
         db.select({ id: students.id, name: students.name, classRollNumber: students.classRollNumber })
@@ -42,7 +43,7 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
       ]);
 
       const submittedIds = new Set(submittedRows.map((row) => row.studentId));
-      const submittedStudents = submittedRows.map((row) => ({ ...row, isLate: new Date(row.submittedAt) > new Date(assignment.dueAt) }));
+      const submittedStudents = submittedRows.map((row) => ({ ...row, fileKey: privateFileUrl(row.fileKey) || "", isLate: new Date(row.submittedAt) > new Date(assignment.dueAt) }));
       const pendingStudents = roster.filter((student) => !submittedIds.has(student.id))
         .map((student) => ({ studentId: student.id, studentName: student.name, rollNumber: student.classRollNumber }));
 
@@ -98,7 +99,7 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
       const hasMore = rows.length > limit;
       const pageRows = hasMore ? rows.slice(0, limit) : rows;
       const assignmentIds = pageRows.map((row) => row.id);
-      const submissionRows = assignmentIds.length ? await db.select({ submissionId: submissions.id, assignmentId: submissions.assignmentId, studentId: students.id, studentName: students.name, rollNumber: students.classRollNumber, fileKey: submissions.fileKey, submittedAt: submissions.createdAt })
+      const submissionRows = assignmentIds.length ? await db.select({ submissionId: submissions.id, assignmentId: submissions.assignmentId, studentId: students.id, studentName: students.name, rollNumber: students.classRollNumber, fileKey: submissions.fileUrl, submittedAt: submissions.createdAt })
         .from(submissions).innerJoin(students, eq(submissions.studentId, students.id)).where(and(eq(submissions.institutionId, session.institutionId), inArray(submissions.assignmentId, assignmentIds))) : [];
       const roster = await db.select({ id: students.id, name: students.name, classRollNumber: students.classRollNumber }).from(students)
         .where(and(eq(students.institutionId, session.institutionId), eq(students.sectionId, sectionId)));
@@ -107,7 +108,7 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
       const responseAssignments = pageRows.map((assignment) => {
         const submittedStudents = byAssignment.get(assignment.id) ?? [];
         const submittedIds = new Set(submittedStudents.map((row) => row.studentId));
-        return { ...assignment, submittedStudents: submittedStudents.map((row) => ({ ...row, isLate: new Date(row.submittedAt) > new Date(assignment.dueAt) })),
+        return { ...assignment, referenceFileUrl: privateFileUrl(assignment.referenceFileUrl), submittedStudents: submittedStudents.map((row) => ({ ...row, fileKey: privateFileUrl(row.fileKey) || "", isLate: new Date(row.submittedAt) > new Date(assignment.dueAt) })),
           pendingStudents: roster.filter((student) => !submittedIds.has(student.id)).map((student) => ({ studentId: student.id, studentName: student.name, rollNumber: student.classRollNumber })) };
       });
       const last = pageRows.at(-1);
@@ -128,7 +129,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const { title, description, dueAt } = body;
     let { sectionId, subjectId, referenceFileKey, referenceFileName } = body;
 

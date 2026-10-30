@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { classes, institutions, sections, students } from "@/db/schema";
 import { displaySectionName } from "@/lib/class-section-label";
@@ -32,7 +32,7 @@ export const GET = withApiPolicy(async (request: NextRequest) => {
       .innerJoin(institutions, eq(institutions.id, students.institutionId))
       .leftJoin(classes, and(eq(classes.id, students.classId), eq(classes.institutionId, students.institutionId)))
       .leftJoin(sections, and(eq(sections.id, students.sectionId), eq(sections.institutionId, students.institutionId), eq(sections.classId, students.classId)))
-      .where(and(eq(students.id, token.studentId), eq(students.institutionId, token.institutionId), eq(students.isActive, true), isNull(students.deletedAt), isNull(institutions.deletedAt)))
+      .where(and(eq(students.id, token.studentId), eq(students.institutionId, token.institutionId), eq(students.isActive, true), isNull(students.deletedAt), isNull(institutions.deletedAt), eq(institutions.status, 'APPROVED'), sql`EXISTS (SELECT 1 FROM institutions root WHERE root.id=COALESCE(${institutions.parentInstitutionId},${institutions.id}) AND root.status='APPROVED' AND root.deleted_at IS NULL)`))
       .limit(1);
     if (!student || student.createdAt.getTime() !== token.createdAt) return serializedJsonResponse({ verified: false }, { headers });
     return serializedJsonResponse({ verified: true, checkedAt: new Date().toISOString(), student: {

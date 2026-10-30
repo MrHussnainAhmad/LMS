@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
@@ -98,7 +99,7 @@ export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (re
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
 
-  const body = await req.json();
+  const body = await readBoundedJson(req);
 
   try {
     const classId = parseInt(body.classId);

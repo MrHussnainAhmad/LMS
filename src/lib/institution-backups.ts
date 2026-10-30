@@ -15,7 +15,6 @@ import { db } from "@/db";
 import { institutionBackups, institutionGoogleDriveBackups } from "@/db/schema";
 import { decryptStreamingCredentials } from "@/lib/streaming-credentials";
 import { replaceGoogleDriveBackup } from "@/lib/google-drive-backups";
-import { replaceCentralInstitutionBackup } from "@/lib/central-drive-backups";
 
 // archiver-zip-encrypted currently extends the legacy archiver API. Its
 // package ships the compatible archiver version as a nested dependency, while
@@ -126,12 +125,7 @@ export async function processNextInstitutionBackup() {
     if (!settings?.folderId || !credentials?.refreshToken || !password) throw new Error("Google Drive is not connected or the backup password is not configured");
     const data = await snapshot(job.institution_id); jsonl = data.path; zip = await createZip(data, password); const size = (await stat(zip)).size; const checksum = await hashFile(zip); const fileName = filePart(data.institution.name) + " Backup.zip";
     const remote = await replaceGoogleDriveBackup({ refreshToken: credentials.refreshToken, folderId: settings.folderId, previousFileId: settings.backupFileId, fileName, zipPath: zip, expectedSize: size });
-    let centralRemote: { driveFileId: string; size: number } | null = null;
-    if (process.env.CENTRAL_INSTITUTION_BACKUPS_DRIVE_FOLDER_ID?.trim()) {
-      centralRemote = await replaceCentralInstitutionBackup({ institutionName: data.institution.name, fileName, zipPath: zip, expectedSize: size });
-    }
     await db.transaction(async (tx) => { await tx.update(institutionGoogleDriveBackups).set({ backupFileId: remote.fileId, backupFileName: fileName, lastBackupAt: new Date(), lastBackupError: null, updatedAt: new Date() }).where(eq(institutionGoogleDriveBackups.institutionId, job.institution_id)); await tx.update(institutionBackups).set({ status: "COMPLETED", objectKey: "gdrive:" + remote.fileId, fileSize: size, sha256: checksum, recordCount: data.recordCount, tableCount: data.tableCount, completedAt: new Date(), error: null }).where(and(eq(institutionBackups.id, job.id), eq(institutionBackups.institutionId, job.institution_id))); });
-    if (centralRemote) console.log(`[institution-backup] central archive updated for ${data.institution.name}: ${centralRemote.driveFileId}`);
     return { processed: 1, backupId: job.id };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 2000) : "Unknown backup failure";

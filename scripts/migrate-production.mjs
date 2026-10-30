@@ -81,6 +81,8 @@ const SUPPLEMENTAL_MIGRATIONS = [
   "0083_admin_managed_plans.sql",
   "0084_deal_code_fingerprints.sql",
   "0085_remove_plan_device_limits.sql",
+  "0086_security_sessions.sql",
+  "0087_database_backup_recovery.sql",
 ];
 
 if (!process.argv.includes("--apply"))

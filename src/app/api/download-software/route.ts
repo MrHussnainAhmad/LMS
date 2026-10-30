@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -22,7 +23,7 @@ export async function GET() {
 
 export const POST = requireRole(["SUPER_ADMIN", "EMPLOYEE"], async (req: NextRequest) => {
   try {
-    const { url } = await req.json();
+    const { url } = await readBoundedJson(req);
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "Provide a valid download link." }, { status: 400 });
     }

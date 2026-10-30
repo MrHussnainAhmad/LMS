@@ -116,10 +116,6 @@ async function findUnhintedLoginCandidate(loginIdentifier: string): Promise<Logi
   return (result.rows[0] as LoginCandidate | undefined) ?? null;
 }
 
-function addMinutes(value: Date, minutes: number) {
-  return new Date(value.getTime() + minutes * 60 * 1000);
-}
-
 async function assertNotLocked(role: UserRole, userId: number) {
   const [lockout] = await db.select()
     .from(accountLockouts)
@@ -151,28 +147,16 @@ async function clearFailedLoginsBestEffort(role: UserRole, userId: number) {
 }
 
 async function recordFailedLogin(role: UserRole, userId: number, institutionId: number | undefined, ip: string) {
-  const now = new Date();
-  const [existing] = await db.select()
-    .from(accountLockouts)
-    .where(and(eq(accountLockouts.userRole, role), eq(accountLockouts.userId, userId)))
-    .limit(1);
-
-  const insideWindow = existing && addMinutes(existing.windowStartedAt, LOCKOUT_WINDOW_MINUTES) > now;
-  const failedCount = insideWindow ? existing.failedCount + 1 : 1;
-  const lockedUntil = failedCount >= MAX_FAILED_LOGINS ? addMinutes(now, LOCKOUT_COOLDOWN_MINUTES) : null;
-
-  if (existing) {
-    await db.update(accountLockouts)
-      .set({
-        failedCount,
-        lockedUntil,
-        windowStartedAt: insideWindow ? existing.windowStartedAt : now,
-        updatedAt: now,
-      })
-      .where(eq(accountLockouts.id, existing.id));
-  } else {
-    await db.insert(accountLockouts).values({ userRole: role, userId, failedCount, lockedUntil, windowStartedAt: now, updatedAt: now });
-  }
+  const result = await db.execute(sql`
+    INSERT INTO account_lockouts(user_role,user_id,failed_count,window_started_at,locked_until,updated_at)
+    VALUES(${role},${userId},1,now(),NULL,now())
+    ON CONFLICT(user_role,user_id) DO UPDATE SET
+      failed_count=CASE WHEN account_lockouts.window_started_at + (${LOCKOUT_WINDOW_MINUTES} * interval '1 minute') > now() THEN account_lockouts.failed_count+1 ELSE 1 END,
+      locked_until=CASE WHEN account_lockouts.window_started_at + (${LOCKOUT_WINDOW_MINUTES} * interval '1 minute') > now() AND account_lockouts.failed_count+1 >= ${MAX_FAILED_LOGINS} THEN now()+(${LOCKOUT_COOLDOWN_MINUTES} * interval '1 minute') ELSE NULL END,
+      window_started_at=CASE WHEN account_lockouts.window_started_at + (${LOCKOUT_WINDOW_MINUTES} * interval '1 minute') > now() THEN account_lockouts.window_started_at ELSE now() END,
+      updated_at=now()
+    RETURNING locked_until`);
+  const lockedUntil = result.rows[0]?.locked_until;
 
   if (lockedUntil) {
     await logAudit({
@@ -237,6 +221,8 @@ export async function POST(req: NextRequest) {
     }
 
     const { emailOrUsername, password, roleHint, securityAnswer, returnTokens, institutionUsername } = parsed.data;
+    // Retire the previously shared credential, including already-created accounts.
+    if (password === '1234567890') return NextResponse.json(INVALID_CREDENTIALS, { status: 401 });
     const loginIdentifier = emailOrUsername.trim().toLowerCase();
     const normalizedInstitutionUsername = institutionUsername?.trim().toLowerCase();
     const ip = getClientIp(req);
@@ -626,7 +612,7 @@ export async function POST(req: NextRequest) {
     if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
 
     if (err instanceof Error && err.message.startsWith('Account temporarily locked')) {
-      return NextResponse.json({ error: err.message }, { status: 423 });
+      return NextResponse.json(INVALID_CREDENTIALS, { status: 401 });
     }
     console.error('Login Error:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

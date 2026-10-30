@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
@@ -34,7 +35,7 @@ export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (
   { session, params }: { session: JWTPayload; params: Promise<{ id: string }> }
 ) => {
   const institutionId = getTenantContext(session);
-  const body = await req.json();
+  const body = await readBoundedJson(req);
   const parsed = reviewStaffProfileChangeRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(validationError(parsed.error), { status: 400 });

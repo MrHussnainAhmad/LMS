@@ -1,3 +1,4 @@
+import { temporaryPassword } from './temporary-password';
 import { ActionInputError } from './action-input-error';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -9,7 +10,6 @@ import { campuses, institutions, institutionAdmins, institutionOwners, staff, st
 import type { JWTPayload } from './auth-types';
 import { isCampusAccount, readCampusViewToken } from './campus-view';
 
-export const CAMPUS_DEFAULT_PASSWORD = '1234567890';
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export const createCampusSchema = z.object({
   name: z.string().trim().min(2).max(255).refine(name => { try { campusLoginSlug(name); return true; } catch { return false; } }, 'Use a campus name that produces 1–63 letters, numbers or hyphens for student logins.'),
@@ -90,7 +90,8 @@ export async function createCampusWorkspace(session: JWTPayload, input: unknown,
   if (platformRootId === undefined && !canManageCampuses(session)) throw new CampusPolicyError('Only the main campus account can create campus logins.', 403);
   const rootId = platformRootId ?? session.rootInstitutionId!;
   const data = createCampusSchema.parse(input);
-  const passwordHash = await hashPassword(CAMPUS_DEFAULT_PASSWORD);
+  const defaultPassword = temporaryPassword();
+  const passwordHash = await hashPassword(defaultPassword);
   return db.transaction(async (tx) => {
     // Same parent lock serializes names and existing-campus setup.
     await tx.execute(sql`SELECT id FROM institutions WHERE id = ${rootId} FOR UPDATE`);
@@ -149,6 +150,6 @@ export async function createCampusWorkspace(session: JWTPayload, input: unknown,
     const [campus] = existing
       ? await tx.update(campuses).set({ institutionId: workspace.id, address: data.address }).where(eq(campuses.id, existing.id)).returning({ id: campuses.id, name: campuses.name })
       : await tx.insert(campuses).values({ institutionId: workspace.id, name, address: data.address }).returning({ id: campuses.id, name: campuses.name });
-    return { campus, loginEmail: data.loginEmail, defaultPassword: CAMPUS_DEFAULT_PASSWORD };
+    return { campus, loginEmail: data.loginEmail, defaultPassword };
   });
 }

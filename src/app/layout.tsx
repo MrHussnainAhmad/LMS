@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "@/components/Providers";
@@ -50,17 +51,18 @@ const jsonLd = {
     }
   ]
 };
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const nonce = (await headers()).get('x-nonce') || undefined;
   return (
     <html lang="en">
       <head>
       </head>
       <body className="bg-background text-foreground antialiased min-h-screen flex flex-col">
-        <script
+        <script nonce={nonce}
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />

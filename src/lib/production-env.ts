@@ -30,11 +30,13 @@ export function validateProductionEnvironment() {
     requireUrl('DIRECT_URL', ['postgres:', 'postgresql:']),
     requireUrl('REDIS_URL', ['redis:', 'rediss:']),
     required('JWT_SECRET', 32),
+    required('STREAMING_CREDENTIALS_SECRET', 32),
     required('CRON_SECRET', 32),
     required('NEXT_PUBLIC_APP_DOMAIN'),
     required('PUBLIC_SITE_BASE_DOMAIN'),
     required(process.env.CLOUDINARY_CLOUD_NAME?.trim() ? 'CLOUDINARY_CLOUD_NAME' : 'NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME'),
     required('CLOUDINARY_API_KEY'),
+    required('CLOUDINARY_CONTENT_UPLOAD_PRESET'),
     required('CLOUDINARY_API_SECRET', 16),
     required('GMAIL_USER'),
     required('GMAIL_APP_PASSWORD', 16),
@@ -52,6 +54,7 @@ export function validateProductionEnvironment() {
     }
   }
 
+  if (process.env.STREAMING_CREDENTIALS_SECRET === process.env.JWT_SECRET) errors.push('Credential encryption key must differ from JWT_SECRET');
   const directUrl = process.env.DIRECT_URL || '';
   if (/(:6432\b|pgbouncer=true)/i.test(directUrl)) errors.push('DIRECT_URL must connect directly to PostgreSQL, not PgBouncer');
   const domain = process.env.NEXT_PUBLIC_APP_DOMAIN?.trim().toLowerCase();

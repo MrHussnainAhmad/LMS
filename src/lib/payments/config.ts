@@ -41,7 +41,7 @@ export function publicPaymentConfig(config: PaymentConfig) {
     const gateway=config.gateways[id];
     const endpointReady=Boolean(gateway && endpointsReady(id,gateway.environment));
     const notReadyReason=!gateway ? null : !endpointReady
-      ? 'The payment connection is unavailable. Please contact support.'
+      ? id==='jazzcash' ? 'JazzCash checkout is unavailable pending a secure provider integration.' : 'The payment connection is unavailable. Please contact support.'
       : !gateway.enabled ? 'Credentials saved. Enable this gateway to make it available.' : null;
     return {id,configured:Boolean(gateway),enabled:Boolean(gateway?.enabled),environment:gateway?.environment ?? 'production',
       ready:Boolean(gateway?.enabled && endpointReady),notReadyReason,
@@ -56,7 +56,7 @@ export async function updatePaymentConfig(institutionId:number,body:unknown) {
   const request=z.discriminatedUnion('action',[
     z.object({action:z.literal('mode'),mode:z.enum(['MANUAL','ONLINE'])}).strict(),
     z.object({action:z.literal('gateway'),gateway:gatewayId,enabled:z.boolean(),environment:z.enum(['sandbox','production']),
-      credentials:z.record(z.string(),z.string().max(256))}).strict(),
+      credentials:z.record(z.string(),z.string().max(256)),activateOnline:z.boolean().default(false)}).strict(),
   ]).safeParse(body);
   if(!request.success)throw new PaymentError('Enter valid payment settings.');
   return db.transaction(async tx=>{
@@ -73,8 +73,10 @@ export async function updatePaymentConfig(institutionId:number,body:unknown) {
       const checked=credentialSchemas[action.gateway].safeParse(credentials);
       if(!checked.success)throw new PaymentError('Provide all merchant credentials. Re-enter secrets when changing merchant or environment.');
       config.gateways[action.gateway]={enabled:action.enabled,environment:action.environment,credentials:checked.data};
-    } else {
-      if(action.mode==='ONLINE') {
+    }
+    const requestedMode=action.action==='mode'?action.mode:action.activateOnline&&action.enabled?'ONLINE':config.mode;
+    if(requestedMode!==config.mode) {
+      if(requestedMode==='ONLINE') {
         // Existing submitted proofs remain reviewable; new online attempts must
         // not overlap an unresolved manual submission for the same fee.
         const [proof]=await tx.select({id:feePaymentSubmissions.id}).from(feePaymentSubmissions)
@@ -83,7 +85,7 @@ export async function updatePaymentConfig(institutionId:number,body:unknown) {
           .where(and(eq(admissionFeePayments.institutionId,institutionId),eq(admissionFeePayments.status,'SUBMITTED'))).limit(1);
         if(proof||admission)throw new PaymentError('Review pending manual payments before enabling Online payments.',409);
       }
-      config.mode=action.mode;
+      config.mode=requestedMode;
     }
     if(config.mode==='ONLINE'&&!publicPaymentConfig(config).gateways.some(gateway=>gateway.ready))throw new PaymentError('Configure and enable at least one gateway before using Online payments.',409);
     const credentialsEncrypted=encodePaymentConfig(config);

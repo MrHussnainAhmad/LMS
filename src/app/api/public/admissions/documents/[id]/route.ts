@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { withApiPolicy } from "@/lib/api-policy";
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
@@ -59,7 +60,7 @@ export const POST = withApiPolicy(async (req: NextRequest, { params }: { params:
   if (!limited.success) return NextResponse.json({ error: 'Too many upload attempts. Please wait and try again.' }, { status: 429 });
 
   let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
+  try { body = await readBoundedJson(req); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
   if (!body || typeof body !== 'object' || !('action' in body)) return NextResponse.json({ error: 'Invalid upload action' }, { status: 400 });
 
   if (body.action === 'signature') {

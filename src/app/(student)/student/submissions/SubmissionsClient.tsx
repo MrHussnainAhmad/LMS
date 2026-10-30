@@ -40,7 +40,7 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
     setProgress(0);
 
     try {
-      const sigRes = await fetch("/api/upload/signature", { method: "POST" });
+      const sigRes = await fetch("/api/upload/signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ purpose: "document", format: file.name.split(".").pop() }) });
       if (!sigRes.ok) throw new Error(await responseErrorMessage(sigRes));
       const signaturePayload = await sigRes.json();
       if (!signaturePayload.signature || !signaturePayload.timestamp || !signaturePayload.cloudName || !signaturePayload.apiKey || !signaturePayload.folder) {
@@ -54,6 +54,10 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
       uploadData.append("timestamp", timestamp.toString());
       uploadData.append("signature", signature);
       uploadData.append("folder", signaturePayload.folder);
+      uploadData.append("public_id", signaturePayload.publicId);
+      uploadData.append("overwrite", "false");
+      uploadData.append("type", signaturePayload.deliveryType);
+      uploadData.append("upload_preset", signaturePayload.uploadPreset);
       uploadData.append("allowed_formats", signaturePayload.allowedFormats);
 
       const cloudinaryResponse = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {

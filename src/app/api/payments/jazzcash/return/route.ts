@@ -3,6 +3,7 @@ import { getPaymentAttempt,attemptCredentials,settlePayment } from '@/lib/paymen
 import { verifyJazzCash } from '@/lib/payments/providers';
 import { paymentOrigin } from '@/lib/payments/endpoints';
 import { readPaymentBody } from '@/lib/payments/http';
+import { nativeCheckoutHtml } from '@/lib/payments/native-checkout';
 export async function POST(req:NextRequest) {
   try {
     const text=await readPaymentBody(req);
@@ -13,6 +14,12 @@ export async function POST(req:NextRequest) {
     if(attempt.gateway!=='jazzcash')throw new Error('Gateway mismatch');
     const evidence=verifyJazzCash(fields,attempt,attemptCredentials(attempt).credentials);
     await settlePayment(attempt.id,evidence);
+    if(req.cookies.get('nisaab360_native_payment')?.value===attempt.id) {
+      const page=nativeCheckoutHtml(undefined,'Your payment response was received. Return to the Nisaab360 app and choose Check status to see the verified result.');
+      const response=new NextResponse(page.body,{headers:page.headers});
+      response.cookies.set('nisaab360_native_payment','',{path:'/api/payments/jazzcash/return',maxAge:0,httpOnly:true,secure:true,sameSite:'none'});
+      return response;
+    }
     const response=NextResponse.redirect(new URL(`/payments/${attempt.id}`,attempt.portalOrigin||paymentOrigin()),303);
     response.headers.set('Cache-Control','no-store');response.headers.set('Referrer-Policy','no-referrer');return response;
   }catch {

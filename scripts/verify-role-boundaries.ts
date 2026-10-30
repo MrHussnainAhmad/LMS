@@ -23,10 +23,11 @@ const feeQueries: string[] = [];
 const testDb = drizzle(memory, { logger: { logQuery(query) { feeQueries.push(query); } } });
 const state = { db: testDb, session: null as JWTPayload | null, viewCookie: '', revocations: 0, cookieCleared: false };
 (globalThis as typeof globalThis & { __campusVerification: typeof state }).__campusVerification = state;
+Object.assign(state,{query:(sql:string,params?:unknown[])=>memory.query(sql,params)});
 const mocks: Record<string, string> = {
   'CampusLoginForm': `import {createElement} from 'react';export const CampusLoginForm=props=>props.allowCreate===false?null:createElement('div',{'data-campus-form':props.endpoint??'/api/institution/campuses'});`,
   'next-cache':'export const revalidatePath=()=>{};',
-  db: 'export const db=globalThis.__campusVerification.db;',
+  db: 'export const db=globalThis.__campusVerification.db;export const pool={query:(...args)=>globalThis.__campusVerification.query(...args)};',
   auth: `export const getSession=async()=>globalThis.__campusVerification.session;
     export const getSessionFromRequest=getSession;export const getLightSessionFromRequest=getSession;
     export const getWarmSessionFromRequest=()=>null;
@@ -42,7 +43,8 @@ const mocks: Record<string, string> = {
   audit: 'export const logAudit=async()=>{};',
   'notification-delivery': 'export const createBulkNotifications=async()=>[];export const createNotification=async()=>undefined;',
   redis: 'export const redis={status:"ready",del:async()=>{},unlink:async()=>{}};export const invalidateInstitutionRosterCaches=async()=>{};export const invalidateStudentEnrichCache=async()=>{};export const invalidateReadCacheKeys=async()=>{};export const invalidateReadCachePatterns=async()=>{};export const invalidateTimetableReadCaches=async()=>{};export const invalidateAnnouncementReadCaches=async()=>{};export const invalidateStaffReadCaches=async()=>{};export const getCachedOrFetch=async(_key,_ttl,fn)=>fn();export const peekCachedOrFetch=()=>null;',
-  'central-drive-backups': 'export const centralDriveOAuthUrl=state=>"https://accounts.google.test/consent?state="+state;export const exchangeCentralDriveCode=async()=>({refreshToken:"fixture-central-secret"});',
+  'central-backup-mail':'export const sendRecoveryEmail=async()=>{};',
+  'central-drive-backups': 'export const prepareCentralDriveFolder=async()=>({folderId:"fixture-folder",email:"owner@example.test"});export const centralDriveOAuthUrl=state=>"https://accounts.google.test/consent?state="+state;export const exchangeCentralDriveCode=async()=>({refreshToken:"fixture-central-secret"});',
   cloudinary: 'export default {api:{resource:async()=>{throw Error("Unexpected cloudinary call")}}};',
   'institution-restores': 'export const submitInstitutionRestore=async()=>1;export const listInstitutionRestores=async()=>[];export const actOnInstitutionRestore=async()=>{};export const requestRecoveryRestore=async()=>({id:1});',
   user: 'export const getFreshStudent=async(...args)=>globalThis.__campusVerification.liveStudentVerifier(...args);export const verifyUserExistsFresh=async(...args)=>globalThis.__campusVerification.liveVerifier?globalThis.__campusVerification.liveVerifier(...args):true;export const invalidateUserValidity=async()=>{};export const resolveUserCreatedAt=async()=>new Date();export const getUserCreatedAt=async()=>new Date();',
@@ -71,7 +73,7 @@ const evidence: string[] = [];
 process.env.NEXT_PUBLIC_APP_DOMAIN='nisaab360.app';
 try {
   const dialect = new PgDialect();
-  const tables = [schema.institutions, schema.campuses, schema.institutionAdmins, schema.institutionOwners, schema.staff, schema.students, schema.employees, schema.superAdmins, schema.parentAccounts, schema.classes, schema.sections, schema.centralBackupSettings, schema.institutionGoogleDriveBackups, schema.institutionPaymentGateways, schema.platformReviews, schema.feeHeads, schema.classFeeItems, schema.feeInvoices, schema.feePaymentSubmissions, schema.feeInvoiceItems, schema.studentFeeAdjustments, schema.studentAdmissionCounters];
+  const tables = [schema.institutions, schema.campuses, schema.institutionAdmins, schema.institutionOwners, schema.staff, schema.students, schema.employees, schema.superAdmins, schema.parentAccounts, schema.classes, schema.sections, schema.centralBackupSettings, schema.institutionGoogleDriveBackups, schema.institutionPaymentGateways, schema.platformReviews, schema.feeHeads, schema.classFeeItems, schema.feeInvoices, schema.feePaymentSubmissions, schema.feeInvoiceItems, schema.studentFeeAdjustments, schema.studentAdmissionCounters, schema.refreshTokens];
   for (const table of tables) {
     const config = getTableConfig(table);
     const columns = config.columns.filter((column) => config.name !== 'institutions' || !['parent_institution_id', 'campus_name', 'must_change_password'].includes(column.name)).map((column) => {
@@ -155,7 +157,7 @@ try {
   const accountRoute=await load('src/app/api/institution/account/route.ts');state.session=owner;
   assert.equal((await accountRoute.DELETE(new NextRequest('http://localhost/api/institution/account',{method:'DELETE'}),{})).status,403);
   evidence.push('Employees may review pending registrations but cannot suspend active institutions; rejection preserves rows; all direct institution deletion paths are disabled.');
-  const routeCases=[['src/app/api/sa/central-backup/settings/route.ts','GET',[regular,employee,owner,delegated]],['src/app/api/sa/central-backup/google-drive/connect/route.ts','GET',[regular,employee,owner,delegated]],['src/app/api/sa/central-backup/google-drive/callback/route.ts','GET',[regular,employee,owner,delegated]],['src/app/api/sa/restore-requests/[id]/route.ts','POST',[employee,owner,delegated]],['src/app/api/sa/institution-backups/[id]/download/route.ts','GET',[employee,owner,delegated]],['src/app/api/institution/settings/google-drive/route.ts','PUT',[root,regular,employee,delegated]],['src/app/api/institution/settings/google-drive/connect/route.ts','GET',[root,regular,employee,delegated]],['src/app/api/institution/restore-requests/[id]/route.ts','POST',[root,regular,employee,delegated]],['src/app/api/institution/export/route.ts','GET',[root,regular,employee,delegated]],['src/app/api/institution/signature/route.ts','PATCH',[root,regular,employee,delegated]],['src/app/api/institution/settings/payment-accounts/route.ts','POST',[root,regular,employee,delegated]],['src/app/api/course-streaming/route.ts','PUT',[root,regular,employee,delegated]]];
+  const routeCases=[['src/app/api/sa/central-backup/settings/route.ts','GET',[regular,employee,owner,delegated]],['src/app/api/sa/central-backup/google-drive/connect/route.ts','POST',[regular,employee,owner,delegated]],['src/app/api/sa/central-backup/google-drive/callback/route.ts','GET',[regular,employee,owner,delegated]],['src/app/api/sa/restore-requests/[id]/route.ts','POST',[employee,owner,delegated]],['src/app/api/sa/institution-backups/[id]/download/route.ts','GET',[employee,owner,delegated]],['src/app/api/institution/settings/google-drive/route.ts','PUT',[root,regular,employee,delegated]],['src/app/api/institution/settings/google-drive/connect/route.ts','GET',[root,regular,employee,delegated]],['src/app/api/institution/restore-requests/[id]/route.ts','POST',[root,regular,employee,delegated]],['src/app/api/institution/export/route.ts','GET',[root,regular,employee,delegated]],['src/app/api/institution/signature/route.ts','PATCH',[root,regular,employee,delegated]],['src/app/api/institution/settings/payment-accounts/route.ts','POST',[root,regular,employee,delegated]],['src/app/api/course-streaming/route.ts','PUT',[root,regular,employee,delegated]]];
   let directCases=0;
   for(const [entry,method,deniedActors]of routeCases){const route=await load(entry as string);for(const actor of deniedActors as JWTPayload[]){state.session=actor;const response=await route[method as string](new NextRequest('http://localhost/api/fixture',{method:method as string}),{params:Promise.resolve({id:'1'})});assert.equal(response.status,403,entry+' '+actor.role);directCases++;}}
   const paymentAccounts = await load('src/app/api/institution/settings/payment-accounts/route.ts');
@@ -296,10 +298,15 @@ try {
   evidence.push(directCases+' actual sensitive API denial cases across roles; allowed Root/owner reads; owner identity and delegated-admin Server Actions reject institution admins.');
   const {SignJWT}=await import('jose');const secret=new TextEncoder().encode(process.env.JWT_SECRET);
   const callback=await load('src/app/api/sa/central-backup/google-drive/callback/route.ts');state.session=root;
-  const stateToken=async(subject:string)=>new SignJWT({purpose:'central-google-drive-setup'}).setProtectedHeader({alg:'HS256'}).setSubject(subject).setExpirationTime('15m').sign(secret);
-  let response=await callback.GET(new NextRequest('http://localhost/api/sa/central-backup/google-drive/callback?code=fixture&state='+await stateToken('12')),{});assert.equal(response.status,400);
-  response=await callback.GET(new NextRequest('http://localhost/api/sa/central-backup/google-drive/callback?code=fixture&state='+await stateToken('10')),{});assert.equal(response.status,200);assert.match(await response.text(),/fixture-central-secret/);
-  evidence.push('Central OAuth callback rejects state issued for another Root account and accepts only its initiating authenticated Root; lower roles cannot obtain its token.');
+  const stateNonce='synthetic-central-drive-state';
+  const stateToken=async(subject:string)=>new SignJWT({purpose:'central-google-drive-setup',nonce:stateNonce}).setProtectedHeader({alg:'HS256'}).setSubject(subject).setExpirationTime('15m').sign(secret);
+  const {createHash}=await import('node:crypto');
+  await testDb.insert(schema.centralBackupSettings).values({id:1,oauthStateHash:createHash('sha256').update(stateNonce).digest('hex'),oauthStateExpiresAt:new Date(Date.now()+900000)}).onConflictDoUpdate({target:schema.centralBackupSettings.id,set:{oauthStateHash:createHash('sha256').update(stateNonce).digest('hex'),oauthStateExpiresAt:new Date(Date.now()+900000)}});
+  let response=await callback.GET(new NextRequest('http://localhost/api/sa/central-backup/google-drive/callback?code=fixture&state='+await stateToken('12')),{});assert.equal(response.status,307);assert.match(response.headers.get('location')!,/drive=failed/);
+  response=await callback.GET(new NextRequest('http://localhost/api/sa/central-backup/google-drive/callback?code=fixture&state='+await stateToken('10')),{});assert.equal(response.status,307);assert.match(response.headers.get('location')!,/drive=connected/);assert.doesNotMatch(await response.text(),/fixture-central-secret/);
+  response=await callback.GET(new NextRequest('http://localhost/api/sa/central-backup/google-drive/callback?code=fixture&state='+await stateToken('10')),{});assert.match(response.headers.get('location')!,/drive=failed/);
+  evidence.push('Central OAuth binds state to the initiating Root, consumes it once and stores encrypted credentials without revealing a token.');
+
 
   const freshUsers=await load('src/lib/user.ts');
   assert.equal(await freshUsers.verifyUserExistsFresh('INSTITUTION',1),true);
@@ -339,7 +346,10 @@ try {
   Object.assign(state,{liveVerifier:freshUsers.verifyUserExistsFresh,liveStudentVerifier:freshUsers.getFreshStudent});
   const [student]=await testDb.insert(schema.students).values({institutionId:1,name:'Fresh student',loginRollNumber:'fixture-fresh-student',passwordHash:'fixture',classId:1,sectionId:1,yearOfJoining:2026,classRollNumber:'01',academicStatus:'ACTIVE',isActive:true}).returning();
   const actualAuth=await load('src/lib/auth.ts');
-  const studentToken=await new SignJWT({role:'STUDENT',userId:student.id,institutionId:1,studentAcademicStatus:'ACTIVE',graduatedStudentAccessAllowed:true}).setProtectedHeader({alg:'HS256'}).setIssuedAt().setExpirationTime('15m').sign(secret);
+  const studentPayload={role:'STUDENT',userId:student.id,institutionId:1,studentAcademicStatus:'ACTIVE',graduatedStudentAccessAllowed:true};
+  const studentToken=(await actualAuth.createTokens(studentPayload)).accessToken;
+  const untrackedToken=await new SignJWT(studentPayload).setProtectedHeader({alg:'HS256'}).setIssuedAt().setExpirationTime('15m').sign(secret);
+  assert.equal(await actualAuth.getSessionFromRequest(new NextRequest('http://localhost/api/student/profile',{headers:{Authorization:'Bearer '+untrackedToken}})),null,'legacy tokens without a revocable session are retired');
   const studentRequest=()=>new NextRequest('http://localhost/api/student/profile',{headers:{Authorization:'Bearer '+studentToken}});
   assert.equal((await actualAuth.getSessionFromRequest(studentRequest())).studentAcademicStatus,'ACTIVE');
   await testDb.update(schema.students).set({academicStatus:'GRADUATED'}).where(eq(schema.students.id,student.id));
@@ -361,7 +371,8 @@ try {
   await testDb.update(schema.institutions).set({status:'PENDING'}).where(eq(schema.institutions.id,1));
   assert.equal(await actualAuth.getSessionFromRequest(studentRequest()),null,'unapproved institution fails on the next request');
   await testDb.update(schema.institutions).set({status:'APPROVED'}).where(eq(schema.institutions.id,1));
-  const foreignStudentToken=await new SignJWT({role:'STUDENT',userId:student.id,institutionId:child.id}).setProtectedHeader({alg:'HS256'}).setIssuedAt().setExpirationTime('15m').sign(secret);
+  const trackedClaims=JSON.parse(Buffer.from(studentToken.split('.')[1],'base64url').toString());
+  const foreignStudentToken=await actualAuth.createAccessToken({...trackedClaims,institutionId:child.id});
   assert.equal(await actualAuth.getSessionFromRequest(new NextRequest('http://localhost/api/student/profile',{headers:{Authorization:'Bearer '+foreignStudentToken}})),null,'wrong institution claim fails');
   assert.equal(await freshUsers.getFreshStudent(2147483647,1),null,'missing student fails');
   const cleanSession=await actualAuth.getSessionFromRequest(studentRequest());
@@ -378,10 +389,10 @@ try {
   assert.ok(!html.includes('DangerZone'));
   const backupsPage=await load('src/components/PlatformBackupsPage.tsx');
   state.session=employee;html=renderToStaticMarkup(await backupsPage.PlatformBackupsPage({basePath:'/employee/backups',searchParams:Promise.resolve({})}));
-  assert.ok(!html.includes('CentralDatabaseBackupSettings'));assert.ok(!html.includes('InstitutionRestoreRequests'));assert.match(html,/data-download="false"/);
+  assert.ok(!html.includes('CentralDatabaseBackupSettings'));assert.ok(!html.includes('InstitutionRestoreRequests'));assert.match(html,/Super Admin only/);
   state.session=root;html=renderToStaticMarkup(await backupsPage.PlatformBackupsPage({basePath:'/sa/backups',searchParams:Promise.resolve({})}));
-  assert.ok(html.includes('CentralDatabaseBackupSettings'));assert.ok(html.includes('InstitutionRestoreRequests'));assert.match(html,/data-download="true"/);
-  evidence.push('Actual server-rendered settings remove payment/backup/export/signature/streaming controls from delegated admins; actual employee backup page hides central security, restores and downloads while Root retains them. Client leaves are stubbed to inspect authorization props.');
+  assert.ok(html.includes('CentralDatabaseBackupSettings'));assert.ok(!html.includes('InstitutionRestoreRequests'));assert.ok(!html.includes('InstitutionBackupsClient'));
+  evidence.push('Actual server-rendered settings remove payment/backup/export/signature/streaming controls from delegated admins; actual database backup page exposes the new controls only to Root and removes the retired per-institution controls. Client leaves are stubbed to inspect authorization props.');
 
   const reportPath = 'docs/role-boundaries-2026-10-06/role-results.json';
   await mkdir(path.dirname(reportPath), { recursive: true });

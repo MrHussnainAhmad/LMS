@@ -75,7 +75,7 @@ export async function createStaffAction(formData: FormData) {
   if (campusIdRaw && Number(campusIdRaw) !== campusId) throw new ActionInputError('Select your own campus.');
   const customRoleId = Number(formData.get("customRoleId"));
 
-  createStaffSchema.extend({ password: z.string().min(8).max(1024) }).parse({ name, phone, campusId: campusId ?? undefined, customRoleId, password });
+  createStaffSchema.extend({ password: z.string().min(8).max(1024).refine(value => value !== "1234567890", "Use a unique password") }).parse({ name, phone, campusId: campusId ?? undefined, customRoleId, password });
 
   if (phone.replace(/\D/g, "").length < 4) {
     throw new ActionInputError("Phone number must include at least 4 digits");

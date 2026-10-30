@@ -60,3 +60,6 @@ export async function backupFileSha256(filePath: string, signal?: AbortSignal) {
   for await (const chunk of createReadStream(filePath, { signal })) hash.update(chunk);
   return hash.digest('hex');
 }
+
+/** 18 random bytes encoded without padding: 24 characters, 144 bits. */
+export function generateBackupPassword(){return randomBytes(18).toString('base64url');}

@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextResponse } from "next/server";
@@ -12,7 +13,7 @@ import { invalidateReadCacheKeys } from '@/lib/redis';
 const pageSchema = z.object({
   slug: z.string().min(1).max(255),
   title: z.string().min(1).max(255),
-  content: z.string(),
+  content: z.string().max(100000),
 });
 
 export async function GET(req: Request) {
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const result = pageSchema.safeParse(body);
 
     if (!result.success) {

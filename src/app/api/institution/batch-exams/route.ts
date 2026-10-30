@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { db } from "@/db";
 import {
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { title, type = "FINAL", classId, sectionId, subjects: rawSubjects, studentMarks } = await req.json();
+    const { title, type = "FINAL", classId, sectionId, subjects: rawSubjects, studentMarks } = await readBoundedJson(req);
 
     if (!title || !classId || !rawSubjects || !studentMarks) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });

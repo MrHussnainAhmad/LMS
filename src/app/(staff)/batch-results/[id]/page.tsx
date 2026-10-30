@@ -44,7 +44,7 @@ export default function BatchResultDetailsPage({ params }: { params: Promise<{ i
       "Roll Number": r.rollNumber,
       "Marks": r.marksObtained
     }));
-    const csv = Papa.unparse(csvData);
+    const csv = Papa.unparse(csvData, { escapeFormulae: /^[\s\u0000-\u001f]*[=+@-]/ });
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

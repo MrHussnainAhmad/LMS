@@ -145,3 +145,14 @@ export async function withQrLoginRateLimit(req: NextRequest, operation: 'create'
     return { success: false, unavailable: true, retryAfterSeconds: 60 };
   }
 }
+
+/** Upload grants are provider capabilities: bound per account across IPs and fail closed. */
+export async function withUploadGrantLimit(identity: string) {
+  if (redis.status !== 'ready') return { success: false, unavailable: true };
+  try {
+    const minute = 'upload-grants:minute:' + identity, day = 'upload-grants:day:' + identity;
+    const result = await redis.multi().incr(minute).expire(minute,60,'NX').incr(day).expire(day,86400,'NX').exec();
+    if (!result || result.length !== 4 || result.some(([error]) => error)) return { success: false, unavailable: true };
+    return { success: Number(result[0][1]) <= 20 && Number(result[2][1]) <= 200, unavailable: false };
+  } catch { return { success: false, unavailable: true }; }
+}

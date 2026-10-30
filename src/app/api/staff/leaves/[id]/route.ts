@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/rbac";
@@ -11,7 +12,7 @@ export const PATCH = requireRole(["STAFF"], async (req: NextRequest, { params, s
     const { id } = await params;
     const leaveId = parseInt(id, 10);
     const institutionId = session.institutionId!;
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const { status } = body;
 
     if (!["APPROVED", "REJECTED"].includes(status)) {

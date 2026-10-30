@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/db';
@@ -28,7 +29,7 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (_req
 });
 
 async function save(req: NextRequest, session: Parameters<typeof getTenantContext>[0]) {
-  const scale = parseScale(await req.json());
+  const scale = parseScale(await readBoundedJson(req));
   if (!scale) return NextResponse.json({ error: 'Provide a passing percentage and at least one valid grade range.' }, { status: 400 });
   const institutionId = getTenantContext(session);
   const [saved] = await db.insert(gradingScales).values({ institutionId, ...scale }).onConflictDoUpdate({

@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextResponse } from "next/server";
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
 
     const institutionId = session.institutionId || session.userId;
 
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const result = reviewSchema.safeParse(body);
 
     if (!result.success) {

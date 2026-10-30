@@ -1,3 +1,6 @@
+import { unsafeOrigin, sessionRestriction } from './lib/request-security';
+import { getSessionFromRequest } from './lib/auth';
+import { withRateLimit } from './lib/rate-limit';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSessionEdge } from './lib/auth-edge';
@@ -35,6 +38,21 @@ export async function proxy(request: NextRequest) {
   // client-supplied one must never survive into a handler.
   const requestHeaders = new Headers(request.headers);
   stripSessionHeaders(requestHeaders);
+  requestHeaders.set('x-nisaab-request-path', request.nextUrl.pathname);
+  const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'nonce-" + nonce + "' 'strict-dynamic'" + (process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''),
+    "style-src 'self' 'unsafe-inline'", "img-src 'self' https: data: blob:", "font-src 'self' data:",
+    "connect-src 'self' https://api.cloudinary.com https://res.cloudinary.com" + (process.env.NODE_ENV === 'development' ? ' ws://localhost:*' : ''),
+    "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://iframe.mediadelivery.net",
+    "media-src 'self' https: blob:", "object-src 'none'", "base-uri 'self'", "frame-ancestors 'none'",
+    "form-action 'self' https://easypay.easypaisa.com.pk https://sandbox.easypaisa.com.pk",
+    ...(process.env.NODE_ENV === 'production' ? ['upgrade-insecure-requests'] : []),
+  ].join('; ');
+  requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('Content-Security-Policy', csp);
+  const secureDocument = <T extends NextResponse>(response: T): T => { response.headers.set('Content-Security-Policy', csp); return response; };
   const forwarded = { request: { headers: requestHeaders } };
 
   // Block writes before custom API handlers and Server Actions. RBAC also
@@ -54,13 +72,24 @@ export async function proxy(request: NextRequest) {
 
   if (request.nextUrl.pathname.startsWith('/api')) {
     if (request.method === 'OPTIONS') return corsPreflight(request);
+    const providerCallback = /^\/api\/(?:webhooks\/|payments\/(?:jazzcash|hblpay)\/return)/.test(request.nextUrl.pathname);
+    if (!providerCallback && unsafeOrigin(request)) return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
+    const hasIdentity = request.headers.has('authorization') || request.cookies.has('access_token');
+    if (hasIdentity && !providerCallback && !request.nextUrl.pathname.startsWith('/api/auth/')) {
+      const current = await getSessionFromRequest(request);
+      if (current) {
+        const restriction = sessionRestriction(current, request.nextUrl.pathname);
+        if (restriction) return NextResponse.json({ error: restriction }, { status: 403 });
+        if (!['GET','HEAD','OPTIONS'].includes(request.method) && !(await withRateLimit(request, 'api', 'global:' + current.role + ':' + current.userId)).success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+      }
+    }
     return applyCorsHeaders(request, NextResponse.next(forwarded));
   }
 
   // Public QR verification must stay reachable on portal/tenant hosts and for
   // accounts awaiting a password change; no session lookup is needed here.
   if (request.nextUrl.pathname === '/verify/student') {
-    return NextResponse.next(forwarded);
+    return secureDocument(NextResponse.next(forwarded));
   }
 
   const session = await getSessionEdge(request.cookies);
@@ -133,7 +162,7 @@ export async function proxy(request: NextRequest) {
     const res = rewritePath
       ? NextResponse.rewrite(new URL(rewritePath, request.url), forwarded)
       : NextResponse.next(forwarded);
-    return keepWebSessionAlive(res, request);
+    return secureDocument(keepWebSessionAlive(res, request));
   }
 
   // Handle password change requirement globally
@@ -213,7 +242,7 @@ export async function proxy(request: NextRequest) {
     nextRes.headers.set('Expires', '0');
   }
 
-  return session ? keepWebSessionAlive(nextRes, request) : nextRes;
+  return secureDocument(session ? keepWebSessionAlive(nextRes, request) : nextRes);
 }
 
 function getDashboardPath(session: { role: string; studentAcademicStatus?: string }, request: NextRequest) {
@@ -263,7 +292,7 @@ function keepWebSessionAlive(response: NextResponse, request: NextRequest) {
   const refreshToken = request.cookies.get('refresh_token')?.value;
   const host = (request.headers.get('host') || '').split(':')[0].toLowerCase();
   const domain = host === 'nisaab360.app' || host.endsWith('.nisaab360.app') ? '.nisaab360.app' : undefined;
-  const secure = domain !== undefined && (request.headers.get('x-forwarded-proto') === 'https' || request.nextUrl.protocol === 'https:');
+  const secure = process.env.NODE_ENV === 'production' || request.nextUrl.protocol === 'https:';
 
   if (accessToken) {
     response.cookies.set('access_token', accessToken, {

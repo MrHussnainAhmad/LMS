@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { institutionHolidays } from "@/db/schema";
@@ -17,7 +18,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (_req
 });
 
 export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }: { session: JWTPayload }) => {
-  const body = await req.json();
+  const body = await readBoundedJson(req);
   if (!isDateString(body.date)) return NextResponse.json({ error: "Holiday date is required" }, { status: 400 });
 
   const [holiday] = await db.insert(institutionHolidays).values({
@@ -33,7 +34,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
 });
 
 export const DELETE = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }: { session: JWTPayload }) => {
-  const body = await req.json();
+  const body = await readBoundedJson(req);
   if (!isDateString(body.date)) return NextResponse.json({ error: "Holiday date is required" }, { status: 400 });
 
   await db.delete(institutionHolidays)

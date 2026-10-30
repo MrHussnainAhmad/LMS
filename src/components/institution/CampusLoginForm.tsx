@@ -24,7 +24,7 @@ export function CampusLoginForm({ existingCampus, endpoint = '/api/institution/c
       });
       setCredentials(result);
       if (!existingCampus) form.reset();
-      toast({ title: 'Campus login created', description: 'The campus must change its default password after first login.', variant: 'success' });
+      toast({ title: 'Campus login created', description: 'The campus must change its temporary password after first login.', variant: 'success' });
       router.refresh();
     } catch (error) {
       toast({ title: 'Could not create campus login', description: error instanceof Error ? error.message : 'Check the campus details.', variant: 'destructive' });
@@ -32,7 +32,7 @@ export function CampusLoginForm({ existingCampus, endpoint = '/api/institution/c
   }
   return <div className="space-y-4">
     {credentials && <div role="status" className="border border-green-300 bg-green-50 p-4 text-sm text-green-950">
-      <p className="font-semibold">Campus login created</p><p>Email: {credentials.loginEmail}</p><p>Default password: <code>{credentials.defaultPassword}</code></p>
+      <p className="font-semibold">Campus login created</p><p>Email: {credentials.loginEmail}</p><p>Temporary password: <code>{credentials.defaultPassword}</code></p>
       <p className="mt-2">Use Institution login. A new password is required before accessing the dashboard.</p>
     </div>}
     {!credentials && allowCreate && <form onSubmit={submit} className="space-y-4">
@@ -40,7 +40,7 @@ export function CampusLoginForm({ existingCampus, endpoint = '/api/institution/c
       <label className="block space-y-1 text-sm font-medium">Address<Input name="address" required minLength={2} maxLength={2000} defaultValue={existingCampus?.address ?? ''} /></label>
       <label className="block space-y-1 text-sm font-medium">Login Email<Input name="loginEmail" type="email" required maxLength={255} autoComplete="off" /></label>
       <label className="block space-y-1 text-sm font-medium">Campus Registration No.<Input name="registrationNumber" maxLength={100} placeholder="This campus's registration number" /></label>
-      <p className="text-xs text-stone-500">Default password: <code>1234567890</code>. The campus must change it on first login.</p>
+      <p className="text-xs text-stone-500">A unique temporary password is shown after creation. The campus must change it on first login.</p>
       <Button type="submit" disabled={busy}>{busy ? 'Creating…' : existingCampus ? 'Set up login' : 'Create Campus'}</Button>
     </form>}
     {credentials && !existingCampus && allowCreate && <Button variant="outline" onClick={() => setCredentials(null)}>Add another campus</Button>}

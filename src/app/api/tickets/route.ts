@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
@@ -9,7 +10,7 @@ import { z } from "zod";
 
 const createTicketSchema = z.object({
   title: z.string().min(1, "Title is required").max(255),
-  description: z.string().min(1, "Description is required"),
+  description: z.string().min(1, "Description is required").max(10000),
 });
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Institution not found" }, { status: 400 });
     }
 
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const { title, description } = createTicketSchema.parse(body);
 
     const [ticket] = await db.insert(tickets).values({

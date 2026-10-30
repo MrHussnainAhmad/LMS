@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
@@ -36,7 +37,7 @@ export const DELETE = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (r
 export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
   let body: Record<string, unknown>;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
+  try { body = await readBoundedJson(req); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
   const action = String(body.action || '');
 
   if (action === 'createSubject') {

@@ -1,13 +1,10 @@
+import { csvCell } from "@/lib/csv";
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { sections, staffAssignments, students, tests } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 
-function csvCell(value: string | number) {
-  const text = String(value);
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
 
 export const GET = requireRole(["STAFF"], async (request: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

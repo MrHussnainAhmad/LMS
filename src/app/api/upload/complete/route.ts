@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextRequest, NextResponse } from 'next/server';
 import cloudinary from '@/lib/cloudinary';
 import { requireRole } from '@/lib/rbac';
@@ -12,7 +13,7 @@ export const POST = requireRole(['STUDENT', 'STAFF', 'INSTITUTION', 'INSTITUTION
   if (!limited.success) return NextResponse.json({ error: 'Too many upload attempts. Please wait and try again.' }, { status: 429 });
 
   let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
+  try { body = await readBoundedJson(req); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
   if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Invalid upload completion' }, { status: 400 });
   const value = body as Record<string, unknown>;
   const publicId = typeof value.publicId === 'string' ? value.publicId.trim() : '';

@@ -9,6 +9,9 @@ import { ImageUp, Loader2 } from "lucide-react";
 import { prepareContentUpload } from "@/lib/client-upload-file";
 
 type SignaturePayload = {
+  publicId: string;
+  deliveryType: string;
+  uploadPreset: string;
   signature?: string;
   timestamp?: number;
   cloudName?: string;
@@ -56,6 +59,10 @@ export function InstitutionLogoUploader({
       uploadData.append("timestamp", signaturePayload.timestamp.toString());
       uploadData.append("signature", signaturePayload.signature);
       uploadData.append("folder", signaturePayload.folder);
+      uploadData.append("public_id", signaturePayload.publicId);
+      uploadData.append("overwrite", "false");
+      uploadData.append("type", signaturePayload.deliveryType);
+      uploadData.append("upload_preset", signaturePayload.uploadPreset);
       uploadData.append("allowed_formats", signaturePayload.allowedFormats || "jpg,jpeg,png,webp,pdf,docx,txt");
 
       const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/image/upload`, {

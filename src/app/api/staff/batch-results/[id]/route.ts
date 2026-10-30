@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { db } from "@/db";
 import { batchExamResults, batchExamSubjects, batchExams, students, subjects, classes, sections } from "@/db/schema";
@@ -84,7 +85,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const { id } = await params;
     const subjectId = Number(id);
-    const { resultId, newMarks } = await req.json();
+    const { resultId, newMarks } = await readBoundedJson(req);
 
     if (!resultId || newMarks === undefined) {
       return NextResponse.json({ error: "Missing parameters" }, { status: 400 });

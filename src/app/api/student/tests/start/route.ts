@@ -1,9 +1,10 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextResponse } from "next/server";
 import { startOnlineTestAttemptAction } from "@/app/actions/online-test-actions";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const onlineTestId = Number(body.onlineTestId);
     if (!Number.isInteger(onlineTestId) || onlineTestId <= 0) {
       return NextResponse.json({ error: "Invalid test" }, { status: 400 });

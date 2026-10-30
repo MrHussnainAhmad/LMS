@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
@@ -25,14 +26,14 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (_req
 });
 
 export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
-  const parsed = parseRole(await req.json());
+  const parsed = parseRole(await readBoundedJson(req));
   if (!parsed) return NextResponse.json({ error: 'A role name and valid permissions are required' }, { status: 400 });
   const [role] = await db.insert(institutionCustomRoles).values({ institutionId: getTenantContext(session), ...parsed }).returning();
   return NextResponse.json({ role }, { status: 201 });
 });
 
 export const PATCH = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
-  const body = await req.json() as { id?: unknown };
+  const body = await readBoundedJson(req) as { id?: unknown };
   const id = Number(body.id);
   const parsed = parseRole(body);
   if (!Number.isInteger(id) || !parsed) return NextResponse.json({ error: 'Invalid role' }, { status: 400 });

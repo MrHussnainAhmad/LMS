@@ -9,8 +9,9 @@ export const GET = withApiPolicy(async () => {
   try {
     await readinessPool.query('select 1');
     // Fail readiness on migration drift before accepting backup jobs/traffic.
-    await readinessPool.query('select b2_status, error, source_sha256, source_size_bytes, started_at from central_database_backups where false');
-    await readinessPool.query('select database_password_encrypted, updated_by_employee from central_backup_settings where false');
+    await readinessPool.query('select b2_status, error, source_sha256, source_size_bytes, started_at, password_encrypted, drive_verified_at, password_sent_at, delivery_attempts from central_database_backups where false');
+    await readinessPool.query('select database_password_encrypted, updated_by_employee, enabled, restore_review_required, drive_credentials_encrypted, recovery_email_verified_at from central_backup_settings where false');
+    await readinessPool.query('select run_id, kind, status from central_backup_jobs where false');
     let cache: 'ready' | 'degraded' = 'degraded';
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {

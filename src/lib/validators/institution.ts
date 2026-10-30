@@ -33,7 +33,7 @@ export const registerInstitutionSchema = z.object({
   agreementAccepted: z.literal(true, { error: 'You must accept the Service Agreement to register.' }),
   agreementVersion: z.literal(SERVICE_AGREEMENT_VERSION, { error: 'The Service Agreement has changed. Reload registration and read the current agreement before submitting.' }),
   agreementRepresentativeName: z.string().trim().min(2).max(255),
-  adminPassword: z.string().min(8),
+  adminPassword: z.string().min(8).max(1024).refine(value => value !== "1234567890", "Use a unique password"),
   // file metadata that client obtained from R2 upload
   logoKey: z.string().min(5),
   proofDocumentKey: z.string().min(5),

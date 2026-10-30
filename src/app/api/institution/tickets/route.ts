@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
@@ -30,7 +31,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
   const institutionId = getTenantContext(session);
   
   try {
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const { ticketId, action, status } = body;
 
     if (!ticketId) return NextResponse.json({ error: "Ticket ID required" }, { status: 400 });

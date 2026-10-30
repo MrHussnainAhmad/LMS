@@ -83,7 +83,7 @@ export function PublishResultsForm({
         csvData.push(row);
       }
 
-      const csv = Papa.unparse(csvData);
+      const csv = Papa.unparse(csvData, { escapeFormulae: /^[\s\u0000-\u001f]*[=+@-]/ });
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");

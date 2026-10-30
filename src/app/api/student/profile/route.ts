@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
@@ -52,7 +53,7 @@ export const PATCH = requireRole(["STUDENT"], async (req: NextRequest, { session
   if (session.studentAcademicStatus === "GRADUATED") {
     return NextResponse.json({ error: "Profile updates are closed after graduation." }, { status: 403 });
   }
-  const body = await req.json();
+  const body = await readBoundedJson(req);
   const parsed = updateStudentProfileSchema.safeParse(body);
 
   if (!parsed.success) {

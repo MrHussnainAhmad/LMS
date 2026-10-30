@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
@@ -175,7 +176,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (_req
 export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   try {
     const institutionId = getTenantContext(session);
-    const body = await req.json();
+    const body = await readBoundedJson(req);
 
     const classId = Number(body.classId);
     const type = String(body.type || "");
@@ -223,7 +224,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
 export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   try {
     const institutionId = getTenantContext(session);
-    const body = await req.json();
+    const body = await readBoundedJson(req);
 
     const examIds = Array.isArray(body.examIds) ? body.examIds.map(Number).filter((n: number) => Number.isInteger(n) && n > 0) : [];
     const classId = Number(body.classId);
@@ -298,7 +299,7 @@ export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (re
 export const DELETE = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   try {
     const institutionId = getTenantContext(session);
-    const body = await req.json().catch(() => ({}));
+    const body = await readBoundedJson(req).catch(() => ({}));
     const examIds = Array.isArray(body.examIds) ? body.examIds.map(Number).filter((n: number) => Number.isInteger(n) && n > 0) : [];
     if (examIds.length === 0) {
       return NextResponse.json({ error: "Exam selection is required" }, { status: 400 });

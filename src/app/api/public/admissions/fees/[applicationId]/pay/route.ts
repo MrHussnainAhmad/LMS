@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextRequest,NextResponse } from 'next/server';
 import { withRateLimit } from '@/lib/rate-limit';
 import { readPaymentConfig,publicPaymentConfig,gatewayId,PaymentError } from '@/lib/payments/config';
@@ -14,7 +15,7 @@ export async function GET(req:NextRequest,{params}:Context){return paymentRespon
 export async function POST(req:NextRequest,{params}:Context){return paymentResponse(async()=>{
   const target=await admissionPaymentTarget(req,positiveId((await params).applicationId));
   if(!(await withRateLimit(req,'upload',`admission-online:${target.applicationId}`)).success)throw new PaymentError('Too many requests. Try again shortly.',429);
-  const body=await req.json().catch(()=>null);const gateway=gatewayId.safeParse(body?.gateway);
+  const body=await readBoundedJson(req).catch(()=>null);const gateway=gatewayId.safeParse(body?.gateway);
   if(!gateway.success)throw new PaymentError('Select JazzCash or Easypaisa.');
   const attempt=await createPaymentAttempt(target,gateway.data,paymentPortalOrigin(req));
   return NextResponse.json({paymentId:attempt.id,url:`/payments/${attempt.id}`,environment:attempt.environment},{headers:{'Cache-Control':'no-store'}});

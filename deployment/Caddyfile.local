@@ -1,0 +1,22 @@
+{
+    admin localhost:2019
+    auto_https disable_redirects
+}
+
+http://localhost:3000 {
+    redir https://localhost{uri} temporary
+}
+
+https://localhost, https://*.localhost {
+    tls internal
+    encode zstd gzip
+    reverse_proxy app:3000 app2:3000 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+    }
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+        -Server
+    }
+}

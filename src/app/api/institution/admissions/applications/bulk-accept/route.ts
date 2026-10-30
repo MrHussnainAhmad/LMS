@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { applicantCredentialResetAllowedSql } from "@/lib/admission-campus";
 import { after, NextRequest, NextResponse } from "next/server";
@@ -145,7 +146,7 @@ function acceptedStep(application: Candidate): NextStep {
 export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   let body: unknown;
   try {
-    body = await req.json();
+    body = await readBoundedJson(req);
   } catch {
     return NextResponse.json({ error: "Request body must be valid JSON" }, { status: 400 });
   }

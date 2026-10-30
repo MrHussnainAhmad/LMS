@@ -68,3 +68,4 @@ jobs:
       - run: npm run build
       - run: npm run verify:billing-ui
       - run: npm run verify:forms-ui
+      - run: npm run verify:database-backup-ui

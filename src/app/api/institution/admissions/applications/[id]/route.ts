@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { assertStudentPlanCapacity } from '@/lib/plan-entitlements';
 import { applicantCredentialResetAllowedSql } from "@/lib/admission-campus";
@@ -463,7 +464,7 @@ export const PATCH = requireRole(
       );
     let body: unknown;
     try {
-      body = await req.json();
+      body = await readBoundedJson(req);
     } catch {
       return NextResponse.json(
         { error: "Request body must be valid JSON" },

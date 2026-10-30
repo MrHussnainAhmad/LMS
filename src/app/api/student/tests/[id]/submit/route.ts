@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
@@ -20,7 +21,7 @@ export const POST = requireRole(["STUDENT"], async (req: NextRequest, { session,
   if (!Number.isInteger(onlineTestId)) return NextResponse.json({ error: "Invalid test ID" }, { status: 400 });
 
   try {
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const studentAnswers = body.answers as Record<string, string | number>;
 
     const [student] = await db.select()

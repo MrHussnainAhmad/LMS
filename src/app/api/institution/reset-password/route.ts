@@ -1,3 +1,7 @@
+import { readBoundedJson } from '@/lib/http';
+import { temporaryPassword } from '@/lib/temporary-password';
+import { revokeAllSessions } from '@/lib/auth';
+import { withRateLimit } from '@/lib/rate-limit';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
@@ -11,20 +15,22 @@ import { invalidateUserValidity } from "@/lib/user";
 
 export async function POST(req: NextRequest) {
   try {
+    if (!(await withRateLimit(req, 'api')).success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
     const session = await getSession();
     if (session?.campusReadOnly || session?.mustChangePassword) return NextResponse.json({ error: session.mustChangePassword ? "PASSWORD_CHANGE_REQUIRED" : "This campus is read-only." }, { status: 403 });
     if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN") || !session.institutionId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const { userType, identifier } = body;
 
     if (!userType || !identifier) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const newPasswordHash = await hash("1234567890");
+    const password = temporaryPassword();
+    const newPasswordHash = await hash(password);
     let userName = "";
     let userPhone: string | null = null;
     let targetIdStr = "";
@@ -47,9 +53,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Student not found with that Roll Number" }, { status: 404 });
       }
 
-      await db.update(students)
-        .set({ passwordHash: newPasswordHash, mustChangePassword: true })
-        .where(eq(students.id, student.id));
+      await db.transaction(async tx => {
+        await tx.update(students).set({ passwordHash: newPasswordHash, mustChangePassword: true })
+          .where(and(eq(students.id, student.id), eq(students.institutionId, session.institutionId!)));
+        await revokeAllSessions('STUDENT', student.id, tx);
+      });
 
       userName = student.name;
       userPhone = student.phone;
@@ -73,9 +81,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Staff not found with that Email" }, { status: 404 });
       }
 
-      await db.update(staff)
-        .set({ passwordHash: newPasswordHash, mustChangePassword: true })
-        .where(eq(staff.id, staffUser.id));
+      await db.transaction(async tx => {
+        await tx.update(staff).set({ passwordHash: newPasswordHash, mustChangePassword: true })
+          .where(and(eq(staff.id, staffUser.id), eq(staff.institutionId, session.institutionId!)));
+        await revokeAllSessions('STAFF', staffUser.id, tx);
+      });
 
       userName = staffUser.name;
       userPhone = staffUser.phone;
@@ -104,7 +114,7 @@ export async function POST(req: NextRequest) {
       console.error("Audit log failed for password reset", e);
     }
 
-    return NextResponse.json({ success: true, name: userName, phone: userPhone });
+    return NextResponse.json({ success: true, name: userName, phone: userPhone, temporaryPassword: password }, { headers: { "Cache-Control": "no-store" } });
 
   } catch (err: any) {
     const publicInputError = inputErrorResponse(err);

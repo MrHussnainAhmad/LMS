@@ -76,7 +76,8 @@ export const GET = requireRole(["INSTITUTION"], async (req: NextRequest, { sessi
       const rows = arr.map(obj => 
         Object.values(obj).map(val => {
           if (val === null || val === undefined) return "";
-          const str = String(val).replace(/"/g, '""');
+          const text = String(val);
+          const str = (/^[\s\u0000-\u001f]*[=+@-]/.test(text) ? "'" + text : text).replace(/"/g, '""');
           return `"${str}"`;
         }).join(",")
       ).join("\n");

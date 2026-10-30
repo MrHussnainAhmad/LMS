@@ -1,3 +1,4 @@
+import { readBoundedFormData } from '@/lib/http';
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/rbac';
 import { inputErrorResponse } from '@/lib/input-error-response';
@@ -6,7 +7,7 @@ import { uploadMarksCsvAction, publishStaffAssessmentResultsAction } from '@/app
 // Both transports use the same assignment, roster, overwrite and publication checks.
 export const POST = requireRole(['STAFF'], async (req) => {
   try {
-    const form = await req.formData();
+    const form = await readBoundedFormData(req);
     const action = form.get('action');
     if (action === 'upload') {
       const file = form.get('csv');

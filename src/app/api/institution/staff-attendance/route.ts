@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/rbac";
@@ -37,7 +38,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req:
 export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   try {
     const institutionId = session.institutionId!;
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const parsed = staffAttendanceSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 });
     const { date, records } = parsed.data;

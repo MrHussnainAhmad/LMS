@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
@@ -90,7 +91,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const { sectionId, type, title, maxMarks, date, subjectIds } = body;
 
     const parsedSectionId = Number(sectionId);

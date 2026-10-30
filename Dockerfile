@@ -15,7 +15,7 @@ FROM deps AS worker-builder
 WORKDIR /app
 COPY tsconfig.json ./
 COPY src ./src
-COPY scripts/push-receipt-worker.ts scripts/institution-restore-worker.ts scripts/payment-reconciliation-worker.ts ./scripts/
+COPY scripts/push-receipt-worker.ts scripts/institution-restore-worker.ts scripts/payment-reconciliation-worker.ts scripts/database-recovery-server.ts ./scripts/
 RUN ./node_modules/.bin/esbuild scripts/push-receipt-worker.ts \
       --bundle --platform=node --target=node20 --format=cjs --packages=external \
       --sourcemap --outfile=dist/push-receipt-worker.cjs
@@ -25,6 +25,20 @@ RUN ./node_modules/.bin/esbuild scripts/institution-restore-worker.ts \
 RUN ./node_modules/.bin/esbuild scripts/payment-reconciliation-worker.ts \
       --bundle --platform=node --target=node20 --format=cjs --packages=external \
       --sourcemap --outfile=dist/payment-reconciliation-worker.cjs
+
+RUN ./node_modules/.bin/esbuild scripts/database-recovery-server.ts \
+      --bundle --platform=node --target=node24 --format=esm --packages=external \
+      --outfile=dist/database-recovery-server.mjs
+
+# Explicit local recovery tool. It is not started with normal production services.
+FROM base AS database-recovery
+WORKDIR /app
+RUN apk add --no-cache postgresql-client
+COPY --from=production-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=worker-builder --chown=node:node /app/dist/database-recovery-server.mjs ./database-recovery-server.mjs
+COPY --chown=node:node scripts/provision-runtime-role.mjs ./scripts/provision-runtime-role.mjs
+USER node
+CMD ["node", "database-recovery-server.mjs"]
 
 # Only compiled workers and production dependencies; no root or source/test tools.
 FROM base AS push-receipt-worker

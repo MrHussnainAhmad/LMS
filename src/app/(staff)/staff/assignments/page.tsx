@@ -1,3 +1,4 @@
+import { privateFileUrl } from '@/lib/submission-file';
 import { positiveInteger } from "@/lib/pagination";
 import { ServerPagination } from "@/components/ui/server-pagination";
 import { actionFeedback } from '@/lib/action-feedback';
@@ -61,7 +62,7 @@ export default async function StaffAssignmentsPage({ searchParams }: { searchPar
     .leftJoin(subjects, eq(assignments.subjectId, subjects.id))
     .where(and(eq(assignments.staffId, session.userId), eq(assignments.institutionId, session.institutionId)))
     .orderBy(desc(assignments.createdAt), desc(assignments.id)).limit(51).offset((page - 1) * 50);
-  const createdAssignments = createdAssignmentRows.slice(0, 50);
+  const createdAssignments = createdAssignmentRows.slice(0, 50).map(row => ({ ...row, assignment: { ...row.assignment, referenceFileUrl: privateFileUrl(row.assignment.referenceFileUrl) } }));
 
   const assignmentIds = createdAssignments.map(({ assignment }) => assignment.id);
   const classIds = Array.from(new Set(createdAssignments.map(({ assignment }) => assignment.classId)));

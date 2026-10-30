@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
@@ -50,7 +51,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (_req
 
 export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
-  const batchExamId = Number((await req.json().catch(() => ({}))).batchExamId);
+  const batchExamId = Number((await readBoundedJson(req).catch(() => ({}))).batchExamId);
   if (!Number.isInteger(batchExamId)) return NextResponse.json({ error: "batchExamId is required" }, { status: 400 });
 
   const [batch] = await db.select({ id: batchExams.id })

@@ -53,7 +53,7 @@ export function setAdmissionSessionCookie(response: NextResponse, token: string,
   const productionHost = host.toLowerCase().split(':')[0].endsWith('.nisaab360.app');
   response.cookies.set(ADMISSION_SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: productionHost,
+    secure: process.env.NODE_ENV === 'production' || productionHost,
     sameSite: 'lax',
     path: '/',
     maxAge: ADMISSION_SESSION_SECONDS,
@@ -64,7 +64,7 @@ export function clearAdmissionSessionCookie(response: NextResponse, host: string
   const productionHost = host.toLowerCase().split(':')[0].endsWith('.nisaab360.app');
   response.cookies.set(ADMISSION_SESSION_COOKIE, '', {
     httpOnly: true,
-    secure: productionHost,
+    secure: process.env.NODE_ENV === 'production' || productionHost,
     sameSite: 'lax',
     path: '/',
     maxAge: 0,

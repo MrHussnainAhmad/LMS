@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from 'next/server';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
@@ -28,7 +29,7 @@ export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (_req
 export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
   let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  try { body = await readBoundedJson(req); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
   const parsed = campusAdmissionAvailabilitySchema.safeParse(body);
   if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 });
   const owners = await admissionOfferingOwners(institutionId);

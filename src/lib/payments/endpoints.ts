@@ -17,7 +17,7 @@ export function gatewayEndpoint(gateway:GatewayId,environment:'sandbox'|'product
 }
 export function endpointsReady(gateway:GatewayId,environment:'sandbox'|'production') {
   try {
-    if(gateway==='jazzcash')gatewayEndpoint(gateway,environment,'checkout');
+    if(gateway==='jazzcash')return false; // Hosted form discloses reusable merchant password.
     else {gatewayEndpoint(gateway,environment,'initiate');gatewayEndpoint(gateway,environment,'inquiry');}
     return true;
   }catch{return false;}

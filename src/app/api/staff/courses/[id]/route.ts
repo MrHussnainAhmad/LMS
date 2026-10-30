@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
 import { and, asc, eq } from "drizzle-orm";
@@ -28,7 +29,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session, p
   if (!(await isInstitutionCourseStreamingConfigured(institutionId))) return NextResponse.json({ error: "Courses are disabled until the institution configures course streaming" }, { status: 403 });
   const course = await ownedCourse(id, institutionId, session.userId);
   if (!course) return NextResponse.json({ error: "Course not found" }, { status: 404 });
-  const parsed = lectureSchema.safeParse(await req.json().catch(() => null));
+  const parsed = lectureSchema.safeParse(await readBoundedJson(req).catch(() => null));
   if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 });
   if (parsed.data.sequence > course.lectureCount) return NextResponse.json({ error: `This course has ${course.lectureCount} lecture slots` }, { status: 400 });
   const [lecture] = await db.insert(courseLectures).values({ courseId: id, ...parsed.data }).onConflictDoUpdate({ target: [courseLectures.courseId, courseLectures.sequence], set: { title: parsed.data.title, description: parsed.data.description, videoUrl: parsed.data.videoUrl, updatedAt: new Date() } }).returning();

@@ -9,13 +9,14 @@ import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
 export async function updateTicketStatusAction(ticketId: number, status: "WORKING" | "RESOLVED") {
+  if (!["WORKING", "RESOLVED"].includes(status)) throw new ActionInputError("Invalid status");
   const session = await getSession();
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) {
     throw new ActionInputError("Unauthorized");
   }
 
   const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId)).limit(1);
-  if (!ticket || ticket.institutionId !== session.institutionId && ticket.institutionId !== session.userId) {
+  if (!ticket || ticket.institutionId !== session.institutionId) {
     throw new ActionInputError("Ticket not found");
   }
   await db.update(tickets)
@@ -24,7 +25,7 @@ export async function updateTicketStatusAction(ticketId: number, status: "WORKIN
       // Keep the platform view in sync when the ticket was escalated.
       ...(ticket.isForwarded ? { platformStatus: status } : {}),
     })
-    .where(eq(tickets.id, ticketId));
+    .where(and(eq(tickets.id, ticketId), eq(tickets.institutionId, session.institutionId!)));
 
   await db.insert(ticketHistory).values({
     ticketId,
@@ -49,7 +50,7 @@ export async function forwardTicketAction(ticketId: number) {
   }
 
   const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId)).limit(1);
-  if (!ticket || ticket.institutionId !== session.institutionId && ticket.institutionId !== session.userId) {
+  if (!ticket || ticket.institutionId !== session.institutionId) {
     throw new ActionInputError("Ticket not found");
   }
   if (ticket.isForwarded) {
@@ -58,7 +59,7 @@ export async function forwardTicketAction(ticketId: number) {
 
   await db.update(tickets)
     .set({ isForwarded: true, platformStatus: "RECEIVED" })
-    .where(eq(tickets.id, ticketId));
+    .where(and(eq(tickets.id, ticketId), eq(tickets.institutionId, session.institutionId!)));
 
   await db.insert(ticketHistory).values({
     ticketId,

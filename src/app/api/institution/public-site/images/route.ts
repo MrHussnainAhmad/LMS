@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { isMainCampusWebsite } from '@/lib/public-website-access';
 import { NextRequest, NextResponse } from 'next/server';
 import cloudinary from '@/lib/cloudinary';
@@ -14,7 +15,7 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
   if (!limited.success) return NextResponse.json({ error: 'Too many uploads. Please wait and try again.' }, { status: 429 });
 
   let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
+  try { body = await readBoundedJson(req); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
   if (!body || typeof body !== 'object' || !('action' in body)) return NextResponse.json({ error: 'Invalid upload action' }, { status: 400 });
 
   const folder = `institution-public/${institutionId}`;

@@ -1,5 +1,7 @@
 # Institution Google Drive backups
 
+Super Admin per-institution backup controls have been replaced by [full database recovery](database-backup-recovery.md). School-owned scheduled Drive exports continue; school restore approvals are under School Restore Requests. Central school-ZIP duplication is retired.
+
 Institution backups are customer-owned exports and are separate from the PostgreSQL disaster-recovery backup in the `postgres-backup` container. The database backup service and its B2 layout are not changed by this feature.
 
 ## Destination and retention
@@ -51,7 +53,7 @@ Completed requests with a retained snapshot expose **Prepare recovery from pre-r
 
 ### Deployment and verification
 
-Apply `drizzle/0061_institution_restore_requests.sql` and `drizzle/0062_employee_backup_permissions.sql` through `npm run db:migrate:production`; the existing production migration runner includes it. Rebuild the app and worker images, then start the new `institution-restore-worker` service. Both replicas and the restore worker need `DIRECT_URL` pointing directly to PostgreSQL and the same `STREAMING_CREDENTIALS_SECRET` (or the existing `JWT_SECRET` fallback). Compose supplies the worker key. The dedicated restore worker has a 1,024 MB heap ceiling for bounded staging and recovery encryption and runs separately from receipt/email delivery. Local `npm start` applies the migration and the local email worker also processes restores. The k6 override excludes the dedicated restore worker unless the `with-backup` profile is enabled. The old B2 restore script remains disabled.
+Apply `drizzle/0061_institution_restore_requests.sql` and `drizzle/0062_employee_backup_permissions.sql` through `npm run db:migrate:production`; the existing production migration runner includes it. Rebuild the app and worker images, then start the new `institution-restore-worker` service. Both replicas and the restore worker need `DIRECT_URL` pointing directly to PostgreSQL and the same dedicated production `STREAMING_CREDENTIALS_SECRET`, including any retained previous keys. Compose supplies the worker key. The dedicated restore worker has a 1,024 MB heap ceiling for bounded staging and recovery encryption and runs separately from receipt/email delivery. Local `npm start` applies the migration and the local email worker also processes restores. The k6 override excludes the dedicated restore worker unless the `with-backup` profile is enabled. The old B2 restore script remains disabled.
 
 `npm run verify:restores` runs isolated PGlite SQL fixtures, actual AES ZIP interoperability, tenant/reference checks, owner/admin state transitions, changed-preview invalidation, encryption, recovery and injected failure rollback. It never restores production data. PGlite tests do not establish concurrent multi-session PostgreSQL lock behavior; verify deployment with a disposable institution before operational use.
 

@@ -1,3 +1,4 @@
+import { databaseRecoveryPaused } from '@/lib/database-recovery-state';
 import { checkExpoPushReceipts, pruneResolvedPushTickets } from "@/lib/notifications";
 import { pruneExpiredRefreshTokens } from "@/lib/token-maintenance";
 import { gracefulShutdown } from "@/lib/process-lifecycle";
@@ -49,6 +50,7 @@ async function runHourly(
 }
 
 async function runOnce() {
+  if(await databaseRecoveryPaused())return;
   const currentHour = Math.floor(Date.now() / 3_600_000);
   lastDealCodePruneHour = await runHourly('Expired deal code cleanup', lastDealCodePruneHour, currentHour, pruneExpiredDealtPlanCodes);
   try {
@@ -117,7 +119,7 @@ async function scheduleNextRun() {
 // Independent clock: long backup/receipt maintenance must not hold up due alerts.
 async function scheduleReminderClock() {
   if (stopping) return;
-  reminderInFlight=sendDueNotificationReminders().then(()=>{}).catch(()=>{console.error('Notification reminder clock check failed');});
+  reminderInFlight=(async()=>{if(!await databaseRecoveryPaused())await sendDueNotificationReminders();})().then(()=>{}).catch(()=>{console.error('Notification reminder clock check failed');});
   await reminderInFlight;
   reminderInFlight=undefined;
   if(!stopping)reminderTimer=setTimeout(()=>{void scheduleReminderClock();},900000);

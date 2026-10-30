@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextResponse } from "next/server";
@@ -10,7 +11,7 @@ import { z } from "zod";
 const blogUpdateSchema = z.object({
   title: z.string().min(1).max(255),
   slug: z.string().min(1).max(255),
-  content: z.string(),
+  content: z.string().max(100000),
   metaTitle: z.string().max(255).optional(),
   metaDescription: z.string().optional(),
   excerpt: z.string().optional(),
@@ -28,7 +29,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const id = parseInt((await params).id, 10);
     if (isNaN(id)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
 
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const result = blogUpdateSchema.safeParse(body);
 
     if (!result.success) {

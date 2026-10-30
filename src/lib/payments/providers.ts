@@ -21,14 +21,9 @@ export function verifyJazzCash(fields:Record<string,string>,terms:PaymentTerms,c
   // An unsigned/declined browser return never closes an ambiguous attempt.
   return {paid,reference:reference||'',responseCode:fields.pp_ResponseCode||'',digest:expected};
 }
-function pakistanTimestamp(date:Date){return new Date(date.getTime()+5*60*60*1000).toISOString().slice(0,19).replace(/[-:T]/g,'');}
-export function jazzCashCheckout(terms:PaymentTerms,credentials:Record<string,string>) {
-  const fields:Record<string,string>={pp_Version:'1.1',pp_TxnType:'MWALLET',pp_Language:'EN',pp_MerchantID:credentials.merchantId,
-    pp_Password:credentials.password,pp_TxnRefNo:terms.id,pp_Amount:String(terms.amount*100),pp_TxnCurrency:'PKR',
-    pp_TxnDateTime:pakistanTimestamp(terms.createdAt),pp_TxnExpiryDateTime:pakistanTimestamp(terms.expiresAt),
-    pp_BillReference:terms.id,pp_Description:'Nisaab360 fee',pp_ReturnURL:terms.returnUrl};
-  fields.pp_SecureHash=jazzCashHash(fields,credentials.integritySalt);
-  return {url:gatewayEndpoint('jazzcash',terms.environment,'checkout'),fields};
+// No merchant password may be serialized into a client checkout form.
+export function jazzCashCheckout(_terms:PaymentTerms,_credentials:Record<string,string>): {url:string;fields:Record<string,string>} {
+  throw new Error('JazzCash hosted checkout is disabled pending a provider-approved tokenized integration');
 }
 function credentialsHeader(credentials:Record<string,string>){return {Credentials:Buffer.from(`${credentials.username}:${credentials.password}`,'utf8').toString('base64')};}
 export async function initiateEasypaisa(terms:PaymentTerms,config:GatewayConfig,payer:{phone:string;email:string}) {

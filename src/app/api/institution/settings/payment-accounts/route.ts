@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
@@ -20,7 +21,7 @@ export const POST = requireRole(['INSTITUTION'], async (req, { session }) => {
   const limited = await withRateLimit(req, 'upload', `payment-accounts:${institutionId}`);
   if (!limited.success) return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
   let body;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 }); }
+  try { body = await readBoundedJson(req); } catch { return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 }); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({ error: 'Invalid payment account.' }, { status: 400 });
   if (body.action === 'qrSignature') {
     const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;

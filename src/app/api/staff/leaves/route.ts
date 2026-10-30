@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/rbac";
@@ -10,7 +11,7 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
     const staffId = session.userId;
     const institutionId = session.institutionId!;
     
-    const body = await req.json();
+    const body = await readBoundedJson(req);
     const { reason, startDate, endDate } = body;
 
     if (!reason || !startDate || !endDate) {

@@ -48,20 +48,8 @@ function rememberVerifiedToken(token: string, payload: JWTPayload) {
   verifiedTokenCache.set(token, { payload, expMs, nbf });
 }
 
-/** Exact same exp/nbf checks as async verification; misses still require jwtVerify. */
-export function peekVerifiedAccessToken(token: string): JWTPayload | null {
-  const cached = verifiedTokenCache.get(token);
-  if (cached) {
-    const now = Date.now();
-    if (cached.expMs > now) {
-      if (cached.nbf !== undefined && cached.nbf > Math.floor(now / 1000)) return null;
-      if (cached.payload.qrSessionId || cached.payload.planDeviceSessionId) return null;
-      return cached.payload;
-    }
-    verifiedTokenCache.delete(token);
-  }
-  return null;
-}
+/** Synchronous cache hits cannot check shared revocation. Always use async verification. */
+export function peekVerifiedAccessToken(token: string): JWTPayload | null { void token; return null; }
 
 export async function verifyAccessToken(token: string): Promise<JWTPayload | null> {
   const warm = peekVerifiedAccessToken(token);
@@ -81,6 +69,7 @@ export async function verifyAccessToken(token: string): Promise<JWTPayload | nul
       currentDate: new Date(Date.now()),
     });
     const typed = payload as unknown as JWTPayload;
+    if (!typed.planDeviceSessionId) return null;
     typed.mustChangePassword = requiresPasswordChange(typed.role, typed.mustChangePassword);
     if (typed.qrSessionId && !await (await import('./qr-session')).isQrSessionActive(typed)) return null;
     if (typed.planDeviceSessionId && !await (await import('./plan-device-sessions')).isPlanDeviceSessionActive(typed)) return null;

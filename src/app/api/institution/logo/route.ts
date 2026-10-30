@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { institutions } from "@/db/schema";
@@ -10,7 +11,7 @@ const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_FORMATS = new Set(["jpg", "jpeg", "png", "webp"]);
 
 export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
-  const body = await req.json();
+  const body = await readBoundedJson(req);
   const publicId = typeof body.publicId === "string" ? body.publicId.trim() : "";
 
   if (!publicId || !ownsUploadPublicId(session, publicId)) {

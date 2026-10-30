@@ -1,3 +1,4 @@
+import { privateFileUrl } from '@/lib/submission-file';
 import { positiveInteger } from "@/lib/pagination";
 import { ServerPagination } from "@/components/ui/server-pagination";
 import { formatUtcDateTime } from "@/lib/date-format";
@@ -49,7 +50,7 @@ export default async function StudentSubmissionsPage({ searchParams }: { searchP
           description: assignment.description,
           dueAtLabel: formatUtcDateTime(assignment.dueAt),
           subjectName,
-          referenceFileUrl: assignment.referenceFileUrl,
+          referenceFileUrl: privateFileUrl(assignment.referenceFileUrl),
           referenceFileName: assignment.referenceFileName,
           submittedFileKey: fileKey,
         }))}

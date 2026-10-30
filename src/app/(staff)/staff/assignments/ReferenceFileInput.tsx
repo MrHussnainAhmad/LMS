@@ -14,7 +14,7 @@ export function ReferenceFileInput() {
     setUploading(true);
     try {
       const preparedFile = await prepareContentUpload(file);
-      const sigRes = await fetch("/api/upload/signature", { method: "POST" });
+      const sigRes = await fetch("/api/upload/signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ purpose: "document", format: preparedFile.name.split(".").pop() }) });
       const signaturePayload = await sigRes.json();
       if (!sigRes.ok || !signaturePayload.signature || !signaturePayload.folder) {
         throw new Error(signaturePayload.error || "Failed to prepare upload");
@@ -26,6 +26,10 @@ export function ReferenceFileInput() {
       uploadData.append("timestamp", String(signaturePayload.timestamp));
       uploadData.append("signature", signaturePayload.signature);
       uploadData.append("folder", signaturePayload.folder);
+      uploadData.append("public_id", signaturePayload.publicId);
+      uploadData.append("overwrite", "false");
+      uploadData.append("type", signaturePayload.deliveryType);
+      uploadData.append("upload_preset", signaturePayload.uploadPreset);
       uploadData.append("allowed_formats", signaturePayload.allowedFormats);
 
       const response = await fetch(`https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/auto/upload`, {

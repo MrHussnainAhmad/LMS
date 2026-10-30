@@ -164,3 +164,13 @@ DEPLOY.md
 !/scripts/migrate-production.mjs
 !/scripts/push-receipt-worker.ts
 !/scripts/standalone-server.cjs
+
+# Recovery tooling is compiled into a separate image, never the web runtime.
+!scripts/database-recovery-server.ts
+*.n360backup
+*.dump
+*.dump.enc
+recovery-output/
+**/recovery-secrets.json
+
+!scripts/provision-runtime-role.mjs

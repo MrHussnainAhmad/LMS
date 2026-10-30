@@ -1,0 +1,41 @@
+# Explicit local overlay. Never use this file for a production deployment.
+services:
+  migrate:
+    environment:
+      DIRECT_URL: ${LOCAL_OPERATOR_DATABASE_URL:?Run scripts/start-local-docker.mjs first}
+  app:
+    build:
+      target: runner
+      args:
+        NEXT_PUBLIC_APP_DOMAIN: localhost
+        NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:-}
+    environment:
+      DEPLOYMENT_ENV: local
+      APP_DOMAIN: localhost
+      NEXT_PUBLIC_APP_DOMAIN: localhost
+      PUBLIC_SITE_BASE_DOMAIN: localhost
+      API_ALLOWED_ORIGINS: https://localhost
+      PAYMENT_PUBLIC_ORIGIN: https://localhost
+      GOOGLE_DRIVE_CENTRAL_REDIRECT_URI: https://localhost/api/sa/central-backup/google-drive/callback
+  app2:
+    build:
+      target: runner
+      args:
+        NEXT_PUBLIC_APP_DOMAIN: localhost
+        NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:-}
+    environment:
+      DEPLOYMENT_ENV: local
+      APP_DOMAIN: localhost
+      NEXT_PUBLIC_APP_DOMAIN: localhost
+      PUBLIC_SITE_BASE_DOMAIN: localhost
+      API_ALLOWED_ORIGINS: https://localhost
+      PAYMENT_PUBLIC_ORIGIN: https://localhost
+      GOOGLE_DRIVE_CENTRAL_REDIRECT_URI: https://localhost/api/sa/central-backup/google-drive/callback
+  caddy:
+    ports: !override
+      - "127.0.0.1:443:443"
+      - "127.0.0.1:3000:3000"
+    volumes: !override
+      - ./deployment/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config

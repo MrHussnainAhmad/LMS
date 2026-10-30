@@ -80,6 +80,14 @@
     @tls_authorization path /api/public/tls-authorization
     respond @tls_authorization 404
 
+    @restore_upload path /api/institution/restore-requests
+    request_body @restore_upload {
+        max_size 16793600
+    }
+    @ordinary_body not path /api/institution/restore-requests
+    request_body @ordinary_body {
+        max_size 6291456
+    }
     encode zstd gzip
 
     reverse_proxy {
@@ -137,6 +145,14 @@ https://localhost, https://*.localhost {
     @tls_authorization path /api/public/tls-authorization
     respond @tls_authorization 404
 
+    @restore_upload path /api/institution/restore-requests
+    request_body @restore_upload {
+        max_size 16793600
+    }
+    @ordinary_body not path /api/institution/restore-requests
+    request_body @ordinary_body {
+        max_size 6291456
+    }
     encode zstd gzip
 
     reverse_proxy {
@@ -196,6 +212,14 @@ https://localhost, https://*.localhost {
     @tls_authorization path /api/public/tls-authorization
     respond @tls_authorization 404
 
+    @restore_upload path /api/institution/restore-requests
+    request_body @restore_upload {
+        max_size 16793600
+    }
+    @ordinary_body not path /api/institution/restore-requests
+    request_body @ordinary_body {
+        max_size 6291456
+    }
     encode zstd gzip
 
     reverse_proxy {

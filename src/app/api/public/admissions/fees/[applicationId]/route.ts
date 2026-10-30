@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { withApiPolicy } from "@/lib/api-policy";
 import { submitAdmissionFeeProof } from '@/lib/manual-admission-payments';
 import { NextRequest, NextResponse } from "next/server";
@@ -129,7 +130,7 @@ export const POST = withApiPolicy(async (
 
   let body: unknown;
   try {
-    body = await req.json();
+    body = await readBoundedJson(req);
   } catch {
     return NextResponse.json(
       { error: "Request body must be valid JSON" },

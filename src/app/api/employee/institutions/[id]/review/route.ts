@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from 'next/server';
 import { changeInstitutionStatus } from "@/lib/institution-status";
@@ -15,7 +16,7 @@ export const POST = requireRole(['SUPER_ADMIN', 'EMPLOYEE'], async (req: NextReq
     return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
   }
 
-  const body = await req.json();
+  const body = await readBoundedJson(req);
   const parsed = reviewInstitutionSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(validationError(parsed.error), { status: 400 });

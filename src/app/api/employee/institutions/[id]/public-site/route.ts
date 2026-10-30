@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
@@ -25,7 +26,7 @@ export const PATCH = requireRole(['SUPER_ADMIN', 'EMPLOYEE'], async (req: NextRe
 
   let body: unknown;
   try {
-    body = await req.json();
+    body = await readBoundedJson(req);
   } catch {
     return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 });
   }

@@ -1,3 +1,4 @@
+import { readBoundedJson } from '@/lib/http';
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -14,7 +15,7 @@ export const GET = requireRole(["INSTITUTION"], async (_req: NextRequest, { sess
 export const PUT = requireRole(["INSTITUTION"], async (req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
   let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }
+  try { body = await readBoundedJson(req); } catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }
   const password = body && typeof body === "object" && typeof (body as { password?: unknown }).password === "string" ? (body as { password: string }).password : "";
   if (password.length < 14 || password.length > 200) return NextResponse.json({ error: "Backup password must contain 14-200 characters" }, { status: 400 });
   const encrypted = encryptStreamingCredentials({ password });

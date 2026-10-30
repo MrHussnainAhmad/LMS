@@ -21,7 +21,7 @@ export async function prepareCentralRestore(fileId: string, destination: string,
   const encrypted = join(work, 'download.enc');
   let plaintextOwned = false;
   try {
-    const token = await getCentralAccessToken();
+    const token = await getCentralAccessToken(undefined,true);
     const headers = { Authorization: `Bearer ${token}` };
     const base = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`;
     const metadata = await fetch(`${base}?fields=id,name,size,sha256Checksum&supportsAllDrives=true`, { headers, signal: AbortSignal.timeout(60_000) });
