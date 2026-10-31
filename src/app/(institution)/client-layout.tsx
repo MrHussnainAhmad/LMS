@@ -18,6 +18,7 @@ const SIDEBAR_ITEMS = [
   { label: "Admissions", href: "/institution/admissions", icon: UserPlus },
   { label: "Fees", href: "/institution/fees", icon: WalletCards },
   { label: "Teacher's Attendance", href: "/institution/staff-attendance", icon: CheckSquare },
+  { label: "Student Attendance", href: "/institution/attendance", icon: CheckSquare },
   { label: "Leaves", href: "/institution/staff-leaves", icon: Calendar },
   { label: "Timetable", href: "/institution/timetable", icon: Calendar },
   { label: "Exams", href: "/institution/exams", icon: ClipboardList },

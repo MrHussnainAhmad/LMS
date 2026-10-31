@@ -1,5 +1,13 @@
 # Release and tenant-host setup
 
+The attendance substitute update requires supplemental migration
+`0088_attendance_delegation.sql` before the new app replicas start. It adds dated
+substitute assignments and nullable marking-account fields without resetting
+existing attendance or accounts. Deploy matching multipart upload clients with
+this release: `/api/upload/signature` now returns an update-required response.
+Cloudinary needs its cloud name, API key and API secret; an upload preset is no
+longer required. Keep the existing printed-card signing keys during deployment.
+
 For the current 02:00 Pakistan-time full database backup, per-backup emailed passwords and new-server recovery, read [Database Backup & Recovery](../docs/database-backup-recovery.md). This supersedes older fixed-password central-backup setup instructions.
 
 For the central-backup schema/volume repair, staging requirements, existing-server

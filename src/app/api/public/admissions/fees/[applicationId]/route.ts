@@ -1,4 +1,4 @@
-import { readBoundedJson } from '@/lib/http';
+import { readUploadBody, uploadScopedContent } from '@/lib/content-upload';
 import { withApiPolicy } from "@/lib/api-policy";
 import { submitAdmissionFeeProof } from '@/lib/manual-admission-payments';
 import { NextRequest, NextResponse } from "next/server";
@@ -128,44 +128,17 @@ export const POST = withApiPolicy(async (
       { status: 429 },
     );
 
-  let body: unknown;
-  try {
-    body = await readBoundedJson(req);
-  } catch {
-    return NextResponse.json(
-      { error: "Request body must be valid JSON" },
-      { status: 400 },
-    );
-  }
+  const body = await readUploadBody(req);
   if (!body || typeof body !== "object" || !("action" in body))
     return NextResponse.json(
       { error: "Invalid payment action" },
       { status: 400 },
     );
 
-  if (body.action === "signature") {
-    const cloudName =
-      process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ||
-      process.env.CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECRET;
-    if (!cloudName || !apiKey || !apiSecret)
-      return NextResponse.json(
-        { error: "Payment proof uploads are not configured" },
-        { status: 503 },
-      );
-    const timestamp = Math.round(Date.now() / 1000);
-    const folder = `admission-fees/${authorized.payment.institutionId}/${applicationId}`;
-    const allowedFormats = "jpg,jpeg,png,webp,pdf";
-    const type = "authenticated";
-    const signature = cloudinary.utils.api_sign_request(
-      { timestamp, folder, allowed_formats: allowedFormats, type, overwrite: false },
-      apiSecret,
-    );
-    return NextResponse.json(
-      { signature, timestamp, folder, allowedFormats, type, overwrite: false, cloudName, apiKey },
-      { headers: { "Cache-Control": "no-store" } },
-    );
+  if (body.action === 'signature') return NextResponse.json({ uploadUrl: req.nextUrl.pathname + req.nextUrl.search }, { headers: { 'Cache-Control': 'no-store' } });
+  if (body.action === 'upload') {
+    const asset = await uploadScopedContent('file' in body ? body.file : null, { folder: `admission-fees/${authorized.payment.institutionId}/${applicationId}`, privateFile: true, formats: ["jpg","jpeg","png","webp","pdf"] });
+    return NextResponse.json(asset, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   if (

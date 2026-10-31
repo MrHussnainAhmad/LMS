@@ -7,6 +7,31 @@ export const IMAGE_FILE_ACCEPT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,ima
 
 type UploadKind = 'image' | 'pdf' | 'docx' | 'txt';
 
+type UploadedContent = { public_id: string; secure_url: string; resource_type: string; format: string };
+
+/** Upload already-prepared bytes through the server's enforced byte ceiling. */
+export async function uploadPreparedContent(file: File, purpose: 'image' | 'document' | 'public-site-image' = 'image', onProgress?: (percent: number) => void, uploadUrl = '/api/upload/content'): Promise<UploadedContent> {
+  if (!/^\/api\/(?!\/)/.test(uploadUrl)) throw new Error('Invalid upload destination');
+  const form = new FormData();
+  form.set('file', file);
+  form.set('purpose', purpose);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', uploadUrl);
+    xhr.responseType = 'json';
+    xhr.upload.onprogress = event => { if (event.lengthComputable) onProgress?.(Math.round(event.loaded / event.total * 100)); };
+    xhr.onload = () => {
+      const result = xhr.response;
+      if (xhr.status >= 200 && xhr.status < 300 && typeof result?.public_id === 'string') resolve(result);
+      else reject(new Error(typeof result?.error === 'string' ? result.error : 'File upload failed'));
+    };
+    xhr.onerror = () => reject(new Error('Cannot reach the upload service. Please try again.'));
+    xhr.timeout = 60_000;
+    xhr.ontimeout = () => reject(new Error('File upload timed out. Please try again.'));
+    xhr.send(form);
+  });
+}
+
 const FILE_TYPES: Record<UploadKind, { extensions: Set<string>; mimes: Set<string> }> = {
   image: { extensions: new Set(['jpg', 'jpeg', 'png', 'webp']), mimes: new Set(['image/jpeg', 'image/png', 'image/webp']) },
   pdf: { extensions: new Set(['pdf']), mimes: new Set(['application/pdf']) },

@@ -43,9 +43,13 @@ export async function POST(req: NextRequest) {
 
   const valid = await verifyPassword(account.passwordHash, parsed.data.password);
   if (!valid) {
-    const failedLoginCount = account.failedLoginCount + 1;
-    const lockedUntil = failedLoginCount >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
-    await db.update(admissionApplicantAccounts).set({ failedLoginCount, lockedUntil, updatedAt: new Date() }).where(and(
+    // Count failures in PostgreSQL so parallel requests cannot overwrite each
+    // other's increments and keep the account below its lockout threshold.
+    await db.update(admissionApplicantAccounts).set({
+      failedLoginCount: sql`${admissionApplicantAccounts.failedLoginCount} + 1`,
+      lockedUntil: sql`CASE WHEN ${admissionApplicantAccounts.failedLoginCount} + 1 >= 5 THEN now() + interval '15 minutes' ELSE ${admissionApplicantAccounts.lockedUntil} END`,
+      updatedAt: new Date(),
+    }).where(and(
       eq(admissionApplicantAccounts.id, account.id),
       eq(admissionApplicantAccounts.institutionId, institutionId),
     ));

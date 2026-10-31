@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { unsafeOrigin } from '@/lib/request-security';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { employees, institutionAdmins, institutions, parentAccounts, staff, students, superAdmins, refreshTokens } from '@/db/schema';
@@ -131,6 +132,8 @@ async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPay
 }
 
 export async function POST(req: NextRequest) {
+  // This handler can use ambient refresh cookies even when Authorization is set.
+  if (unsafeOrigin(req, { allowBearer: false })) return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
   const rateLimit = await withRateLimit(req, 'refresh');
   if (!rateLimit.success) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 });

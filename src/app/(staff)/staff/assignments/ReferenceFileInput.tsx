@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { File, LoaderCircle, UploadCloud, X } from "lucide-react";
 import { useToast } from "@/components/ui/toaster";
-import { CONTENT_FILE_ACCEPT, prepareContentUpload } from "@/lib/client-upload-file";
+import { CONTENT_FILE_ACCEPT, prepareContentUpload, uploadPreparedContent } from "@/lib/client-upload-file";
 
 export function ReferenceFileInput() {
   const [uploaded, setUploaded] = useState<{ name: string; key: string } | null>(null);
@@ -14,30 +14,7 @@ export function ReferenceFileInput() {
     setUploading(true);
     try {
       const preparedFile = await prepareContentUpload(file);
-      const sigRes = await fetch("/api/upload/signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ purpose: "document", format: preparedFile.name.split(".").pop() }) });
-      const signaturePayload = await sigRes.json();
-      if (!sigRes.ok || !signaturePayload.signature || !signaturePayload.folder) {
-        throw new Error(signaturePayload.error || "Failed to prepare upload");
-      }
-
-      const uploadData = new FormData();
-      uploadData.append("file", preparedFile);
-      uploadData.append("api_key", signaturePayload.apiKey);
-      uploadData.append("timestamp", String(signaturePayload.timestamp));
-      uploadData.append("signature", signaturePayload.signature);
-      uploadData.append("folder", signaturePayload.folder);
-      uploadData.append("public_id", signaturePayload.publicId);
-      uploadData.append("overwrite", "false");
-      uploadData.append("type", signaturePayload.deliveryType);
-      uploadData.append("upload_preset", signaturePayload.uploadPreset);
-      uploadData.append("allowed_formats", signaturePayload.allowedFormats);
-
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/auto/upload`, {
-        method: "POST",
-        body: uploadData,
-      });
-      const result = await response.json();
-      if (!response.ok || !result.public_id) throw new Error(result.error?.message || "Upload failed");
+      const result = await uploadPreparedContent(preparedFile, "document");
 
       setUploaded({ name: file.name, key: result.public_id });
     } catch (error) {

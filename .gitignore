@@ -37,6 +37,11 @@ id_ed25519
 *.bak
 *.backup
 *.tmp
+*.tmp.*
+*.temp
+*.temp.*
+*.orig
+*.rej
 *.swp
 Thumbs.db
 
@@ -140,12 +145,19 @@ google_drive_setup_guide.md
 /seed-sa.ts
 /seed*.ts
 /insert-sa.sql
+# Root SQL files are local queries/exports; migrations belong in drizzle/.
+/*.sql
 
 # local tooling and editor state
 /.agents/
 /.codex/
 /.vscode/
 /.idea/
+/.cache/
+/tmp/
+/temp/
+/scratch/
+/mobile-payments.tmp/
 *.code-workspace
 
 # local Docker Compose overrides
@@ -259,11 +271,15 @@ service_account*.json
 client_secret*.json
 tokens.json
 tokens-*.json
+tokens.json.*
 users.csv
+users.csv.*
 # Generated account-password exports
 credentials*.csv
 *-credentials.csv
 credentials*.txt
+*-credentials.json
+*-credentials.txt
 /credential-exports/
 /deployment/release.env
 /deployment/releases/

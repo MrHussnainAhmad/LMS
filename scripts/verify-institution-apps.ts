@@ -70,6 +70,7 @@ async function main() {
     await memory.exec("ALTER TABLE institutions ADD COLUMN pricing_plan varchar(20) NOT NULL DEFAULT 'BASIC'");
     await memory.exec(readFileSync('drizzle/0082_institution_agreement_acceptance.sql', 'utf8'));
     await memory.exec(readFileSync('drizzle/0083_admin_managed_plans.sql', 'utf8'));
+    await memory.exec(readFileSync('drizzle/0086_security_sessions.sql', 'utf8'));
     assert.ok((await memory.query<{ apps_enabled: boolean }>('SELECT apps_enabled FROM institutions')).rows.every(row => row.apps_enabled));
     assert.match(readFileSync('scripts/migrate-production.mjs', 'utf8'), /0081_institution_mobile_apps\.sql/);
     pass('forward migration is idempotent and preserves existing institutions with Apps enabled');
@@ -83,7 +84,7 @@ async function main() {
     const refresh = await load<typeof import('../src/app/api/auth/refresh/route')>('src/app/api/auth/refresh/route.ts');
     const setting = await load<typeof import('../src/app/api/employee/institutions/[id]/apps/route')>('src/app/api/employee/institutions/[id]/apps/route.ts');
     const req = (url: string, body: unknown, token?: string, extra: Record<string, string> = {}) => new NextRequest('http://localhost:3000' + url, {
-      method: url.includes('/apps') ? 'PATCH' : 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...extra }, body: JSON.stringify(body),
+      method: url.includes('/apps') ? 'PATCH' : 'POST', headers: { host: 'localhost:3000', 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...extra }, body: JSON.stringify(body),
     });
     const context = { params: Promise.resolve({ id: '1' }) };
     const admin = await auth.createTokens({ role: 'SUPER_ADMIN', userId: 99, isSuperAdmin: false });

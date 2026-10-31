@@ -1,4 +1,4 @@
-import { readBoundedJson } from '@/lib/http';
+import { readUploadBody, uploadScopedContent } from '@/lib/content-upload';
 import { validationError } from '@/lib/validation-errors';
 import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
@@ -20,17 +20,14 @@ export const POST = requireRole(['INSTITUTION'], async (req, { session }) => {
   const institutionId = getTenantContext(session);
   const limited = await withRateLimit(req, 'upload', `payment-accounts:${institutionId}`);
   if (!limited.success) return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
-  let body;
-  try { body = await readBoundedJson(req); } catch { return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 }); }
+  const body = await readUploadBody(req);
   if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({ error: 'Invalid payment account.' }, { status: 400 });
-  if (body.action === 'qrSignature') {
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY, secret = process.env.CLOUDINARY_API_SECRET;
-    if (!cloudName || !apiKey || !secret) return NextResponse.json({ error: 'Image uploads are not configured.' }, { status: 503 });
-    const folder = `payment-account-qr/${institutionId}`, timestamp = Math.floor(Date.now() / 1000), allowedFormats = 'jpg,jpeg,png,webp';
-    return NextResponse.json({ cloudName, apiKey, folder, timestamp, allowedFormats,
-      signature: cloudinary.utils.api_sign_request({ folder, timestamp, allowed_formats: allowedFormats }, secret) }, { headers: { 'Cache-Control': 'no-store' } });
+  if (body.action === 'qrSignature') return NextResponse.json({ uploadUrl: req.nextUrl.pathname + req.nextUrl.search }, { headers: { 'Cache-Control': 'no-store' } });
+  if (body.action === 'upload') {
+    const asset = await uploadScopedContent('file' in body ? body.file : null, { folder: `payment-account-qr/${institutionId}` });
+    return NextResponse.json(asset, { headers: { 'Cache-Control': 'no-store' } });
   }
+
   const parsed = accountSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json(validationError(parsed.error), { status: 400 });
   let qrUrl: string | null = null;

@@ -36,7 +36,6 @@ export function validateProductionEnvironment() {
     required('PUBLIC_SITE_BASE_DOMAIN'),
     required(process.env.CLOUDINARY_CLOUD_NAME?.trim() ? 'CLOUDINARY_CLOUD_NAME' : 'NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME'),
     required('CLOUDINARY_API_KEY'),
-    required('CLOUDINARY_CONTENT_UPLOAD_PRESET'),
     required('CLOUDINARY_API_SECRET', 16),
     required('GMAIL_USER'),
     required('GMAIL_APP_PASSWORD', 16),

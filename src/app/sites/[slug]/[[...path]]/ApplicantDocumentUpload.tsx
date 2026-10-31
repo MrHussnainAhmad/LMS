@@ -2,7 +2,7 @@
 
 import { ChangeEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CONTENT_FILE_ACCEPT, prepareContentUpload } from '@/lib/client-upload-file';
+import { CONTENT_FILE_ACCEPT, prepareContentUpload, uploadPreparedContent } from '@/lib/client-upload-file';
 
 export function ApplicantDocumentUpload({ documentId, accentColor }: { documentId: number; accentColor: string }) {
   const router = useRouter();
@@ -17,20 +17,7 @@ export function ApplicantDocumentUpload({ documentId, accentColor }: { documentI
     setError(null);
     try {
       const preparedFile = await prepareContentUpload(file);
-      const signatureResponse = await fetch(`/api/public/admissions/documents/${documentId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'signature' }) });
-      const signature = await signatureResponse.json();
-      if (!signatureResponse.ok) throw new Error(signature.error || 'Unable to prepare upload');
-      const form = new FormData();
-      form.append('file', preparedFile);
-      form.append('api_key', signature.apiKey);
-      form.append('timestamp', String(signature.timestamp));
-      form.append('signature', signature.signature);
-      form.append('folder', signature.folder);
-      form.append('allowed_formats', signature.allowedFormats);
-      form.append('type', signature.type);
-      const uploadResponse = await fetch(`https://api.cloudinary.com/v1_1/${signature.cloudName}/auto/upload`, { method: 'POST', body: form });
-      const uploaded = await uploadResponse.json();
-      if (!uploadResponse.ok || !uploaded.public_id || !uploaded.format || !uploaded.resource_type) throw new Error(uploaded.error?.message || 'File upload failed');
+      const uploaded = await uploadPreparedContent(preparedFile, "document", undefined, `/api/public/admissions/documents/${documentId}`);
       const completeResponse = await fetch(`/api/public/admissions/documents/${documentId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'complete', publicId: uploaded.public_id, format: uploaded.format, resourceType: uploaded.resource_type }) });
       const completed = await completeResponse.json();
       if (!completeResponse.ok) throw new Error(completed.error || 'Unable to save uploaded document');

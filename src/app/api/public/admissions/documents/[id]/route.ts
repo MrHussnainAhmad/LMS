@@ -1,4 +1,4 @@
-import { readBoundedJson } from '@/lib/http';
+import { readUploadBody, uploadScopedContent } from '@/lib/content-upload';
 import { withApiPolicy } from "@/lib/api-policy";
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
@@ -59,21 +59,13 @@ export const POST = withApiPolicy(async (req: NextRequest, { params }: { params:
   const limited = await withRateLimit(req, 'upload', `applicant:${authorized.session.applicantId}`);
   if (!limited.success) return NextResponse.json({ error: 'Too many upload attempts. Please wait and try again.' }, { status: 429 });
 
-  let body: unknown;
-  try { body = await readBoundedJson(req); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
+  const body = await readUploadBody(req);
   if (!body || typeof body !== 'object' || !('action' in body)) return NextResponse.json({ error: 'Invalid upload action' }, { status: 400 });
 
-  if (body.action === 'signature') {
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECRET;
-    if (!cloudName || !apiKey || !apiSecret) return NextResponse.json({ error: 'Document uploads are not configured' }, { status: 503 });
-    const timestamp = Math.round(Date.now() / 1000);
-    const folder = `admission-documents/${authorized.document.institutionId}/${authorized.document.applicationId}/${authorized.document.id}`;
-    const allowedFormats = 'jpg,jpeg,png,webp,pdf,docx,txt';
-    const type = 'authenticated';
-    const signature = cloudinary.utils.api_sign_request({ timestamp, folder, allowed_formats: allowedFormats, type }, apiSecret);
-    return NextResponse.json({ signature, timestamp, folder, allowedFormats, type, cloudName, apiKey }, { headers: { 'Cache-Control': 'no-store' } });
+  if (body.action === 'signature') return NextResponse.json({ uploadUrl: req.nextUrl.pathname + req.nextUrl.search }, { headers: { 'Cache-Control': 'no-store' } });
+  if (body.action === 'upload') {
+    const asset = await uploadScopedContent('file' in body ? body.file : null, { folder: `admission-documents/${authorized.document.institutionId}/${authorized.document.applicationId}/${authorized.document.id}`, privateFile: true, documents: true });
+    return NextResponse.json(asset, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   if (body.action !== 'complete') {
@@ -86,7 +78,8 @@ export const POST = withApiPolicy(async (req: NextRequest, { params }: { params:
   }
   try {
     const resource = await cloudinary.api.resource(asset.publicId, { resource_type: asset.resourceType, type: 'authenticated' });
-    if (resource.type !== 'authenticated' || resource.format?.toLowerCase() !== asset.format || !ALLOWED_DOCUMENT_FORMATS.has(asset.format) || Number(resource.bytes) > MAX_DOCUMENT_BYTES) {
+    const format = String(resource.format || (asset.resourceType === 'raw' ? asset.publicId.split('.').pop() : '')).toLowerCase();
+    if (resource.type !== 'authenticated' || format !== asset.format || !ALLOWED_DOCUMENT_FORMATS.has(asset.format) || !Number.isFinite(Number(resource.bytes)) || Number(resource.bytes) <= 0 || Number(resource.bytes) > MAX_DOCUMENT_BYTES) {
       await cloudinary.uploader.destroy(asset.publicId, { resource_type: asset.resourceType, type: 'authenticated', invalidate: true }).catch(() => undefined);
       return NextResponse.json({ error: 'Uploaded file could not be verified' }, { status: 400 });
     }

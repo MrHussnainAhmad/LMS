@@ -155,6 +155,19 @@ test('staging uses actual constraints and rejects missing identities and identif
   }
   assert.equal((await memory.query<{ title: string }>('SELECT title FROM assignments WHERE id=1')).rows[0].title, 'Old assignment');
 });
+
+test('older attendance backups restore with unknown attribution instead of requiring new columns', async () => {
+  const legacy = structuredClone(payload);
+  legacy.tables.attendances = [{ id: 100, institution_id: 1, section_id: 1, student_id: 1,
+    date: '2026-10-01', status: 'PRESENT', created_at: '2026-10-01T08:00:00' }];
+  await client.query('BEGIN');
+  try {
+    await stageRestore(client, legacy);
+    const row = (await client.query('SELECT marked_by_id,marked_by_name,marked_by_role,marked_at FROM pg_temp.restore_attendances')).rows[0];
+    assert.deepEqual(row, { marked_by_id: null, marked_by_name: null, marked_by_role: null, marked_at: null });
+    assert.equal((await client.query('SELECT count(*)::int AS count FROM attendances')).rows[0].count, 0);
+  } finally { await client.query('ROLLBACK'); }
+});
 test('preview is isolated; replacement preserves other tenants, login secrets and payments; transaction rollback works', async () => {
   await client.query('BEGIN'); await lockRestoreTables(client);
   const preview = await stageRestore(client, payload);

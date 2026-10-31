@@ -78,6 +78,13 @@ export async function stageRestore(client: RestoreSql, payload: RestorePayload):
     const fields = byTable.get(table)!;
     await client.query(`CREATE TEMP TABLE ${q('restore_' + table)} (LIKE public.${q(table)} INCLUDING ALL) ON COMMIT DROP`);
     for (const row of payload.tables[table]) {
+      // Older backups predate attendance attribution. These nullable fields
+      // have no historical actor to backfill; preserve that fact explicitly.
+      if (table === 'attendances') {
+        for (const field of ['marked_by_role', 'marked_by_id', 'marked_by_name', 'marked_at']) {
+          if (fields.includes(field) && !Object.hasOwn(row, field)) row[field] = null;
+        }
+      }
       if (Object.keys(row).length !== fields.length || fields.some(field => !Object.hasOwn(row, field))) {
         throw new RestoreError(`Backup columns for ${table} do not match this server version.`);
       }

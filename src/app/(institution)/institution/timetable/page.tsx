@@ -1,7 +1,7 @@
 import { getInstitutionAcademicsData } from "@/lib/institution-academics-data";
 import { getCachedOrFetch } from "@/lib/redis";
 import { db } from "@/db";
-import { classes, sections, staffAssignments, subjects, staff } from "@/db/schema";
+import { staffAssignments, subjects, staff } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -174,6 +174,7 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
                     staff={staffOptions}
                   />
                 )}
+                {selectedSectionId && <Link href={`/institution/attendance?sectionId=${selectedSectionId}`} className="mt-4 block text-sm font-medium text-brand-700 underline">Manage attendance substitutes</Link>}
               </CardContent>
             </Card>
 

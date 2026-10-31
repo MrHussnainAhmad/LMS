@@ -35,7 +35,6 @@ const local = {
   CRON_SECRET: configured.CRON_SECRET || saved.CRON_SECRET || secret(),
   LOCAL_OPERATOR_DATABASE_URL: operator.toString(),
   LOCAL_MIGRATION_BACKUP_KEY: saved.LOCAL_MIGRATION_BACKUP_KEY || secret(),
-  CLOUDINARY_CONTENT_UPLOAD_PRESET: configured.CLOUDINARY_CONTENT_UPLOAD_PRESET || 'local-testing-not-configured',
 };
 for (const key of ['DATABASE_RUNTIME_PASSWORD', 'VALKEY_PASSWORD']) if (!/^[a-f0-9]{64,128}$/i.test(local[key])) throw Error(`${key} must be a private 64+ character hex value.`);
 if (!configured.JWT_SECRET || configured.JWT_SECRET.length < 32) throw Error('The existing local JWT_SECRET must contain at least 32 characters.');

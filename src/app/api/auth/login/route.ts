@@ -1,4 +1,5 @@
 import { inputErrorResponse } from '@/lib/input-error-response';
+import { unsafeOrigin } from '@/lib/request-security';
 import { validationError } from '@/lib/validation-errors';
 import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
@@ -210,6 +211,7 @@ async function runPostLoginSideEffects(params: {
 }
 
 export async function POST(req: NextRequest) {
+  if (unsafeOrigin(req, { allowBearer: false })) return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
   try {
     const bodyResult = await readJsonBody(req, AUTH_MAX_BODY_BYTES);
     if (!bodyResult.ok) {

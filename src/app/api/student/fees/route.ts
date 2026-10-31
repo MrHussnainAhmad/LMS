@@ -1,4 +1,4 @@
-import { readBoundedJson } from '@/lib/http';
+import { readUploadBody, uploadScopedContent } from '@/lib/content-upload';
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -55,26 +55,23 @@ export const POST = requireRole(["STUDENT", "PARENT"], async (req: NextRequest, 
   }
   const limited = await withRateLimit(req, "upload", `student-fee:${institutionId}:${session.userId}`);
   if (!limited.success) return NextResponse.json({ error: "Too many payment submissions. Please wait and try again." }, { status: 429 });
-  let body: unknown;
-  try { body = await readBoundedJson(req); }
-  catch { return NextResponse.json({ error: "Request body must be valid JSON" }, { status: 400 }); }
+  const body = await readUploadBody(req);
   if (!body || typeof body !== "object" || !("action" in body)) return NextResponse.json({ error: "Invalid payment action" }, { status: 400 });
-  if (body.action === "signature") {
-    const invoiceId = Number("invoiceId" in body ? body.invoiceId : 0);
-    const [invoice] = await db.select({ id: feeInvoices.id, status: feeInvoices.status }).from(feeInvoices)
+  if (body.action === 'signature' || body.action === 'upload') {
+    const invoiceId = Number(body.invoiceId ?? req.nextUrl.searchParams.get('invoiceId'));
+    if (!Number.isSafeInteger(invoiceId) || invoiceId <= 0) return NextResponse.json({ error: 'Invalid challan' }, { status: 400 });
+    const [invoice] = await db.select({ status: feeInvoices.status }).from(feeInvoices)
       .where(and(eq(feeInvoices.id, invoiceId), eq(feeInvoices.institutionId, institutionId), eq(feeInvoices.studentId, studentId))).limit(1);
-    if (!invoice || !["DUE", "PARTIAL"].includes(invoice.status)) return NextResponse.json({ error: "This challan is not awaiting payment" }, { status: 409 });
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECRET;
-    if (!cloudName || !apiKey || !apiSecret) return NextResponse.json({ error: "Payment proof uploads are not configured" }, { status: 503 });
-    const timestamp = Math.round(Date.now() / 1000);
-    const folder = `student-fees/${institutionId}/${studentId}/${invoiceId}`;
-    const allowedFormats = "jpg,jpeg,png,webp,pdf";
-    const type = "authenticated";
-    const signature = cloudinary.utils.api_sign_request({ timestamp, folder, allowed_formats: allowedFormats, type, overwrite: false }, apiSecret);
-    return NextResponse.json({ signature, timestamp, folder, allowedFormats, type, overwrite: false, cloudName, apiKey }, { headers: { "Cache-Control": "no-store" } });
+    if (!invoice || !['DUE', 'PARTIAL'].includes(invoice.status)) return NextResponse.json({ error: 'This challan is not awaiting payment' }, { status: 409 });
+    if (body.action === 'signature') {
+      const target = new URL(req.nextUrl);
+      target.searchParams.set('invoiceId', String(invoiceId));
+      return NextResponse.json({ uploadUrl: target.pathname + target.search }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+    const asset = await uploadScopedContent(body.file, { folder: `student-fees/${institutionId}/${studentId}/${invoiceId}`, privateFile: true, formats: ["jpg","jpeg","png","webp","pdf"] });
+    return NextResponse.json(asset, { headers: { 'Cache-Control': 'no-store' } });
   }
+
   if (body.action !== "complete") return NextResponse.json({ error: "Invalid payment action" }, { status: 400 });
   const invoiceId = Number("invoiceId" in body ? body.invoiceId : 0);
   const amount = Number("amount" in body ? body.amount : 0);

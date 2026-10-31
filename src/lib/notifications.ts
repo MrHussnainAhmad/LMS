@@ -75,8 +75,8 @@ export async function createOnlineTestNotifications({
   sectionName: string;
   subjectName: string;
   durationMinutes: number;
-}) {
-  const recipients = await db
+}, store: Pick<typeof db, 'select' | 'insert'> = db) {
+  const recipients = await store
     .select({ id: students.id })
     .from(students)
     .where(and(eq(students.institutionId, institutionId), eq(students.sectionId, sectionId)));
@@ -95,7 +95,7 @@ export async function createOnlineTestNotifications({
     title: "New Online Test",
     message: `${title} is available for ${formatClassSection(className, sectionName)} in ${subjectName}. Timer: ${durationMinutes} minutes.`,
     referenceId: onlineTestId,
-  })));
+  })), store);
 }
 
 /** Expo needs a few minutes before a receipt exists. */

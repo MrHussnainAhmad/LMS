@@ -3,7 +3,7 @@ import { responseErrorMessage } from '@/lib/validation-errors';
 
 import { runAction } from '@/lib/run-action';
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Check, X, Clock, HelpCircle, Loader2 } from "lucide-react";
@@ -22,7 +22,10 @@ type AttendanceStudent = {
   id: number;
   name: string;
   loginRollNumber?: string;
-  status?: string;
+  status?: string | null;
+  markedByName?: string | null;
+  markedByRole?: string | null;
+  markedAt?: Date | string | null;
 };
 
 type AssignedSection = {
@@ -36,11 +39,15 @@ export function AttendanceClient({
   initialSectionId,
   initialStudents,
   initialAlreadyMarked,
+  attendanceDate,
+  rosterEndpoint = '/api/staff/attendance',
 }: {
   assignedSections: AssignedSection[],
   initialSectionId: number | null,
   initialStudents: AttendanceStudent[],
   initialAlreadyMarked: boolean,
+  attendanceDate: string,
+  rosterEndpoint?: string,
 }) {
   const [selectedSectionId, setSelectedSectionId] = useState<number>(initialSectionId || 0);
 
@@ -53,35 +60,41 @@ export function AttendanceClient({
     initialSectionId ? { [initialSectionId]: initialAlreadyMarked } : {}
   );
   const [isLoadingSection, setIsLoadingSection] = useState(false);
+  const sectionRequest = useRef(0);
 
-  const initialRoster = (initialSectionId ? initialStudents : []).map(s => ({ ...s, status: "PRESENT" }));
+  const initialRoster = (initialSectionId ? initialStudents : []).map(s => ({ ...s, status: s.status ?? "PRESENT" }));
 
   const [students, setStudents] = useState<(AttendanceStudent & { status: string })[]>(initialRoster);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
   const handleSectionChange = async (id: number) => {
+    const request = ++sectionRequest.current;
     setSelectedSectionId(id);
+    setStudents([]);
 
     const cached = studentsBySection[id];
     if (cached) {
-      setStudents(cached.map(s => ({ ...s, status: "PRESENT" })));
+      setStudents(cached.map(s => ({ ...s, status: s.status ?? "PRESENT" })));
+      setIsLoadingSection(false);
       return;
     }
 
     setIsLoadingSection(true);
     try {
-      const res = await fetch(`/api/staff/attendance?view=mark&sectionId=${id}`);
+      const res = await fetch(`${rosterEndpoint}?view=mark&sectionId=${id}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(await responseErrorMessage(res));
       const data = await res.json();
+      if (request !== sectionRequest.current) return;
+      if (data.date !== attendanceDate) throw new Error('The attendance date has changed. Reload this page.');
       const sectionStudents: AttendanceStudent[] = data.students || [];
       setStudentsBySection((prev) => ({ ...prev, [id]: sectionStudents }));
       setMarkedSections((prev) => ({ ...prev, [id]: Boolean(data.alreadyMarkedToday) }));
-      setStudents(sectionStudents.map(s => ({ ...s, status: "PRESENT" })));
+      setStudents(sectionStudents.map(s => ({ ...s, status: s.status ?? "PRESENT" })));
     } catch (error: unknown) {
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to load section", variant: "destructive" });
+      if (request === sectionRequest.current) toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to load section", variant: "destructive" });
     } finally {
-      setIsLoadingSection(false);
+      if (request === sectionRequest.current) setIsLoadingSection(false);
     }
   };
 
@@ -96,11 +109,15 @@ export function AttendanceClient({
   };
 
   const handleSubmit = async () => {
-    if (!selectedSectionId) return;
+    if (!selectedSectionId || isLoadingSection || !students.length || isSubmitting) return;
     setIsSubmitting(true);
     try {
       const records = students.map(s => ({ studentId: s.id, status: s.status as "PRESENT" | "ABSENT" | "LATE" | "LEAVE" }));
-      await runAction(submitAttendanceAction, selectedSectionId, new Date(), records);
+      const saved = await runAction(submitAttendanceAction, selectedSectionId, new Date(`${attendanceDate}T00:00:00+05:00`), records);
+      const savedStudents = students.map(student => ({ ...student, markedByName: saved.markedByName,
+        markedByRole: saved.markedByRole, markedAt: saved.markedAt }));
+      setStudents(savedStudents);
+      setStudentsBySection(current => ({ ...current, [selectedSectionId]: savedStudents }));
       toast({ title: "Success", description: "Attendance submitted successfully", variant: "success" });
       setMarkedSections((current) => ({ ...current, [selectedSectionId]: true }));
     } catch (error: unknown) {
@@ -128,6 +145,7 @@ export function AttendanceClient({
             <select 
               value={selectedSectionId}
               onChange={(e) => handleSectionChange(parseInt(e.target.value))}
+              disabled={isSubmitting}
               className="h-10 w-full sm:w-auto rounded-md border border-border bg-surface px-3 py-2 text-sm focus-ring min-w-[150px] shadow-sm"
             >
               {assignedSections.map(s => (
@@ -165,6 +183,9 @@ export function AttendanceClient({
                 <div className="flex flex-col">
                   <span className="font-semibold text-brand-900">{student.name}</span>
                   <span className="text-xs text-stone-500">{student.loginRollNumber}</span>
+                  {student.markedByName && (
+                    <span className="text-xs text-stone-500">Recorded by {student.markedByName}{student.markedByRole !== 'STAFF' ? ' (Admin)' : ''}</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {STATUS_STATES.map((statusObj) => {
@@ -240,7 +261,7 @@ export function AttendanceClient({
               <span className="font-semibold text-success">{presentCount}</span>
             </div>
           </div>
-          <Button onClick={handleSubmit} disabled={isSubmitting || isAlreadyMarked} className="bg-brand-800 hover:bg-brand-900 text-white min-w-[120px] disabled:opacity-50">
+          <Button onClick={handleSubmit} disabled={isSubmitting || isAlreadyMarked || isLoadingSection || !students.length} className="bg-brand-800 hover:bg-brand-900 text-white min-w-[120px] disabled:opacity-50">
             {isAlreadyMarked ? "Marked" : isSubmitting ? "Submitting..." : "Submit"}
           </Button>
         </div>
@@ -248,7 +269,7 @@ export function AttendanceClient({
 
       {/* Desktop Submit Button */}
       <div className="hidden lg:flex justify-end pt-6">
-        <Button onClick={handleSubmit} disabled={isSubmitting || isAlreadyMarked} size="lg" className="bg-brand-800 hover:bg-brand-900 text-white min-w-[200px] disabled:opacity-50">
+        <Button onClick={handleSubmit} disabled={isSubmitting || isAlreadyMarked || isLoadingSection || !students.length} size="lg" className="bg-brand-800 hover:bg-brand-900 text-white min-w-[200px] disabled:opacity-50">
           {isAlreadyMarked ? "Attendance Already Marked" : isSubmitting ? "Submitting Attendance..." : "Submit Attendance"}
         </Button>
       </div>

@@ -1,5 +1,5 @@
 "use client";
-import { responseErrorMessage } from '@/lib/validation-errors';
+
 
 
 import { useState } from "react";
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Download, File, UploadCloud, X } from "lucide-react";
 import { useToast } from "@/components/ui/toaster";
-import { CONTENT_FILE_ACCEPT, prepareContentUpload } from "@/lib/client-upload-file";
+import { CONTENT_FILE_ACCEPT, prepareContentUpload, uploadPreparedContent } from "@/lib/client-upload-file";
 
 type AssignmentItem = {
   id: number;
@@ -40,39 +40,7 @@ export function SubmissionsClient({ assignments }: { assignments: AssignmentItem
     setProgress(0);
 
     try {
-      const sigRes = await fetch("/api/upload/signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ purpose: "document", format: file.name.split(".").pop() }) });
-      if (!sigRes.ok) throw new Error(await responseErrorMessage(sigRes));
-      const signaturePayload = await sigRes.json();
-      if (!signaturePayload.signature || !signaturePayload.timestamp || !signaturePayload.cloudName || !signaturePayload.apiKey || !signaturePayload.folder) {
-        throw new Error(signaturePayload.error || "Upload service is not configured");
-      }
-      const { signature, timestamp, cloudName, apiKey } = signaturePayload;
-
-      const uploadData = new FormData();
-      uploadData.append("file", file);
-      uploadData.append("api_key", apiKey);
-      uploadData.append("timestamp", timestamp.toString());
-      uploadData.append("signature", signature);
-      uploadData.append("folder", signaturePayload.folder);
-      uploadData.append("public_id", signaturePayload.publicId);
-      uploadData.append("overwrite", "false");
-      uploadData.append("type", signaturePayload.deliveryType);
-      uploadData.append("upload_preset", signaturePayload.uploadPreset);
-      uploadData.append("allowed_formats", signaturePayload.allowedFormats);
-
-      const cloudinaryResponse = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`);
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) setProgress(Math.round((event.loaded / event.total) * 100));
-        };
-        xhr.onload = () => {
-          if (xhr.status === 200) resolve(JSON.parse(xhr.responseText));
-          else reject(new Error("Upload failed"));
-        };
-        xhr.onerror = () => reject(new Error("Upload error"));
-        xhr.send(uploadData);
-      });
+      const cloudinaryResponse = await uploadPreparedContent(file, "document", setProgress);
 
       const saveRes = await fetch("/api/student/submissions", {
         method: "POST",

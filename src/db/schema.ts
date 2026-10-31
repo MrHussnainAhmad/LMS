@@ -1493,6 +1493,21 @@ export const assignments = pgTable(
 );
 
 // --- ATTENDANCES ---
+export const attendanceDelegations = pgTable("attendance_delegations", {
+  id: serial("id").primaryKey(),
+  institutionId: integer("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  sectionId: integer("section_id").notNull().references(() => sections.id, { onDelete: "cascade" }),
+  staffId: integer("staff_id").notNull().references(() => staff.id, { onDelete: "cascade" }),
+  date: date("date").notNull(),
+  assignedByRole: varchar("assigned_by_role", { length: 32 }).notNull(),
+  assignedById: integer("assigned_by_id").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, t => ({
+  sectionDateUnique: unique("attendance_delegations_section_date_unique").on(t.sectionId, t.date),
+  staffDateIndex: index("attendance_delegations_staff_date_idx").on(t.institutionId, t.staffId, t.date),
+}));
+
 export const attendances = pgTable(
   "attendances",
   {
@@ -1508,6 +1523,10 @@ export const attendances = pgTable(
       .references(() => students.id, { onDelete: "cascade" }),
     date: date("date").notNull(),
     status: attendanceStatusEnum("status").notNull(),
+    markedByRole: varchar("marked_by_role", { length: 32 }),
+    markedById: integer("marked_by_id"),
+    markedByName: varchar("marked_by_name", { length: 255 }),
+    markedAt: timestamp("marked_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => ({

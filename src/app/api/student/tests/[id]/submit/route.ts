@@ -1,4 +1,5 @@
 import { readBoundedJson } from '@/lib/http';
+import { parseMcqAnswer } from '@/lib/validators/online-test';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
@@ -93,8 +94,7 @@ export const POST = requireRole(["STUDENT"], async (req: NextRequest, { session,
     for (const question of questions) {
       const studentAnswer = studentAnswers[String(question.id)];
       if (question.questionType === "MCQ") {
-        const answerNum = Number(studentAnswer);
-        if (!Number.isInteger(answerNum)) return NextResponse.json({ error: "Answer every MCQ before submitting" }, { status: 400 });
+        const answerNum = parseMcqAnswer(studentAnswer);
         finalAnswers[String(question.id)] = answerNum;
         if (answerNum === question.correctOptionIndex) mcqScore += Number(question.marks);
       } else {

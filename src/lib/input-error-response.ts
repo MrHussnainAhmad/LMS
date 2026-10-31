@@ -9,7 +9,7 @@ export function inputErrorResponse(error: unknown) {
   if (error instanceof ZodError) return { status: 400, body: validationError(error) };
   if (error instanceof ActionInputError) {
     const explicitStatus = 'status' in error && typeof error.status === 'number' ? error.status : null;
-    const status = explicitStatus && explicitStatus >= 400 && explicitStatus < 500 ? explicitStatus
+    const status = explicitStatus && ((explicitStatus >= 400 && explicitStatus < 500) || explicitStatus === 503) ? explicitStatus
       : /^Unauthorized/.test(error.message) ? 401 : /^Forbidden/.test(error.message) ? 403 : 400;
     return { status, body: { error: apiErrorMessage(error, status) } };
   }

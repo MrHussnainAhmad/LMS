@@ -1,7 +1,7 @@
 import { showError } from "@/lib/show-error";
 import { ChangeEvent, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
-import { IMAGE_FILE_ACCEPT, prepareContentUpload } from '@/lib/client-upload-file';
+import { IMAGE_FILE_ACCEPT, prepareContentUpload, uploadPreparedContent } from '@/lib/client-upload-file';
 import { preserveElementPosition } from './EditorSection';
 
 export function ImageUploadButton({ onUploaded, label = 'Choose image', disabled = false }: { onUploaded: (url: string) => void; label?: string; disabled?: boolean }) {
@@ -13,17 +13,8 @@ export function ImageUploadButton({ onUploaded, label = 'Choose image', disabled
     setUploading(true);
     try {
       const preparedFile = await prepareContentUpload(file, { allowedKinds: ['image'] });
-      const signatureResponse = await fetch('/api/institution/public-site/images', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'signature' }) });
-      const signature = await signatureResponse.json();
-      if (!signatureResponse.ok) throw new Error(signature.error || 'Unable to prepare image upload');
-      const form = new FormData();
-      form.append('file', preparedFile); form.append('api_key', signature.apiKey); form.append('timestamp', String(signature.timestamp)); form.append('signature', signature.signature); form.append('folder', signature.folder); form.append('allowed_formats', signature.allowedFormats); form.append('type', signature.type);
-      const uploadResponse = await fetch(`https://api.cloudinary.com/v1_1/${signature.cloudName}/image/upload`, { method: 'POST', body: form });
-      const uploaded = await uploadResponse.json();
-      if (!uploadResponse.ok) throw new Error(uploaded.error?.message || 'Image upload failed');
-      const completeResponse = await fetch('/api/institution/public-site/images', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'complete', publicId: uploaded.public_id, format: uploaded.format, resourceType: uploaded.resource_type }) });
-      const completed = await completeResponse.json();
-      if (!completeResponse.ok) throw new Error(completed.error || 'Unable to verify uploaded image');
+      const uploaded = await uploadPreparedContent(preparedFile, "public-site-image");
+      const completed = { url: uploaded.secure_url };
       const section = labelRef.current?.closest<HTMLElement>('[data-editor-section]') || labelRef.current;
       preserveElementPosition(section, () => onUploaded(completed.url));
     } catch (error) { showError(error instanceof Error ? error.message : 'Image upload failed'); }

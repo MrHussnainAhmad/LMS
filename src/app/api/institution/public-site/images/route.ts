@@ -19,24 +19,15 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
   if (!body || typeof body !== 'object' || !('action' in body)) return NextResponse.json({ error: 'Invalid upload action' }, { status: 400 });
 
   const folder = `institution-public/${institutionId}`;
-  if (body.action === 'signature') {
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECRET;
-    if (!cloudName || !apiKey || !apiSecret) return NextResponse.json({ error: 'Image uploads are not configured' }, { status: 503 });
-    const timestamp = Math.round(Date.now() / 1000);
-    const allowedFormats = 'jpg,jpeg,png,webp';
-    const type = 'upload';
-    const signature = cloudinary.utils.api_sign_request({ timestamp, folder, allowed_formats: allowedFormats, type }, apiSecret);
-    return NextResponse.json({ signature, timestamp, folder, allowedFormats, type, cloudName, apiKey }, { headers: { 'Cache-Control': 'no-store' } });
-  }
+  if (body.action === 'signature') return NextResponse.json({ error: 'Update your application to use secure file uploads.', code: 'UPLOAD_CLIENT_UPDATE_REQUIRED', uploadUrl: '/api/upload/content' }, { status: 410, headers: { 'Cache-Control': 'no-store' } });
 
   if (body.action !== 'complete') return NextResponse.json({ error: 'Invalid upload action' }, { status: 400 });
   const asset = parseAdmissionUploadCompletion(body);
   if (!asset || asset.resourceType !== 'image' || !hasExactFolderPrefix(asset.publicId, folder)) return NextResponse.json({ error: 'Uploaded image could not be verified' }, { status: 400 });
   try {
     const resource = await cloudinary.api.resource(asset.publicId, { resource_type: 'image', type: 'upload' });
-    if (resource.type !== 'upload' || Number(resource.bytes) > MAX_IMAGE_BYTES || !['jpg', 'jpeg', 'png', 'webp'].includes(String(resource.format).toLowerCase())) {
+    const bytes = Number(resource.bytes);
+    if (resource.type !== 'upload' || typeof resource.secure_url !== 'string' || !Number.isFinite(bytes) || bytes <= 0 || bytes > MAX_IMAGE_BYTES || !['jpg', 'jpeg', 'png', 'webp'].includes(String(resource.format).toLowerCase())) {
       await cloudinary.uploader.destroy(asset.publicId, { resource_type: 'image', type: 'upload', invalidate: true }).catch(() => undefined);
       return NextResponse.json({ error: 'Uploaded image could not be verified' }, { status: 400 });
     }

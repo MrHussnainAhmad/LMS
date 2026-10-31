@@ -44,7 +44,8 @@ export async function proxy(request: NextRequest) {
     "default-src 'self'",
     "script-src 'self' 'nonce-" + nonce + "' 'strict-dynamic'" + (process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''),
     "style-src 'self' 'unsafe-inline'", "img-src 'self' https: data: blob:", "font-src 'self' data:",
-    "connect-src 'self' https://api.cloudinary.com https://res.cloudinary.com" + (process.env.NODE_ENV === 'development' ? ' ws://localhost:*' : ''),
+    // Three.js fetches embedded GLB textures as blob URLs before decoding them.
+    "connect-src 'self' blob: https://api.cloudinary.com https://res.cloudinary.com" + (process.env.NODE_ENV === 'development' ? ' ws://localhost:*' : ''),
     "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://iframe.mediadelivery.net",
     "media-src 'self' https: blob:", "object-src 'none'", "base-uri 'self'", "frame-ancestors 'none'",
     "form-action 'self' https://easypay.easypaisa.com.pk https://sandbox.easypaisa.com.pk",

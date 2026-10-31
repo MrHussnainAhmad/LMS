@@ -275,7 +275,8 @@ export function ModelScene({ model, preset, label, eager = false, preloadNext }:
     resizeObserver.observe(host);
     resize();
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
+    timer.connect(document);
     const frameInterval = compactViewport || reducedMotion ? 1000 / 30 : 1000 / 60;
     let visible = false;
     let frame = 0;
@@ -285,7 +286,8 @@ export function ModelScene({ model, preset, label, eager = false, preloadNext }:
       if (!visible || document.hidden || disposed || gameActive()) return;
       if (time - previousFrameTime >= frameInterval) {
         previousFrameTime = time;
-        const elapsed = clock.getElapsedTime();
+        timer.update(time);
+        const elapsed = timer.getElapsed();
         if (!hasInteracted && !drag) {
           pointer.lerp(target, 0.045);
           modelRoot.rotation.y += (config.rotation[1] + pointer.x * 0.12 - modelRoot.rotation.y) * 0.035;
@@ -299,7 +301,7 @@ export function ModelScene({ model, preset, label, eager = false, preloadNext }:
     };
     const startRendering = () => {
       if (!frame && visible && !document.hidden && !gameActive()) {
-        clock.getDelta();
+        timer.reset();
         frame = window.requestAnimationFrame(render);
       }
     };
@@ -324,6 +326,7 @@ export function ModelScene({ model, preset, label, eager = false, preloadNext }:
       disposed = true;
       stopDrag();
       stopRendering();
+      timer.dispose();
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointermove", onDragMove);
       canvas.removeEventListener("pointerup", onPointerEnd);

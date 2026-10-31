@@ -26,20 +26,25 @@ async function main() {
   };
   (globalThis as any).__mobileParity = state;
   const mocks: Record<string, string> = {
+    'server-only': 'export {};',
     db: 'export const db=globalThis.__mobileParity.db;',
     auth: 'export const getSession=async()=>globalThis.__mobileParity.session; export const getSessionFromRequest=getSession;export const getLightSessionFromRequest=getSession;export const getWarmSessionFromRequest=()=>null;',
     'next/headers':
       'export const headers=async()=>globalThis.__mobileParity.headers;export const cookies=async()=>({get:key=>key==="access_token"&&globalThis.__mobileParity.cookieToken?{value:globalThis.__mobileParity.cookieToken}:undefined});',
     'next/cache': 'export const revalidatePath=()=>{};',
-    'rate-limit': 'export const withRateLimit=async()=>({success:true});',
+    'rate-limit': 'export const withRateLimit=async()=>({success:true});export const withUploadGrantLimit=async()=>({success:true});',
     'api-policy': 'export const withApiPolicy=fn=>fn;',
     performance: 'export const measurePerformancePhase=async(_key,fn)=>fn();',
     'campus-workspaces': 'export const resolveCampusSession=async session=>session;',
     user: 'export const verifyUserExistsFresh=async()=>globalThis.__mobileParity.valid;export const getFreshStudent=async()=>globalThis.__mobileParity.valid?{academicStatus:"ACTIVE"}:null;export const getUserCreatedAt=async()=>new Date("2020-01-01");',
     redis:
-      'export const invalidateStudentMarksCaches=async(...args)=>globalThis.__mobileParity.invalidated.push(args);export const invalidateInstitutionRosterCaches=async()=>{};export const invalidateAnnouncementReadCaches=async()=>{};export const getCachedOrFetch=async(key,_ttl,fn,_decode,force)=>{if(force)globalThis.__mobileParity.refreshedKeys.push(key);return fn()};',
+      'export const invalidateStudentAttendanceCaches=async()=>{};export const invalidateStudentMarksCaches=async(...args)=>globalThis.__mobileParity.invalidated.push(args);export const invalidateInstitutionRosterCaches=async()=>{};export const invalidateAnnouncementReadCaches=async()=>{};export const getCachedOrFetch=async(key,_ttl,fn,_decode,force)=>{if(force)globalThis.__mobileParity.refreshedKeys.push(key);return fn()};',
     notifications:
       'export const createAttendanceNotifications=async()=>{};export const createBulkNotifications=async()=>{};export const processAnnouncementNotification=async id=>globalThis.__mobileParity.notified.push(id);',
+    'notification-events': 'export const notifyPublishedResults=async()=>{};export const notifyTimetable=async()=>{};export const notifyAssignment=async()=>{};export const notifyBatchResults=async()=>{};export const notifyApprovedStudentLeave=async()=>{};export const notifySecurity=async()=>{};',
+    'notification-delivery': 'export const createNotification=async()=>{};export const createBulkNotifications=async()=>[];',
+    // Product entitlements and notification delivery have dedicated SQL suites.
+    'mobile-app-access': 'export const mobileAppAccessAllowed=async()=>true;',
     cloudinary:
       'export default {api:{resource:async()=>({type:"authenticated",format:"png",bytes:100})},utils:{api_sign_request:()=>"fixture-signature"}};',
   };
@@ -103,6 +108,7 @@ async function main() {
       schema.institutions,
       schema.institutionPaymentGateways,
       schema.gatewayPaymentAttempts,
+      schema.planDeviceSessions,
       schema.classes,
       schema.sections,
       schema.subjects,
@@ -483,6 +489,14 @@ async function main() {
         }),
         {},
       );
+    assert.equal((await pay({ action: 'signature', invoiceId: 999999 })).status, 409);
+    const uploadTarget = await pay({ action: 'signature', invoiceId: 1 });
+    assert.equal(uploadTarget.status, 200);
+    const uploadFields = await uploadTarget.json();
+    assert.equal(uploadFields.uploadUrl, '/api/student/fees?studentId=1&invoiceId=1');
+    assert.equal(uploadFields.signature, undefined);
+    const foreignFile = new FormData(); foreignFile.set('file', new File(['synthetic'], 'proof.png'));
+    assert.equal((await fees.POST(new NextRequest('http://localhost/api/student/fees?studentId=1&invoiceId=999999', { method: 'POST', body: foreignFile }), {})).status, 409);
     assert.equal((await pay({ ...proof, amount: 1001 })).status, 409);
     assert.equal((await pay({ ...proof, paymentAccountId: 'removed' })).status, 409);
     assert.equal((await pay(proof, 2)).status, 403);
@@ -588,7 +602,9 @@ async function main() {
     assert.equal(data.results[0].marksObtained, 90);
     check('Graduate transcript includes document identity without requiring restricted ID-card endpoint');
     const auth = await load('src/lib/auth.ts', true);
-    const actor = { role: 'STAFF', userId: 7, institutionId: 1 };
+    const planDeviceSessionId = '00000000-0000-4000-8000-000000000001';
+    await seed(schema.planDeviceSessions, { id: planDeviceSessionId, institutionId: 1, userRole: 'STAFF', userId: 7, refreshTokenHash: 'f'.repeat(64), expiresAt: new Date(Date.now() + 86400000) });
+    const actor = { role: 'STAFF', userId: 7, institutionId: 1, planDeviceSessionId };
     const token = await auth.createAccessToken(actor);
     state.headers = new Headers({ authorization: 'Bearer ' + token });
     assert.equal((await auth.getSession()).userId, 7);

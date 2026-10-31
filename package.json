@@ -56,8 +56,6 @@
     "@radix-ui/react-tabs": "^1.1.17",
     "@radix-ui/react-toast": "^1.2.18",
     "@radix-ui/react-tooltip": "^1.2.11",
-    "@react-email/components": "^1.0.12",
-    "@react-email/render": "^2.0.10",
     "@tailwindcss/postcss": "^4.3.2",
     "@tailwindcss/typography": "^0.5.20",
     "@tanstack/react-query": "^5.101.2",
@@ -80,8 +78,8 @@
     "ioredis": "^5.11.1",
     "jose": "^6.2.3",
     "lucide-react": "^1.23.0",
-    "next": "16.3.8",
-    "nodemailer": "^10.0.16",
+    "next": "16.4.3",
+    "nodemailer": "10.1.4",
     "papaparse": "^5.5.4",
     "pg": "^8.22.0",
     "pg-query-stream": "^4.17.0",
@@ -95,7 +93,7 @@
     "tailwindcss": "^4.3.2",
     "three": "^0.185.1",
     "tus-js-client": "^4.3.1",
-    "zod": "^4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
@@ -112,11 +110,14 @@
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
-    "eslint-config-next": "16.3.8",
+    "eslint-config-next": "16.4.3",
     "tsx": "^4.23.0",
     "typescript": "^5"
   },
   "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    },
     "@tailwindcss/typography": {
       "postcss-selector-parser": "7.1.6"
     }

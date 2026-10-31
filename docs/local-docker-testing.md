@@ -53,9 +53,9 @@ Use the existing private `.env`. The launcher generates missing local runtime
 secrets in the ignored `.env.local-docker`; it does not rewrite `.env`. Keep that
 file private and keep it with `.codex/local-docker` if you need the encrypted
 pre-migration safety copies. Do not delete Docker volumes to rebuild.
-If no signed Cloudinary upload preset is configured, local startup uses a
-placeholder so the rest of the site can run. Configure the real
-`CLOUDINARY_CONTENT_UPLOAD_PRESET` in `.env` to test file uploads.
+Configure Cloudinary cloud name, API key and API secret in `.env` to test file
+uploads. The server enforces the 5 MB limit before forwarding files; no upload
+preset is required. Provider calls are mocked in isolated verification checks.
 
 For Google Drive connection testing, register this exact authorized redirect URI
 in the Google OAuth client used for central backups:

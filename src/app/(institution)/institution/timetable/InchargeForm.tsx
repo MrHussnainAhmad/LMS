@@ -51,7 +51,7 @@ export function InchargeForm({
             <option key={st.id} value={st.id}>{st.name}</option>
           ))}
         </select>
-        <p className="text-xs text-stone-500 mt-2">The selected staff member will be the ONLY person authorized to mark attendance for this class.</p>
+        <p className="text-xs text-stone-500 mt-2">The selected staff member takes daily attendance. Institution admins can assign a substitute for a specific date from Student Attendance.</p>
       </div>
 
       <SubmitButton className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors">

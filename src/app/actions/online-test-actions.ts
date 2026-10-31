@@ -1,6 +1,7 @@
 "use server";
 
 import { ActionInputError } from "@/lib/action-input-error";
+import { onlineTestSchema, parseMcqAnswer } from "@/lib/validators/online-test";
 
 import { db } from "@/db";
 import {
@@ -69,7 +70,8 @@ function collectMcqs(formData: FormData, mcqMarks: number) {
   const prompts = formData.getAll("mcqPrompt").map((value) => String(value).trim());
   return prompts.map((prompt, index) => {
     const options = [0, 1, 2, 3].map((optionIndex) => String(formData.get(`mcqOption-${index}-${optionIndex}`) || "").trim());
-    const correctOptionIndex = Number(formData.get(`mcqCorrect-${index}`));
+    const correctOptionValue = formData.get(`mcqCorrect-${index}`);
+    const correctOptionIndex = correctOptionValue !== null && /^[0-3]$/.test(String(correctOptionValue)) ? Number(correctOptionValue) : NaN;
     if (!prompt) throw new ActionInputError(`MCQ ${index + 1} question is required`);
     if (options.some((option) => !option)) throw new ActionInputError(`MCQ ${index + 1} must have four options`);
     if (!Number.isInteger(correctOptionIndex) || correctOptionIndex < 0 || correctOptionIndex > 3) {
@@ -93,6 +95,7 @@ function collectShortQuestions(formData: FormData) {
 export async function createOnlineTestAction(formData: FormData) {
   const session = await getSession();
   if (!session || session.role !== "STAFF" || !session.institutionId) throw new ActionInputError("Unauthorized");
+  const institutionId = session.institutionId;
 
   const sectionId = asInteger(formData.get("sectionId"), "Class section");
   const subjectId = asInteger(formData.get("subjectId"), "Subject");
@@ -108,63 +111,65 @@ export async function createOnlineTestAction(formData: FormData) {
   if (mcqs.length === 0) throw new ActionInputError("Add at least one MCQ");
   const shortQuestions = mode === "MIX" ? collectShortQuestions(formData) : [];
   if (mode === "MIX" && shortQuestions.length === 0) throw new ActionInputError("Mix tests need at least one short question");
+  onlineTestSchema.parse({ sectionId, subjectId, title, mode, durationMinutes, mcqs, shortQuestions });
 
   const totalMarks = mcqs.reduce((sum, question) => sum + question.marks, 0) + shortQuestions.reduce((sum, question) => sum + question.marks, 0);
   const today = new Date().toISOString().slice(0, 10);
-  const [test] = await db.insert(tests).values({
-    institutionId: session.institutionId,
-    classId: assignment.classId,
-    sectionId,
-    subjectId,
-    staffId: session.userId,
-    createdByRole: "STAFF",
-    type: "QUIZ",
-    title,
-    maxMarks: totalMarks,
-    date: today,
-    resultsPublishedAt: new Date(),
-  }).returning();
+  await db.transaction(async (tx) => {
+    const [test] = await tx.insert(tests).values({
+      institutionId,
+      classId: assignment.classId,
+      sectionId,
+      subjectId,
+      staffId: session.userId,
+      createdByRole: "STAFF",
+      type: "QUIZ",
+      title,
+      maxMarks: totalMarks,
+      date: today,
+      resultsPublishedAt: new Date(),
+    }).returning();
 
-  const [onlineTest] = await db.insert(onlineTests).values({
-    institutionId: session.institutionId,
-    testId: test.id,
-    mode: mode as "MCQ" | "MIX",
-    durationMinutes,
-  }).returning();
+    const [onlineTest] = await tx.insert(onlineTests).values({
+      institutionId,
+      testId: test.id,
+      mode: mode as "MCQ" | "MIX",
+      durationMinutes,
+    }).returning();
 
-  let orderIndex = 0;
-  const allQuestions = [
-    ...mcqs.map((question: { prompt: string; options: string[]; correctOptionIndex: number; marks: number }) => ({
+    let orderIndex = 0;
+    const allQuestions = [
+      ...mcqs.map((question: { prompt: string; options: string[]; correctOptionIndex: number; marks: number }) => ({
+        onlineTestId: onlineTest.id,
+        questionType: 'MCQ' as const,
+        prompt: question.prompt,
+        options: question.options,
+        correctOptionIndex: question.correctOptionIndex,
+        marks: question.marks,
+        orderIndex: orderIndex++,
+      })),
+      ...shortQuestions.map((question: { prompt: string; marks: number }) => ({
+        onlineTestId: onlineTest.id,
+        questionType: 'SHORT' as const,
+        prompt: question.prompt,
+        marks: question.marks,
+        orderIndex: orderIndex++,
+      })),
+    ];
+    if (allQuestions.length > 0) {
+      await tx.insert(onlineTestQuestions).values(allQuestions);
+    }
+    const { createOnlineTestNotifications } = await import("@/lib/notifications");
+    await createOnlineTestNotifications({
+      institutionId,
+      sectionId,
       onlineTestId: onlineTest.id,
-      questionType: 'MCQ' as const,
-      prompt: question.prompt,
-      options: question.options,
-      correctOptionIndex: question.correctOptionIndex,
-      marks: question.marks,
-      orderIndex: orderIndex++,
-    })),
-    ...shortQuestions.map((question: { prompt: string; marks: number }) => ({
-      onlineTestId: onlineTest.id,
-      questionType: 'SHORT' as const,
-      prompt: question.prompt,
-      marks: question.marks,
-      orderIndex: orderIndex++,
-    })),
-  ];
-  if (allQuestions.length > 0) {
-    await db.insert(onlineTestQuestions).values(allQuestions);
-  }
-
-  const { createOnlineTestNotifications } = await import("@/lib/notifications");
-  await createOnlineTestNotifications({
-    institutionId: session.institutionId,
-    sectionId,
-    onlineTestId: onlineTest.id,
-    title,
-    className: assignment.className,
-    sectionName: assignment.sectionName,
-    subjectName: assignment.subjectName,
-    durationMinutes,
+      title,
+      className: assignment.className,
+      sectionName: assignment.sectionName,
+      subjectName: assignment.subjectName,
+      durationMinutes,
+    }, tx);
   });
 
   revalidatePath("/staff/tests");
@@ -471,8 +476,7 @@ export async function submitOnlineTestAction(formData: FormData) {
 
   for (const question of questions) {
     if (question.questionType === "MCQ") {
-      const answer = Number(formData.get(`answer-${question.id}`));
-      if (!Number.isInteger(answer)) throw new ActionInputError("Answer every MCQ before submitting");
+      const answer = parseMcqAnswer(formData.get(`answer-${question.id}`));
       answers[String(question.id)] = answer;
       if (answer === question.correctOptionIndex) mcqScore += Number(question.marks);
     } else {

@@ -26,7 +26,7 @@ async function main() {
     'next/link': 'import {createElement} from "react";export default function Link({children,...props}){return createElement("a",props,children)}',
     rbac: `export const requireRole=(_roles,fn)=>async(req,context={})=>fn(req,{...context,session:{role:'INSTITUTION',userId:globalThis.__admissionFixture.institutionId,institutionId:globalThis.__admissionFixture.institutionId}});export const getTenantContext=session=>session.institutionId;`,
     'argon2-pool': `export const hashPassword=async password=>'fixture:'+password;export const verifyPassword=async(hash,password)=>hash==='fixture:'+password;`,
-    'rate-limit': 'export const withRateLimit=async()=>({success:true});',
+    'rate-limit': 'export const withRateLimit=async()=>({success:true});export const withUploadGrantLimit=async()=>({success:true});',
     'public-site-domain': `export const getPublicSiteBaseDomain=async()=>'nisaab360.app';`,
     'institution-tenant': `export const resolveInstitutionTenant=async slug=>slug==='school'?{kind:'active',tenant:{id:1,name:'School',admissionsEnabled:true}}:{kind:'not_found'};export const invalidateInstitutionTenantCache=async()=>{};`,
     'admission-auth': `export const getAdmissionSessionFromRequest=async()=>({applicantId:globalThis.__admissionFixture.applicantId,institutionId:1,sessionVersion:globalThis.__admissionFixture.sessionVersion});export const createAdmissionSessionToken=async()=>'fixture-token';export const setAdmissionSessionCookie=async()=>{};`,
@@ -197,7 +197,7 @@ async function main() {
     const documentRoute = await load('src/app/api/public/admissions/documents/[id]/route.ts');
     const docCtx = { params: Promise.resolve({ id: String(document.id) }) };
     const signature = await documentRoute.POST(request('http://school.nisaab360.app/api/public/admissions/documents/id', 'POST', { action: 'signature' }), docCtx);
-    assert.equal(signature.status, 200); assert.equal((await signature.json()).folder, `admission-documents/2/${application.id}/${document.id}`);
+    assert.equal(signature.status, 200); assert.equal((await signature.json()).uploadUrl, '/api/public/admissions/documents/id');
     state.applicantId = 1;
     assert.equal((await documentRoute.POST(request('http://school.nisaab360.app/api/public/admissions/documents/id', 'POST', { action: 'signature' }), docCtx)).status, 401);
     state.applicantId = application.applicantId!;
@@ -208,7 +208,7 @@ async function main() {
     const feeRoute = await load('src/app/api/public/admissions/fees/[applicationId]/route.ts');
     const feeCtx = { params: Promise.resolve({ applicationId: String(application.id) }) };
     const feeSignature = await feeRoute.POST(request('http://school.nisaab360.app/api/public/admissions/fees/id', 'POST', { action: 'signature' }), feeCtx);
-    assert.equal(feeSignature.status, 200); assert.equal((await feeSignature.json()).folder, `admission-fees/2/${application.id}`);
+    assert.equal(feeSignature.status, 200); assert.equal((await feeSignature.json()).uploadUrl, '/api/public/admissions/fees/id');
     assert.equal((await feeRoute.POST(request('http://school.nisaab360.app/api/public/admissions/fees/id', 'POST', { action: 'complete', publicId: `admission-fees/2/${application.id}/fixture`, format: 'pdf', resourceType: 'image', payerReference: 'fixture-ref', payerSourceBank: 'fixture-bank', paymentAccountId: 'fixture-easypaisa' }), feeCtx)).status, 200);
     assert.equal((await testDb.select().from(schema.admissionApplications).where(eq(schema.admissionApplications.id, application.id)))[0].status, 'FEE_VERIFICATION');
     console.log('PASS: document and payment proofs authorize through public account but store only in selected campus; wrong applicant denied');

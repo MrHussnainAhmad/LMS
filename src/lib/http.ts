@@ -115,5 +115,7 @@ export async function readBoundedFormData(req: Request, maxBytes = DEFAULT_MAX_B
   }
   const bytes = new Uint8Array(total); let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  return new Response(bytes.buffer, { headers: { 'Content-Type': req.headers.get('Content-Type') || '' } }).formData();
+  try {
+    return await new Response(bytes.buffer, { headers: { 'Content-Type': req.headers.get('Content-Type') || '' } }).formData();
+  } catch { throw new ActionInputError('Invalid multipart body'); }
 }

@@ -3,11 +3,14 @@
 import { ActionInputError } from "@/lib/action-input-error";
 
 import { db } from "@/db";
-import { attendances, announcements, sections, staffAssignments, students } from "@/db/schema";
+import { announcements, sections, staffAssignments } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { createAttendanceNotifications } from "@/lib/notifications";
 import { after } from "next/server";
+import { saveStudentAttendance } from '@/lib/student-attendance';
+import { pakistanDateKey } from '@/lib/parent-period';
+import { invalidateStudentAttendanceCaches } from '@/lib/redis';
 
 type AnnouncementTargetType = "ALL" | "CAMPUS" | "CLASS" | "SECTION" | "USER";
 
@@ -17,58 +20,15 @@ export async function submitAttendanceAction(
   records: { studentId: number; status: "PRESENT" | "ABSENT" | "LATE" | "LEAVE" }[]
 ) {
   const session = await getSession();
-  if (!session || session.role !== "STAFF") throw new ActionInputError("Unauthorized");
-
-  const institutionId = session.institutionId;
-  if (!institutionId) throw new ActionInputError("No institution bound");
-
-  const [section] = await db.select({ classTeacherId: sections.classTeacherId })
-    .from(sections)
-    .where(and(eq(sections.id, sectionId), eq(sections.institutionId, institutionId)))
-    .limit(1);
-
-  if (!section || section.classTeacherId !== session.userId) {
-    throw new ActionInputError("You are not authorized to mark attendance for this class. Only the designated Class Incharge can do this.");
-  }
-
-  if (records.length > 0) {
-    const studentIds = records.map(record => record.studentId);
-    const validStudents = await db.select({ id: students.id })
-      .from(students)
-      .where(and(
-        eq(students.institutionId, institutionId),
-        eq(students.sectionId, sectionId),
-        inArray(students.id, studentIds)
-      ));
-
-    if (validStudents.length !== new Set(studentIds).size) {
-      throw new ActionInputError("Attendance records include students outside this section.");
-    }
-  }
-
-  const attendanceDate = date.toISOString().split("T")[0];
-  if (records.length > 0) {
-    await db.insert(attendances).values(records.map((record) => ({
-      institutionId,
-      sectionId,
-      studentId: record.studentId,
-      date: attendanceDate,
-      status: record.status,
-    }))).onConflictDoUpdate({
-      target: [attendances.studentId, attendances.date],
-      set: { status: sql`excluded.status` }
-    });
-  }
-
+  if (!session) throw new ActionInputError('Unauthorized');
+  const result = await saveStudentAttendance(session, { sectionId, date: pakistanDateKey(date), records });
+  await invalidateStudentAttendanceCaches(result.institutionId, result.records.map(record => record.studentId));
   after(async () => {
-    try {
-      await createAttendanceNotifications({ institutionId, date, records });
-    } catch (error) {
-      console.error("Attendance notification delivery failed:", error);
-    }
+    try { await createAttendanceNotifications(result); }
+    catch (error) { console.error('Attendance notification delivery failed:', error); }
   });
-
-  return { success: true };
+  return { success: true, markedByName: result.marker.markedByName, markedByRole: result.marker.markedByRole,
+    markedAt: result.marker.markedAt.toISOString() };
 }
 
 export async function createStaffAnnouncementAction(formData: FormData) {

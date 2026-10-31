@@ -6,20 +6,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
 import { ImageUp, Loader2 } from "lucide-react";
-import { prepareContentUpload } from "@/lib/client-upload-file";
-
-type SignaturePayload = {
-  publicId: string;
-  deliveryType: string;
-  uploadPreset: string;
-  signature?: string;
-  timestamp?: number;
-  cloudName?: string;
-  apiKey?: string;
-  folder?: string;
-  allowedFormats?: string;
-  error?: string;
-};
+import { prepareContentUpload, uploadPreparedContent } from "@/lib/client-upload-file";
 
 function isImageUrl(value: string) {
   return value.startsWith("http://") || value.startsWith("https://");
@@ -47,33 +34,7 @@ export function InstitutionLogoUploader({
     try {
       const preparedFile = await prepareContentUpload(file, { allowedKinds: ['image'], maximumBytes: 2 * 1024 * 1024 });
 
-      const sigRes = await fetch("/api/upload/signature", { method: "POST" });
-      const signaturePayload = await sigRes.json() as SignaturePayload;
-      if (!sigRes.ok || !signaturePayload.signature || !signaturePayload.timestamp || !signaturePayload.cloudName || !signaturePayload.apiKey || !signaturePayload.folder) {
-        throw new Error(signaturePayload.error || "Upload service is not configured");
-      }
-
-      const uploadData = new FormData();
-      uploadData.append("file", preparedFile);
-      uploadData.append("api_key", signaturePayload.apiKey);
-      uploadData.append("timestamp", signaturePayload.timestamp.toString());
-      uploadData.append("signature", signaturePayload.signature);
-      uploadData.append("folder", signaturePayload.folder);
-      uploadData.append("public_id", signaturePayload.publicId);
-      uploadData.append("overwrite", "false");
-      uploadData.append("type", signaturePayload.deliveryType);
-      uploadData.append("upload_preset", signaturePayload.uploadPreset);
-      uploadData.append("allowed_formats", signaturePayload.allowedFormats || "jpg,jpeg,png,webp,pdf,docx,txt");
-
-      const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/image/upload`, {
-        method: "POST",
-        body: uploadData,
-      });
-      const uploadPayload = await cloudinaryResponse.json() as { secure_url?: string; public_id?: string; resource_type?: string; error?: { message?: string } };
-      if (!cloudinaryResponse.ok || !uploadPayload.public_id) {
-        throw new Error(uploadPayload.error?.message || "Cloudinary rejected the logo upload");
-      }
-      await api.post("/api/upload/complete", { publicId: uploadPayload.public_id, resourceType: uploadPayload.resource_type, imageOnly: true });
+      const uploadPayload = await uploadPreparedContent(preparedFile);
       await api.patch("/api/institution/logo", { publicId: uploadPayload.public_id });
       setPreviewUrl(uploadPayload.secure_url || "");
       toast({ title: "Logo updated", description: "Your institution logo has been saved.", variant: "success" });

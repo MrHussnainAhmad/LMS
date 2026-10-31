@@ -1,10 +1,11 @@
 import type { NextRequest } from 'next/server';
 import type { JWTPayload } from './auth-types';
 
-export function unsafeOrigin(req: Pick<NextRequest, 'method' | 'headers'>): boolean {
+export function unsafeOrigin(req: Pick<NextRequest, 'method' | 'headers'>, options: { allowBearer?: boolean } = {}): boolean {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return false;
-  // Explicit bearer credentials are not ambient browser authority (cookies are ignored).
-  if (/^Bearer\s+\S+/i.test(req.headers.get('authorization') || '')) return false;
+  // Only a cookie-free bearer request is independent of ambient browser authority.
+  // Refresh, applicant and other cookie handlers may ignore Authorization entirely.
+  if (options.allowBearer !== false && !req.headers.has('cookie') && /^Bearer\s+\S+$/i.test(req.headers.get('authorization') || '')) return false;
   // Provider callbacks authenticate their payload independently, not by cookies.
   const origin = req.headers.get('origin');
   if (!origin) return req.headers.get('sec-fetch-site') === 'cross-site';

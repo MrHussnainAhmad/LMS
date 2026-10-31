@@ -1,13 +1,14 @@
 import { readBoundedJson } from '@/lib/http';
+import { onlineTestSchema } from '@/lib/validators/online-test';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { 
   tests, classes, sections, subjects, onlineTests, staffAssignments, 
-  onlineTestSubmissions, onlineTestQuestions, students
+  onlineTestSubmissions, onlineTestQuestions
 } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { eq, and, desc, inArray, lt, or, sql } from "drizzle-orm";
+import { eq, and, desc, lt, or, sql } from "drizzle-orm";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
@@ -138,14 +139,11 @@ export const GET = requireRole(["STAFF"], async (req: NextRequest, { session }) 
 
 export const POST = requireRole(["STAFF"], async (req: NextRequest, { session }) => {
   if (!session.institutionId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const institutionId = session.institutionId;
 
   try {
     const body = await readBoundedJson(req);
-    const { sectionId, subjectId, title, mode, durationMinutes, mcqs, shortQuestions } = body;
-
-    if (!title) return NextResponse.json({ error: "Test title is required" }, { status: 400 });
-    if (mode !== "MCQ" && mode !== "MIX") return NextResponse.json({ error: "Invalid test mode" }, { status: 400 });
-    if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) return NextResponse.json({ error: "Duration is required" }, { status: 400 });
+    const { sectionId, subjectId, title, mode, durationMinutes, mcqs, shortQuestions } = onlineTestSchema.parse(body);
 
     const [assignment] = await db.select({
       classId: sections.classId,
@@ -167,68 +165,66 @@ export const POST = requireRole(["STAFF"], async (req: NextRequest, { session })
 
     if (!assignment) return NextResponse.json({ error: "This class section and subject are not assigned to you" }, { status: 403 });
 
-    if (!mcqs || mcqs.length === 0) return NextResponse.json({ error: "Add at least one MCQ" }, { status: 400 });
-    if (mode === "MIX" && (!shortQuestions || shortQuestions.length === 0)) return NextResponse.json({ error: "Mix tests need at least one short question" }, { status: 400 });
-
-    const totalMarks = (mcqs || []).reduce((sum: number, q: any) => sum + Number(q.marks), 0) + 
-                       (shortQuestions || []).reduce((sum: number, q: any) => sum + Number(q.marks), 0);
+    const totalMarks = mcqs.reduce((sum, q) => sum + q.marks, 0) + shortQuestions.reduce((sum, q) => sum + q.marks, 0);
                        
     const today = new Date().toISOString().slice(0, 10);
     
-    const [test] = await db.insert(tests).values({
-      institutionId: session.institutionId,
-      classId: assignment.classId,
-      sectionId,
-      subjectId,
-      staffId: session.userId,
-      createdByRole: "STAFF",
-      type: "QUIZ",
-      title: title.trim(),
-      maxMarks: totalMarks,
-      date: today,
-      resultsPublishedAt: new Date(),
-    }).returning();
+    const { test } = await db.transaction(async (tx) => {
+      const [test] = await tx.insert(tests).values({
+        institutionId,
+        classId: assignment.classId,
+        sectionId,
+        subjectId,
+        staffId: session.userId,
+        createdByRole: "STAFF",
+        type: "QUIZ",
+        title: title.trim(),
+        maxMarks: totalMarks,
+        date: today,
+        resultsPublishedAt: new Date(),
+      }).returning();
 
-    const [onlineTest] = await db.insert(onlineTests).values({
-      institutionId: session.institutionId,
-      testId: test.id,
-      mode: mode as "MCQ" | "MIX",
-      durationMinutes: Number(durationMinutes),
-    }).returning();
+      const [onlineTest] = await tx.insert(onlineTests).values({
+        institutionId,
+        testId: test.id,
+        mode: mode as "MCQ" | "MIX",
+        durationMinutes: Number(durationMinutes),
+      }).returning();
 
-    let orderIndex = 0;
-    const allQuestions = [
-      ...mcqs.map((q: any) => ({
+      let orderIndex = 0;
+      const allQuestions = [
+        ...mcqs.map((q) => ({
+          onlineTestId: onlineTest.id,
+          questionType: 'MCQ' as const,
+          prompt: q.prompt,
+          options: q.options,
+          correctOptionIndex: Number(q.correctOptionIndex),
+          marks: Number(q.marks),
+          orderIndex: orderIndex++,
+        })),
+        ...(mode === "MIX" ? shortQuestions.map((q) => ({
+          onlineTestId: onlineTest.id,
+          questionType: 'SHORT' as const,
+          prompt: q.prompt,
+          marks: Number(q.marks),
+          orderIndex: orderIndex++,
+        })) : []),
+      ];
+      if (allQuestions.length > 0) {
+        await tx.insert(onlineTestQuestions).values(allQuestions);
+      }
+      const { createOnlineTestNotifications } = await import("@/lib/notifications");
+      await createOnlineTestNotifications({
+        institutionId,
+        sectionId,
         onlineTestId: onlineTest.id,
-        questionType: 'MCQ' as const,
-        prompt: q.prompt,
-        options: q.options,
-        correctOptionIndex: Number(q.correctOptionIndex),
-        marks: Number(q.marks),
-        orderIndex: orderIndex++,
-      })),
-      ...(mode === "MIX" ? (shortQuestions || []).map((q: any) => ({
-        onlineTestId: onlineTest.id,
-        questionType: 'SHORT' as const,
-        prompt: q.prompt,
-        marks: Number(q.marks),
-        orderIndex: orderIndex++,
-      })) : []),
-    ];
-    if (allQuestions.length > 0) {
-      await db.insert(onlineTestQuestions).values(allQuestions);
-    }
-
-    const { createOnlineTestNotifications } = await import("@/lib/notifications");
-    await createOnlineTestNotifications({
-      institutionId: session.institutionId,
-      sectionId,
-      onlineTestId: onlineTest.id,
-      title: title.trim(),
-      className: assignment.className,
-      sectionName: assignment.sectionName,
-      subjectName: assignment.subjectName,
-      durationMinutes: Number(durationMinutes),
+        title: title.trim(),
+        className: assignment.className,
+        sectionName: assignment.sectionName,
+        subjectName: assignment.subjectName,
+        durationMinutes: Number(durationMinutes),
+      }, tx);
+      return { test };
     });
 
     return NextResponse.json({ success: true, testId: test.id });

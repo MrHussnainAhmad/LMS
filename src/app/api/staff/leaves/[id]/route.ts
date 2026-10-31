@@ -6,6 +6,8 @@ import { db } from "@/db";
 import { leaveRequests, students, sections, attendances } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createNotification } from "@/lib/notifications";
+import { attendanceMarker } from '@/lib/student-attendance';
+import { invalidateStudentAttendanceCaches } from '@/lib/redis';
 
 export const PATCH = requireRole(["STAFF"], async (req: NextRequest, { params, session }) => {
   try {
@@ -59,6 +61,7 @@ export const PATCH = requireRole(["STAFF"], async (req: NextRequest, { params, s
           dates.push(d.toISOString().split('T')[0]);
         }
 
+        const marker = await attendanceMarker(session);
         await db.insert(attendances).values(
           dates.map((date) => ({
             institutionId,
@@ -66,11 +69,13 @@ export const PATCH = requireRole(["STAFF"], async (req: NextRequest, { params, s
             studentId: leave.userId,
             date,
             status: "LEAVE" as const,
+            ...marker,
           }))
         ).onConflictDoUpdate({
           target: [attendances.studentId, attendances.date],
-          set: { status: "LEAVE" },
+          set: { status: "LEAVE", ...marker },
         });
+        await invalidateStudentAttendanceCaches(institutionId, [leave.userId]);
       }
 
       await createNotification({

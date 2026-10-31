@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { unsafeOrigin } from '@/lib/request-security';
 import { clearAuthCookies, revokeRefreshToken } from '@/lib/auth';
 import { AUTH_MAX_BODY_BYTES, bodyTooLargeResponse, readJsonBody } from '@/lib/http';
 
 export async function POST(req: NextRequest) {
+  if (unsafeOrigin(req, { allowBearer: false })) return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
   // Unauthenticated endpoint: cap the body instead of buffering whatever arrives.
   // A missing or malformed body still falls back to the cookie, as before.
   const parsedBody = await readJsonBody<{ refreshToken?: unknown }>(req, AUTH_MAX_BODY_BYTES);

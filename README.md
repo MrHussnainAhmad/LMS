@@ -8,7 +8,9 @@ This repository is not an open-source project and is not accepting public contri
 
 The documentation below is for my own maintenance and for collaborators I authorize. Authorized collaborators and coding agents should read [AGENTS.md](AGENTS.md) before making changes.
 
-Use [.env.example](.env.example) for configuration names and [deployment/README.md](deployment/README.md) for release instructions. `npm run verify:local` runs the maintained checks. `npm run build` creates a production build; `npm start` starts local dependencies, runs migrations and launches the application and email worker. Never copy private environment values or access tokens into documentation.
+Use [.env.example](.env.example) for configuration names and [deployment/README.md](deployment/README.md) for release instructions. `npm run verify:local` runs the maintained checks. `npm run build` creates a production build; `npm start` checks local PostgreSQL, PgBouncer and Valkey and starts the development server at `http://localhost:3000`. See [local setup](docs/local-docker-testing.md) for migrations and full Docker builds. Never copy private environment values or access tokens into documentation.
+
+Institution admins can use **Student Attendance** to assign one substitute per section and date, revoke that access, or mark today's attendance themselves. Substitutes retain access only for the assigned Pakistan calendar date; the regular Class Incharge stays assigned. Manual and QR attendance record the marking account and time. Apply `0088_attendance_delegation.sql` through the migration runner before deploying this feature; ordinary `npm start` does not run migrations.
 
 Operational references:
 
