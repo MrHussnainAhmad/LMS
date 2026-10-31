@@ -22,7 +22,6 @@ export default async function StudentLayout({
     <StudentShell
       isGraduated={session.studentAcademicStatus === "GRADUATED"}
       userId={session.userId}
-      institutionId={institutionId}
       initialBrand={brand}
       coursesEnabled={coursesEnabled}
     >

@@ -1,12 +1,10 @@
 import { ARCHIVED_ADMISSION_MESSAGE, isArchivedAdmissionError } from "./admission-archive-error";
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromRequest, getLightSessionFromRequest, getWarmSessionFromRequest, UserRole, JWTPayload } from './auth';
+import { getSessionFromRequest, getLightSessionFromRequest, UserRole, JWTPayload } from './auth';
 import { DEFAULT_MAX_BODY_BYTES, bodyTooLargeResponse, exceedsDeclaredBodyLimit } from './http';
 import { withRateLimit } from './rate-limit';
 import { measurePerformancePhase } from './performance';
 import { withApiPolicy } from './api-policy';
-import { stripSessionHeaders } from './session-header';
-import { applyCorsHeaders } from './cors';
 import { inputErrorResponse } from './input-error-response';
 import type { NativeJsonResponse } from './native-json-response';
 import { campusMutationBlocked, CAMPUS_READ_ONLY_ERROR } from './campus-view';
@@ -23,7 +21,7 @@ type RequireRoleOptions = {
   /** OAuth callbacks and similar GET endpoints still change configuration. */
   mutatesOnRead?: boolean;
   allowPasswordChangeRequired?: boolean;
-  /** Skip Redis/DB user validity + student enrich — for heartbeat/unread only. */
+  /** Heartbeat/unread endpoints use the same fresh account authorization. */
   light?: boolean;
   /** Override the request-body ceiling for routes with genuinely larger payloads. */
   maxBodyBytes?: number;
@@ -133,16 +131,6 @@ export function requireRole(
   const guarded = createGuarded(false);
   if (options?.nativeAuthenticated && options.nativeWarm) Object.defineProperty(guarded, Symbol.for('nisaab360.native-authenticated-get'), {
     value: createGuarded(true),
-  });
-  if (options?.nativeWarm && !options.nativeAuthenticated) Object.defineProperty(guarded, Symbol.for('nisaab360.native-warm-get'), {
-    value: (req: NextRequest): NativeJsonResponse | null => {
-      stripSessionHeaders(req.headers);
-      if (req.method !== 'GET' || exceedsDeclaredBodyLimit(req, options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES)) return null;
-      const session = getWarmSessionFromRequest(req);
-      if (!session || options?.permission || enforceSessionGuards(req, session, allowedRoles, options)) return null;
-      const response = options.nativeWarm!(req, { session });
-      return response?.status === 200 ? applyCorsHeaders(req, response) : null;
-    },
   });
   return guarded;
 }

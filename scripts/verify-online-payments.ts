@@ -22,7 +22,7 @@ test('online payments: migration, configuration, access, provider verification a
     '../notification-delivery':'export const createNotification=async()=>undefined;export const createBulkNotifications=async()=>[];',
     '@/lib/notification-delivery':'export const createNotification=async()=>undefined;export const createBulkNotifications=async()=>[];',
     '@/db':'export const db=globalThis.__onlinePaymentFixture.db;',
-    '@/lib/auth':'export const getSessionFromRequest=async()=>globalThis.__onlinePaymentFixture.session;export const getLightSessionFromRequest=getSessionFromRequest;export const getWarmSessionFromRequest=()=>null;export const timingSafeEqual=(a,b)=>a===b;',
+    '@/lib/auth':'export const getSessionFromRequest=async()=>globalThis.__onlinePaymentFixture.session;export const getLightSessionFromRequest=getSessionFromRequest;export const timingSafeEqual=(a,b)=>a===b;',
     '@/lib/admission-auth':'export const getAdmissionSessionFromRequest=async()=>globalThis.__onlinePaymentFixture.applicant;',
     '@/lib/public-site-domain':"export const getPublicSiteBaseDomain=async()=> 'example.test';",
     '@/lib/rate-limit':'export const withRateLimit=async()=>({success:true});',

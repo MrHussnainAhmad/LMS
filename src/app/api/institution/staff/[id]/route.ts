@@ -5,7 +5,6 @@ import { db } from "@/db";
 import { staff, institutionCustomRoles } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { requireRole, getTenantContext } from "@/lib/rbac";
-import { invalidateUserValidity } from "@/lib/user";
 
 import { invalidateStaffReadCaches } from "@/lib/redis";
 
@@ -27,7 +26,6 @@ export const DELETE = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (r
       return NextResponse.json({ error: "Staff not found" }, { status: 404 });
     }
 
-    await invalidateUserValidity("STAFF", deleted.id);
     await invalidateStaffReadCaches(tenantId);
 
     return NextResponse.json({ message: "Staff deleted successfully" });

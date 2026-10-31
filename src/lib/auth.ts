@@ -282,13 +282,6 @@ export async function getSessionFromRequest(req: NextRequest): Promise<JWTPayloa
   return session;
 }
 
-/** Native transport falls back to asynchronous fresh authorization. */
-export function getWarmSessionFromRequest(_req: NextRequest): JWTPayload | null {
-  // Synchronous cache hits cannot check revocation; use the ordinary fresh gate.
-  void _req;
-  return null;
-}
-
 /** Heartbeat/unread endpoints retain the same fresh account authorization gate. */
 export async function getLightSessionFromRequest(req: NextRequest): Promise<JWTPayload | null> {
   return getSessionFromRequest(req);

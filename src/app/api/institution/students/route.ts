@@ -12,46 +12,14 @@ import { createStudentSchema } from '@/lib/validators/student';
 import { logAudit } from '@/lib/audit';
 import { getClientIp } from '@/lib/client-ip';
 import { generateStudentLoginRollNumber } from '@/lib/login-identifiers';
-import { resolveStudentLoginInstitution } from '@/lib/student-login-institution';
+import { resolveStudentLoginInstitution, getOrCreateWholeClassSection } from '@/lib/student-login-institution';
 import { allocateAdmissionSequences } from '@/lib/admission-sequences';
 import { prepareParentActivation, syncStudentGuardian } from '@/lib/parent-identity';
 import { enqueueEmail } from '@/lib/email-outbox';
 import { ParentAccountActivationEmail, ParentStudentLinkedEmail } from '@/lib/email';
-import { invalidateUserValidity } from '@/lib/user';
 import { ZodError } from 'zod';
 import { assertStudentPlanCapacity } from '@/lib/plan-entitlements';
 
-const WHOLE_CLASS_SECTION_NAME = "Whole Class";
-
-async function getOrCreateWholeClassSection(institutionId: number, classId: number) {
-  const [existingSection] = await db.select({
-    id: sections.id,
-    classId: sections.classId,
-    name: sections.name,
-  })
-    .from(sections)
-    .where(and(
-      eq(sections.classId, classId),
-      eq(sections.institutionId, institutionId),
-      eq(sections.name, WHOLE_CLASS_SECTION_NAME)
-    ))
-    .limit(1);
-
-  if (existingSection) return existingSection;
-
-  const [createdSection] = await db.insert(sections).values({
-    institutionId,
-    classId,
-    name: WHOLE_CLASS_SECTION_NAME,
-    classTeacherId: null,
-  }).returning({
-    id: sections.id,
-    classId: sections.classId,
-    name: sections.name,
-  });
-
-  return createdSection;
-}
 
 export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req: NextRequest, { session }) => {
   try {
@@ -188,10 +156,6 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
           dedupeKey: `parent:${parentLink.parentId}:student-link:${newStudent.id}`,
         });
       }
-    }
-    
-    if (parentLink?.parentId) {
-      await invalidateUserValidity('PARENT', parentLink.parentId);
     }
 
     const { invalidateInstitutionRosterCaches } = await import('@/lib/redis');

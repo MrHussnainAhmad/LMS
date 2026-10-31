@@ -11,7 +11,6 @@ import { eq, and } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/client-ip";
-import { invalidateUserValidity } from "@/lib/user";
 
 export async function POST(req: NextRequest) {
   try {
@@ -96,7 +95,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (targetUser) {
-      await invalidateUserValidity(targetUser.role, targetUser.userId);
       await (await import('@/lib/notification-events')).notifySecurity({institutionId:session.institutionId!,userRole:targetUser.role,userId:targetUser.userId},'Your institution reset your account password. Contact the institution if this was unexpected.');
     }
 

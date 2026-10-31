@@ -10,7 +10,7 @@ import { changePasswordSchema } from '@/lib/validators/auth';
 import { logAudit } from '@/lib/audit';
 import { getClientIp } from '@/lib/client-ip';
 import { clearAuthCookies, createTokens, revokeAllSessions, setAuthCookies } from '@/lib/auth';
-import { invalidateUserValidity, resolveUserCreatedAt } from '@/lib/user';
+import { resolveUserCreatedAt } from '@/lib/user';
 import { AUTH_MAX_BODY_BYTES, readJsonBody } from '@/lib/http';
 
 async function getPasswordHashForSession(role: string, userId: number, institutionId?: number) {
@@ -129,7 +129,7 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN', 'EMPLOYEE',
 
   const passwordHash = await hash(newPassword);
   await updatePasswordForSession(session.role, session.userId, passwordHash, session.institutionId);
-  await invalidateUserValidity(session.role, session.userId);
+
   await revokeAllSessions(session.role, session.userId);
   if(session.institutionId && ['STUDENT','STAFF','PARENT'].includes(session.role)) await (await import('@/lib/notification-events')).notifySecurity({institutionId:session.institutionId,userRole:session.role as 'STUDENT'|'STAFF'|'PARENT',userId:session.userId},'Your account password was changed. If this was not you, contact your institution.');
 

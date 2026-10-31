@@ -27,7 +27,7 @@ function getJwtKey(): Promise<CryptoKey> {
  * Expiry and not-before are checked on every hit. Account validity is separate.
  * Fallback: on miss, full jwtVerify
  *
- * Does NOT replace verifyUserExists — callers that need deactivation checks
+ * Does NOT replace fresh account checks — callers that need deactivation checks
  * must still call getSession / getSessionFromRequest.
  */
 const VERIFIED_TOKEN_TTL_MS = 30_000;
@@ -48,13 +48,7 @@ function rememberVerifiedToken(token: string, payload: JWTPayload) {
   verifiedTokenCache.set(token, { payload, expMs, nbf });
 }
 
-/** Synchronous cache hits cannot check shared revocation. Always use async verification. */
-export function peekVerifiedAccessToken(token: string): JWTPayload | null { void token; return null; }
-
 export async function verifyAccessToken(token: string): Promise<JWTPayload | null> {
-  const warm = peekVerifiedAccessToken(token);
-  if (warm) return warm;
-
   try {
     // Reuse signature verification, but read the shared revocation row every time.
     const cached = verifiedTokenCache.get(token);

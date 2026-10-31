@@ -27,7 +27,6 @@ const mocks: Record<string, string> = {
   db: 'export const db=globalThis.__campusVerification.db;',
   auth: `export const getSession=async()=>globalThis.__campusVerification.session;
     export const getSessionFromRequest=getSession;export const getLightSessionFromRequest=getSession;
-    export const getWarmSessionFromRequest=()=>null;
     export const setCampusViewCookie=async token=>{globalThis.__campusVerification.viewCookie=token};
     export const clearAuthCookies=async()=>{globalThis.__campusVerification.cookieCleared=true};
     export const revokeAllSessions=async()=>{globalThis.__campusVerification.revocations++};
@@ -39,7 +38,7 @@ const mocks: Record<string, string> = {
   'api-policy': 'export const withApiPolicy=fn=>fn;',
   audit: 'export const logAudit=async()=>{};',
   'notification-delivery': 'export const createNotification=async()=>{};export const createBulkNotifications=async()=>[];',
-  user: 'export const invalidateUserValidity=async()=>{};export const resolveUserCreatedAt=async()=>new Date();',
+  user: 'export const resolveUserCreatedAt=async()=>new Date();',
   redis: 'export const invalidateStudentEnrichCache=async()=>{};export const getCachedOrFetch=async(_key,_ttl,fetch)=>fetch();export const redis={status:"ready",del:async()=>{}};',
   cloudinary: 'export default {api:{resource:async id=>({secure_url:"https://example.test/"+id,format:"png",bytes:1024})}};',
 };

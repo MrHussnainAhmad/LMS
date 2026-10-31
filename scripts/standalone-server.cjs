@@ -29,7 +29,7 @@ const path = require('node:path');
 const http = require('node:http');
 const fs = require('node:fs');
 const { createRequire } = require('node:module');
-const { createHotLaneRequest, createNativeWarmRequest } = require('./hot-lane-request.cjs');
+const { createHotLaneRequest } = require('./hot-lane-request.cjs');
 
 const dir = resolveStandaloneDir();
 process.chdir(dir);
@@ -108,20 +108,6 @@ async function handleLane(req, res, entry) {
   const timingHeaders = () => ({ 'x-perf-node-ms': (performance.now() - started).toFixed(3) });
   let response;
   try {
-    if (NATIVE_WARM_ENABLED && entry.nativeWarm) {
-      const native = entry.nativeWarm(createNativeWarmRequest(req));
-      if (native) {
-        if (typeof native.body !== 'string' || native.status !== 200 || !native.headers?.values) {
-          throw new Error('Invalid native warm response');
-        }
-        if (res.destroyed) return;
-        const headers = { ...entry.headers, ...native.headers.values,
-          'content-length': String(Buffer.byteLength(native.body)), ...timingHeaders() };
-        res.writeHead(native.status, headers);
-        res.end(native.body);
-        return;
-      }
-    }
     const authenticatedNative = NATIVE_WARM_ENABLED && entry.nativeAuthenticated;
     const request = createHotLaneRequest(req, NextRequest, Boolean(authenticatedNative) || (LIGHT_REQUEST_ENABLED && entry.lightRequest), authenticatedNative ? RequestCookies : undefined);
     response = await (authenticatedNative || entry.handler)(request, { params: Promise.resolve({}) });
@@ -193,10 +179,8 @@ async function loadLane() {
       await routeModule.ensureUserland();
       const handler = routeModule.userland.GET;
       if (typeof handler !== 'function') throw new Error('route exports no GET handler');
-      const nativeWarm = LIGHT_REQUEST_ROUTES.has(pathname) && handler[Symbol.for('nisaab360.native-warm-get')];
       const nativeAuthenticated = pathname === '/api/student/dashboard' && handler[Symbol.for('nisaab360.native-authenticated-get')];
       lane.set(pathname, { handler, headers: staticHeadersFor(routesManifest, pathname), lightRequest: LIGHT_REQUEST_ROUTES.has(pathname),
-        nativeWarm: typeof nativeWarm === 'function' ? nativeWarm : null,
         nativeAuthenticated: typeof nativeAuthenticated === 'function' ? nativeAuthenticated : null });
       loaded.push(pathname);
     } catch (err) {

@@ -18,19 +18,22 @@ const SIDEBAR_ITEMS = [
   { label: "Footer Pages", href: "/sa/pages", icon: FileText },
   { label: "Blogs", href: "/sa/blogs", icon: Newspaper },
   { label: "Apps", href: "/sa/apps", icon: Download },
+  { label: "Testing Time only", href: "/sa/apps?testing=1", icon: ShieldAlert },
 ];
 
 export function SuperAdminShell({
   children,
   userId,
+  isSuperAdmin,
   initialBrand,
 }: {
   children: React.ReactNode;
   userId: number;
+  isSuperAdmin: boolean;
   initialBrand: ShellBrand;
 }) {
   return (
-    <AppShell sidebarItems={SIDEBAR_ITEMS} userRole="SUPER_ADMIN" userId={userId} initialBrand={initialBrand}>
+    <AppShell sidebarItems={SIDEBAR_ITEMS.filter(item => isSuperAdmin || item.href !== '/sa/apps?testing=1')} userRole="SUPER_ADMIN" userId={userId} initialBrand={initialBrand}>
       {children}
     </AppShell>
   );

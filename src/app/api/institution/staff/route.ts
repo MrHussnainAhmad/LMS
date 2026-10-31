@@ -1,17 +1,15 @@
 import { readBoundedJson } from '@/lib/http';
-import { INITIAL_PORTAL_PASSWORD } from '@/lib/temporary-password';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { staff, staffTeachableSubjects, institutions, campuses, subjects, institutionCustomRoles } from '@/db/schema';
-import { and, eq, inArray, ilike, or } from 'drizzle-orm';
-import { hashPassword as hash } from '@/lib/argon2-pool';
+import { staff, campuses, institutionCustomRoles } from '@/db/schema';
+import { and, eq, ilike, or } from 'drizzle-orm';
 import { requireRole, getTenantContext } from '@/lib/rbac';
 import { createStaffSchema } from '@/lib/validators/staff';
 import { logAudit } from '@/lib/audit';
 import { getClientIp } from '@/lib/client-ip';
-import { generateStaffEmail } from '@/lib/login-identifiers';
+import { createStaffAccount } from '@/lib/user';
 
 // Lightweight staff options list (id + name only) for dropdowns like the class-teacher
 // select on the Add Section form. Fetched lazily on the client, never joined with requests.
@@ -67,78 +65,8 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
   const { name, phone, subjectIds, campusId: requestedCampusId, customRoleId } = parsed.data;
   const campusId = session.campusId ?? requestedCampusId;
   if (requestedCampusId && requestedCampusId !== campusId) return NextResponse.json({ error: 'Select your own campus.' }, { status: 400 });
-  const uniqueSubjectIds = Array.from(new Set(subjectIds));
-
-  const [[inst], campusRows, subjectRows, customRoleRows] = await Promise.all([
-    db.select().from(institutions).where(eq(institutions.id, tenantId)).limit(1),
-    campusId ? db.select({ id: campuses.id })
-      .from(campuses)
-      .where(and(eq(campuses.id, campusId), eq(campuses.institutionId, tenantId)))
-      .limit(1) : Promise.resolve([]),
-    uniqueSubjectIds.length > 0 ? db.select({ id: subjects.id })
-      .from(subjects)
-      .where(and(
-        eq(subjects.institutionId, tenantId),
-        inArray(subjects.id, uniqueSubjectIds)
-      )) : Promise.resolve([]),
-    customRoleId ? db.select({ id: institutionCustomRoles.id })
-      .from(institutionCustomRoles)
-      .where(and(eq(institutionCustomRoles.id, customRoleId), eq(institutionCustomRoles.institutionId, tenantId)))
-      .limit(1) : Promise.resolve([]),
-  ]);
-
-  if (!inst) {
-    return NextResponse.json({ error: "Institution not found" }, { status: 404 });
-  }
-  if (campusId && !campusRows[0]) {
-    return NextResponse.json({ error: "Campus not found" }, { status: 400 });
-  }
-  if (subjectRows.length !== uniqueSubjectIds.length) {
-    return NextResponse.json({ error: "One or more subjects were not found" }, { status: 400 });
-  }
-  if (customRoleId && !customRoleRows[0]) {
-    return NextResponse.json({ error: "Custom role not found" }, { status: 400 });
-  }
-
-  const baseEmail = generateStaffEmail({ name, phone, institution: inst });
-  const [localPart, domain] = baseEmail.split('@');
-  let generatedEmail = baseEmail;
-  
-  // collision check
-  let count = 0;
-  while (true) {
-    // tenant-audit: allow-cross-tenant staff — email has a global unique constraint
-    const [existing] = await db.select().from(staff).where(eq(staff.email, generatedEmail)).limit(1);
-    if (!existing) break;
-    count++;
-    generatedEmail = `${localPart}${count}@${domain}`;
-  }
-
-  const initialPassword = INITIAL_PORTAL_PASSWORD;
-  const passwordHash = await hash(initialPassword);
-
   try {
-    const [newStaff] = await db.insert(staff).values({
-      institutionId: tenantId,
-      campusId: campusId || null,
-      customRoleId: customRoleId || null,
-      name,
-      email: generatedEmail,
-      phone,
-      passwordHash,
-      mustChangePassword: true,
-      isActive: true,
-    }).returning();
-
-    if (uniqueSubjectIds.length > 0) {
-      await db.insert(staffTeachableSubjects).values(
-        uniqueSubjectIds.map(id => ({
-          institutionId: tenantId,
-          staffId: newStaff.id,
-          subjectId: id,
-        }))
-      );
-    }
+    const newStaff = await createStaffAccount(tenantId, { name, phone, subjectIds, campusId: campusId ?? undefined, customRoleId });
 
     await logAudit({
       institutionId: tenantId,
@@ -151,12 +79,9 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
 
     await invalidateStaffReadCaches(tenantId);
 
-    // We realistically can't email the staff because it's a generated internal email unless we use 'phone' or SMS. 
-    // Usually, the institution admin hands the credentials. But if there's a real email, we send it.
-    // We will just return the credentials.
     return NextResponse.json({ 
       message: 'Staff created successfully', 
-      credentials: { email: generatedEmail, initialPassword } 
+      credentials: { email: newStaff.email, initialPassword: newStaff.initialPassword }
     }, { status: 201 });
   } catch (err) {
     const publicInputError = inputErrorResponse(err);

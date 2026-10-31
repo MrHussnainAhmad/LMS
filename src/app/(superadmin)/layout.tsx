@@ -8,7 +8,7 @@ export default async function SuperAdminLayout({ children }: { children: React.R
   if (!session || session.role !== "SUPER_ADMIN") redirect("/login/super-admin");
   const brand = await getShellBrandForSession(session);
   return (
-    <SuperAdminShell userId={session.userId} initialBrand={brand}>
+    <SuperAdminShell userId={session.userId} isSuperAdmin={session.isSuperAdmin === true} initialBrand={brand}>
       {children}
     </SuperAdminShell>
   );

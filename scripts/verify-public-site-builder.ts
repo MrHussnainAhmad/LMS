@@ -25,7 +25,7 @@ async function main() {
   (globalThis as typeof globalThis & { __websiteBuilder: typeof state }).__websiteBuilder = state;
   const mocks: Record<string, string> = {
     db: 'export const db=globalThis.__websiteBuilder.db;',
-    auth: 'export const getSessionFromRequest=async()=>globalThis.__websiteBuilder.session;export const getLightSessionFromRequest=getSessionFromRequest;export const getWarmSessionFromRequest=()=>null;',
+    auth: 'export const getSessionFromRequest=async()=>globalThis.__websiteBuilder.session;export const getLightSessionFromRequest=getSessionFromRequest;',
     'api-policy': 'export const withApiPolicy=fn=>fn;',
     'rate-limit': 'export const withRateLimit=async()=>({success:true});',
     performance: 'export const measurePerformancePhase=async(_name,fn)=>fn();',

@@ -6,7 +6,6 @@ import { db } from "@/db";
 import { campuses, classes, institutions, sections, studentPromotions, students } from "@/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { requireRole, getTenantContext } from "@/lib/rbac";
-import { invalidateUserValidity } from "@/lib/user";
 import { invalidateInstitutionRosterCaches } from "@/lib/redis";
 import { getClientIp } from "@/lib/client-ip";
 import { prepareParentActivation, syncStudentGuardian } from "@/lib/parent-identity";
@@ -213,12 +212,7 @@ export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (re
       }
     }
     if (parentLink?.disabledParentId) {
-      await Promise.all([
-        invalidateUserValidity("PARENT", parentLink.disabledParentId),
-        revokeAllSessions("PARENT", parentLink.disabledParentId),
-      ]);
-    } else if (parentLink?.parentId) {
-      await invalidateUserValidity("PARENT", parentLink.parentId);
+      await revokeAllSessions("PARENT", parentLink.disabledParentId);
     }
 
     await invalidateInstitutionRosterCaches(tenantId);
@@ -273,13 +267,9 @@ export const DELETE = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (r
     }
 
     if (parentLink.disabledParentId) {
-      await Promise.all([
-        invalidateUserValidity("PARENT", parentLink.disabledParentId),
-        revokeAllSessions("PARENT", parentLink.disabledParentId),
-      ]);
+      await revokeAllSessions("PARENT", parentLink.disabledParentId);
     }
 
-    await invalidateUserValidity("STUDENT", deleted.id);
     await invalidateInstitutionRosterCaches(tenantId);
 
     return NextResponse.json({ message: "Student deleted successfully" });

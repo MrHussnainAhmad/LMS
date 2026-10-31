@@ -31,7 +31,6 @@ const mocks: Record<string, string> = {
   db: 'export const db=globalThis.__campusVerification.db;export const pool={query:(...args)=>globalThis.__campusVerification.query(...args)};',
   auth: `export const getSession=async()=>globalThis.__campusVerification.session;
     export const getSessionFromRequest=getSession;export const getLightSessionFromRequest=getSession;
-    export const getWarmSessionFromRequest=()=>null;
     export const setCampusViewCookie=async token=>{globalThis.__campusVerification.viewCookie=token};
     export const clearAuthCookies=async()=>{globalThis.__campusVerification.cookieCleared=true};
     export const revokeAllSessions=async()=>{globalThis.__campusVerification.revocations++};
@@ -48,7 +47,7 @@ const mocks: Record<string, string> = {
   'central-drive-backups': 'export const centralDriveClientConfig=()=>({redirectUri:"https://sa.example.test/api/sa/central-backup/google-drive/callback"});export const prepareCentralDriveFolder=async()=>({folderId:"fixture-folder",email:"owner@example.test"});export const centralDriveOAuthUrl=state=>"https://accounts.google.test/consent?state="+state;export const exchangeCentralDriveCode=async()=>({refreshToken:"fixture-central-secret"});',
   cloudinary: 'export default {api:{resource:async()=>{throw Error("Unexpected cloudinary call")}}};',
   'institution-restores': 'export const submitInstitutionRestore=async()=>1;export const listInstitutionRestores=async()=>[];export const actOnInstitutionRestore=async()=>{};export const requestRecoveryRestore=async()=>({id:1});',
-  user: 'export const getFreshStudent=async(...args)=>globalThis.__campusVerification.liveStudentVerifier(...args);export const verifyUserExistsFresh=async(...args)=>globalThis.__campusVerification.liveVerifier?globalThis.__campusVerification.liveVerifier(...args):true;export const invalidateUserValidity=async()=>{};export const resolveUserCreatedAt=async()=>new Date();export const getUserCreatedAt=async()=>new Date();',
+  user: 'export const createStaffAccount=async()=>{throw Error("Unexpected staff creation")};export const getFreshStudent=async(...args)=>globalThis.__campusVerification.liveStudentVerifier(...args);export const verifyUserExistsFresh=async(...args)=>globalThis.__campusVerification.liveVerifier?globalThis.__campusVerification.liveVerifier(...args):true;export const resolveUserCreatedAt=async()=>new Date();export const getUserCreatedAt=async()=>new Date();',
 };
 async function load(entry: string) {
   const result = await build({ entryPoints: [entry], bundle: true, jsx: 'automatic', write: false, platform: 'node', format: 'cjs', packages: 'external', logLevel: 'silent', plugins: [{ name: 'isolated-campus-db', setup(builder) {
@@ -154,10 +153,10 @@ try {
   assert.ok((await testDb.select().from(schema.institutions).where(eq(schema.institutions.id,1)))[0],'rejection must never delete data');
   await lifecycle.changeInstitutionStatus(root,1,'APPROVED');
   const employeeActions=await load('src/app/actions/employee-actions.ts');
-  for(const actor of actors){state.session=actor;await assert.rejects(()=>employeeActions.deleteInstitutionAction(1,'National College'),/disabled/);}
+  for(const actor of actors){state.session=actor;await assert.rejects(()=>employeeActions.deleteInstitutionAction(1,'WRONG CONFIRMATION'));}
   const accountRoute=await load('src/app/api/institution/account/route.ts');state.session=owner;
   assert.equal((await accountRoute.DELETE(new NextRequest('http://localhost/api/institution/account',{method:'DELETE'}),{})).status,403);
-  evidence.push('Employees may review pending registrations but cannot suspend active institutions; rejection preserves rows; all direct institution deletion paths are disabled.');
+  evidence.push('Employees may review pending registrations but cannot suspend active institutions; rejection preserves rows; removal rejects unauthorized roles and incorrect confirmation; institution self-deletion stays disabled.');
   const routeCases=[['src/app/api/sa/central-backup/settings/route.ts','GET',[regular,employee,owner,delegated]],['src/app/api/sa/central-backup/google-drive/connect/route.ts','POST',[regular,employee,owner,delegated]],['src/app/api/sa/central-backup/google-drive/callback/route.ts','GET',[regular,employee,owner,delegated]],['src/app/api/sa/restore-requests/[id]/route.ts','POST',[employee,owner,delegated]],['src/app/api/sa/institution-backups/[id]/download/route.ts','GET',[employee,owner,delegated]],['src/app/api/institution/settings/google-drive/route.ts','PUT',[root,regular,employee,delegated]],['src/app/api/institution/settings/google-drive/connect/route.ts','GET',[root,regular,employee,delegated]],['src/app/api/institution/restore-requests/[id]/route.ts','POST',[root,regular,employee,delegated]],['src/app/api/institution/export/route.ts','GET',[root,regular,employee,delegated]],['src/app/api/institution/signature/route.ts','PATCH',[root,regular,employee,delegated]],['src/app/api/institution/settings/payment-accounts/route.ts','POST',[root,regular,employee,delegated]],['src/app/api/course-streaming/route.ts','PUT',[root,regular,employee,delegated]]];
   let directCases=0;
   for(const [entry,method,deniedActors]of routeCases){const route=await load(entry as string);for(const actor of deniedActors as JWTPayload[]){state.session=actor;const response=await route[method as string](new NextRequest('http://localhost/api/fixture',{method:method as string}),{params:Promise.resolve({id:'1'})});assert.equal(response.status,403,entry+' '+actor.role);directCases++;}}
@@ -359,11 +358,11 @@ try {
   await testDb.update(schema.institutions).set({allowGraduatedStudentAccess:true}).where(eq(schema.institutions.id,1));
   const graduateSession=await actualAuth.getSessionFromRequest(studentRequest());assert.equal(graduateSession.studentAcademicStatus,'GRADUATED');
   state.session=graduateSession;
-  const graduateApi=rbac.requireRole(['STUDENT'],async()=>Response.json({success:true}));
+  const graduateApi=rbac.requireRole(['STUDENT'],async()=>Response.json({success:true}), { nativeWarm: () => { throw new Error('Synchronous authentication must never run'); } });
   assert.equal((await graduateApi(new NextRequest('http://localhost/api/student/assignments'),{})).status,403);
   await testDb.update(schema.students).set({isActive:false}).where(eq(schema.students.id,student.id));
   assert.equal(await actualAuth.getSessionFromRequest(studentRequest()),null,'cached token cannot survive deactivation');
-  assert.equal(actualAuth.getWarmSessionFromRequest(studentRequest()),null,'warm responses cannot bypass fresh authorization');
+  assert.equal((graduateApi as unknown as Record<symbol, unknown>)[Symbol.for('nisaab360.native-warm-get')], undefined, 'routes expose no synchronous authentication bypass');
   await testDb.update(schema.students).set({isActive:true,academicStatus:'ACTIVE'}).where(eq(schema.students.id,student.id));
   assert.equal((await actualAuth.getSessionFromRequest(studentRequest())).studentAcademicStatus,'ACTIVE');
   await testDb.update(schema.students).set({deletedAt:new Date()}).where(eq(schema.students.id,student.id));

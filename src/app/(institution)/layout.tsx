@@ -20,8 +20,6 @@ export default async function InstitutionLayoutServer({
     redirect("/login");
   }
 
-  const institutionId = session.institutionId || session.userId;
-
   if (session.mustChangePassword) redirect('/force-password-change');
 
   if (session.role === "INSTITUTION" && !session.campusReadOnly) {
@@ -49,7 +47,6 @@ export default async function InstitutionLayoutServer({
     <ClientLayout
       role={session.role as "INSTITUTION" | "INSTITUTION_ADMIN"}
       userId={session.userId}
-      institutionId={institutionId}
       initialBrand={brand}
     >
       <CampusReadOnlyBoundary readOnly={Boolean(session.campusReadOnly)} campusName={session.campusName ?? ''} homeCampusName={session.homeCampusName ?? ''}>

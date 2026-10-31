@@ -23,13 +23,11 @@ const SIDEBAR_ITEMS = [
 export function StaffShell({
   children,
   userId,
-  institutionId,
   initialBrand,
   coursesEnabled,
 }: {
   children: React.ReactNode;
   userId: number;
-  institutionId?: number | null;
   initialBrand: ShellBrand;
   coursesEnabled: boolean;
 }) {
@@ -41,7 +39,6 @@ export function StaffShell({
       sidebarItems={sidebarItems}
       userRole="STAFF"
       userId={userId}
-      institutionId={institutionId}
       initialBrand={initialBrand}
     >
       {children}

@@ -64,7 +64,7 @@ async function main() {
     'next/server': 'export const NextResponse=globalThis.__qrLogin.server.NextResponse;export const after=fn=>globalThis.__qrLogin.after.push(fn);',
     'next/headers': `export const cookies=async()=>({get:name=>{const value=globalThis.__qrLogin.cookies.get(name);return value?{value}:undefined},set:(key,value)=>globalThis.__qrLogin.cookies.set(key,value),delete:key=>globalThis.__qrLogin.cookies.delete(key)});export const headers=async()=>new Headers({host:'localhost:3000'});`,
     redis: `export const redis={get status(){return globalThis.__qrLogin.redisStatus},get:async()=>null,setex:async()=>{},multi(){let key;return {incr(k){key=k;return this},expire(){return this},async exec(){const s=globalThis.__qrLogin;const n=(s.counts.get(key)||0)+1;s.counts.set(key,n);return [[null,n],[s.expireError?new Error('fixture'):null,1]]}}}};`,
-    user: 'export const invalidateUserValidity=async()=>{};export const getFreshStudent=async()=>null;export const verifyUserExistsFresh=async()=>true;export const getUserCreatedAt=async()=>new Date();',
+    user: 'export const getFreshStudent=async()=>null;export const verifyUserExistsFresh=async()=>true;export const getUserCreatedAt=async()=>new Date();',
     'auth-student': 'export const enrichFreshStudentSession=x=>x;',
     'campus-workspaces': 'export const resolveCampusSession=async x=>x;',
     'notification-events': 'export const notifySecurity=async()=>{};',

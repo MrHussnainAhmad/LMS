@@ -15,7 +15,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
       : Promise.resolve(false),
   ]);
   return (
-    <StaffShell userId={session.userId} institutionId={institutionId} initialBrand={brand} coursesEnabled={coursesEnabled}>
+    <StaffShell userId={session.userId} initialBrand={brand} coursesEnabled={coursesEnabled}>
       {children}
     </StaffShell>
   );

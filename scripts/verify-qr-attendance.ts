@@ -27,7 +27,7 @@ async function main() {
   const mocks: Record<string, string> = {
     'next/server': 'export const NextResponse=globalThis.__qrAttendance.server.NextResponse;export const after=fn=>globalThis.__qrAttendance.after.push(fn);',
     db: 'export const db=globalThis.__qrAttendance.db;',
-    auth: 'export const getSessionFromRequest=async()=>globalThis.__qrAttendance.session;export const getSession=getSessionFromRequest;export const getLightSessionFromRequest=getSessionFromRequest;export const getWarmSessionFromRequest=()=>null;',
+    auth: 'export const getSessionFromRequest=async()=>globalThis.__qrAttendance.session;export const getSession=getSessionFromRequest;export const getLightSessionFromRequest=getSessionFromRequest;',
     'next/cache': 'export const revalidatePath=()=>{};',
     'rate-limit': 'export const withRateLimit=async()=>({success:!globalThis.__qrAttendance.limited,retryAfterSeconds:60});',
     'api-policy': 'export const withApiPolicy=fn=>fn;',

@@ -7,15 +7,13 @@ import { ShellBrand } from "./BrandMark";
 import { cn } from "@/lib/utils";
 import TermsUpdateNotice from '@/components/TermsUpdateNotice';
 import { PricingPlanUpdateNotice } from '@/components/PricingPlanUpdateNotice';
-import { clearShellClientCache, writeShellClientCache, shellCacheKey } from "@/lib/shell-client-cache";
 
 interface AppShellProps {
   children: React.ReactNode;
   sidebarItems: SidebarItem[];
   userRole: string;
-  /** Optional stable ids for scoped client brand cache (safe metadata only). */
+  /** Stable identity for account notices. */
   userId?: number;
-  institutionId?: number | null;
   /** When provided by an RSC layout, skip the /api/me/brand client round-trip. */
   initialBrand?: ShellBrand;
 }
@@ -32,20 +30,11 @@ export function AppShell({
   sidebarItems,
   userRole,
   userId,
-  institutionId,
   initialBrand,
 }: AppShellProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [brand] = useState<ShellBrand>(() => initialBrand ?? DEFAULT_BRAND);
-
-  React.useEffect(() => {
-    if (!initialBrand || userId == null) return;
-    writeShellClientCache(
-      shellCacheKey({ role: userRole, userId, institutionId, key: "brand" }),
-      initialBrand
-    );
-  }, [initialBrand, userId, institutionId, userRole]);
 
   return (
     <div className="app-shell flex min-h-dvh text-foreground">
@@ -82,7 +71,6 @@ export function AppShell({
           onMenuClick={() => setIsSidebarOpen(true)}
           role={userRole}
           brand={brand}
-          onLogoutStart={clearShellClientCache}
         />
 
         <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-9">

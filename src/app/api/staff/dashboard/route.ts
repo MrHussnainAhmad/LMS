@@ -2,10 +2,10 @@ import type { JWTPayload } from '@/lib/auth-types';
 import { NextRequest } from "next/server";
 import { fetchStaffDashboardData } from '@/lib/dashboard-data';
 import { requireRole, getTenantContext } from "@/lib/rbac";
-import { getCachedOrFetch, peekCachedOrFetch } from "@/lib/redis";
+import { getCachedOrFetch } from "@/lib/redis";
 import { getVisibleAnnouncements } from "@/lib/announcements";
-import { getInstitutionCourseStreamingHint, peekInstitutionCourseStreamingHint } from "@/lib/course-streaming";
-import { decodeDashboardPayload, dashboardResponse, nativeDashboardResponse } from "@/lib/dashboard-response";
+import { getInstitutionCourseStreamingHint } from "@/lib/course-streaming";
+import { decodeDashboardPayload, dashboardResponse } from "@/lib/dashboard-response";
 export { corsPreflight as OPTIONS } from "@/lib/cors";
 
 const DASHBOARD_CACHE_TTL_SECONDS = 45;
@@ -66,12 +66,4 @@ export const GET = requireRole(["STAFF"], async (_req: NextRequest, { session })
   ]);
 
   return dashboardResponse(payload, coursesEnabled);
-}, {
-  nativeWarm: (_req, { session }) => {
-    const tenantId = getTenantContext(session);
-    const payload = peekCachedOrFetch(`cache:staff:dashboard:v2:${tenantId}:${session.userId}`, DASHBOARD_CACHE_TTL_SECONDS, () => fetchDashboardPayload(session), decodeDashboardPayload);
-    const coursesEnabled = peekInstitutionCourseStreamingHint(tenantId);
-    if (payload === undefined || coursesEnabled === undefined) return null;
-    return nativeDashboardResponse(payload, coursesEnabled);
-  },
 });

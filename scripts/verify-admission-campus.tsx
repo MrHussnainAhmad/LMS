@@ -32,7 +32,7 @@ async function main() {
     'institution-tenant': `export const resolveInstitutionTenant=async slug=>slug==='school'?{kind:'active',tenant:{id:1,name:'School',admissionsEnabled:true}}:{kind:'not_found'};export const invalidateInstitutionTenantCache=async()=>{};`,
     'admission-auth': `export const getAdmissionSessionFromRequest=async()=>({applicantId:globalThis.__admissionFixture.applicantId,institutionId:1,sessionVersion:globalThis.__admissionFixture.sessionVersion});export const createAdmissionSessionToken=async()=>'fixture-token';export const setAdmissionSessionCookie=async()=>{};`,
     auth: 'export const revokeAllSessions=async()=>{};export const getSession=async()=>({role:"INSTITUTION",userId:globalThis.__admissionFixture.institutionId,institutionId:globalThis.__admissionFixture.institutionId});',
-    user: 'export const invalidateUserValidity=async()=>{};',
+    user: 'export const createStaffAccount=async()=>{throw Error("Unexpected staff creation")};',
     'email-outbox': 'export const enqueueEmail=async message=>{globalThis.__admissionFixture.emails.push(message)};',
     email: 'export const AdmissionCredentialEmail=()=>"fixture";export const AdmissionEnrollmentEmail=()=>"fixture";export const AdmissionUpdateEmail=()=>"fixture";export const ParentAccountActivationEmail=()=>"fixture";',
     audit: 'export const logAudit=async()=>{};',
@@ -223,6 +223,7 @@ async function main() {
     assert.equal(enrolled.status, 200, await enrolled.clone().text());
     const student = (await testDb.select().from(schema.students))[0];
     assert.equal(student.institutionId, 2); assert.equal(student.campusId, 2); assert.equal(student.classId, 2);
+    assert.equal(student.passwordHash, 'fixture:1234567890'); assert.equal(student.mustChangePassword, true);
     assert.match(student.loginRollNumber, /@school\.green\.nisaab360\.app$/);
     assert.equal(state.parentTenant, 2);
     assert.ok(await accountService.getActiveApplicantAccount({ applicantId: state.applicantId, institutionId: 1, sessionVersion: 0 }, 1));
@@ -338,6 +339,7 @@ async function main() {
     assert.equal(duplicateCsv.status,409);const duplicateErrors=(await duplicateCsv.json()).errors;assert.ok(duplicateErrors.some((e:string)=>e.startsWith('Row 2:')));assert.ok(duplicateErrors.some((e:string)=>e.startsWith('Row 3:')));assert.deepEqual(await importSnapshot(),beforeImport);
     const validCsv=await importCsv(csvHeader+'"Ada, A.",Example,1,1,FEMALE,2026,TEST-1\n');assert.equal(validCsv.status,201,await validCsv.clone().text());
     const afterImport=await importSnapshot();
+    assert.ok(afterImport[0].every(row => row.passwordHash === 'fixture:1234567890' && row.mustChangePassword));
     const storedDuplicate=await importCsv(csvHeader+'Third,Example,1,1,MALE,2026,TEST-2\nFourth,Example,1,1,MALE,2026,TEST-1\n');assert.equal(storedDuplicate.status,409);assert.match((await storedDuplicate.json()).errors[0],/Row 3:.*already exists/);assert.deepEqual(await importSnapshot(),afterImport);
     await memory.exec("ALTER TABLE students ADD CONSTRAINT fixture_import_failure CHECK(name <> 'Reject Insert')");
     const failedInsert=await importCsv(csvHeader+'Reject,Insert,1,1,MALE,2026,TEST-2\n');assert.equal(failedInsert.status,500);assert.deepEqual(await importSnapshot(),afterImport);
@@ -348,6 +350,16 @@ async function main() {
     assert.equal((await bulkCsv.json()).imported, 500);
     assert.equal(importQueries.filter(row => row.query.startsWith('select') && row.params.includes('Whole Class')).length, 1);
     console.log('PASS: 500-row single-class import resolves Whole Class once');
+    const sectionService = await load('src/lib/student-login-institution.ts');
+    const beforeSections = await testDb.select().from(schema.sections);
+    await assert.rejects(sectionService.getOrCreateWholeClassSection(2, 1), /Class not found/);
+    assert.deepEqual(await testDb.select().from(schema.sections), beforeSections, 'A foreign class creates no section');
+    const activeWholeClass = await sectionService.getOrCreateWholeClassSection(1, 1);
+    await testDb.update(schema.sections).set({ deletedAt: new Date() }).where(eq(schema.sections.id, activeWholeClass.id));
+    const replacementSection = await sectionService.getOrCreateWholeClassSection(1, 1);
+    assert.notEqual(replacementSection.id, activeWholeClass.id, 'Deleted sections are never assigned to new students');
+    assert.equal((await sectionService.getOrCreateWholeClassSection(1, 1)).id, replacementSection.id, 'The next student reuses the active section');
+    console.log('PASS: shared student section provisioning rejects foreign classes, skips deleted sections and reuses active sections; initial passwords require an update.');
     console.log('PASS: CSV quoting/multiline/malformed headers, exact within-file/existing duplicate rows, successful import and full insert/sequence rollback');
     console.log('PASS: only Main renders setup and changes shared configuration; child setup URLs redirect, all configuration actions deny with unchanged data, campus intake/review/offline flow remains available');
   } finally { await memory.close(); }

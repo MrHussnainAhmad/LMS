@@ -12,18 +12,16 @@ import { campuses, classes, institutions, sections, students } from "@/db/schema
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/client-ip";
 import { generateStudentLoginRollNumber } from "@/lib/login-identifiers";
-import { resolveStudentLoginInstitution } from "@/lib/student-login-institution";
+import { resolveStudentLoginInstitution, getOrCreateWholeClassSection } from "@/lib/student-login-institution";
 import { allocateAdmissionSequences } from "@/lib/admission-sequences";
 import { getTenantContext, requireRole } from "@/lib/rbac";
 import { createStudentSchema } from "@/lib/validators/student";
 import { withRateLimit } from "@/lib/rate-limit";
 import { invalidateInstitutionRosterCaches } from "@/lib/redis";
 
-const WHOLE_CLASS_SECTION_NAME = "Whole Class";
 const MAX_IMPORT_ROWS = 500;
 
 type CsvRow = Record<string, string>;
-type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type PreparedStudentRow = Omit<typeof students.$inferInsert, "admissionSequence" | "loginRollNumber"> & {
   admissionSequence?: number;
   loginRollNumber?: string;
@@ -40,36 +38,6 @@ function csvValue(row: CsvRow, ...keys: string[]) {
     if (value !== undefined && value !== "") return value.trim();
   }
   return "";
-}
-
-async function getOrCreateWholeClassSection(tx: Transaction, institutionId: number, classId: number) {
-  const [existingSection] = await tx.select({
-    id: sections.id,
-    classId: sections.classId,
-    name: sections.name,
-  })
-    .from(sections)
-    .where(and(
-      eq(sections.classId, classId),
-      eq(sections.institutionId, institutionId),
-      eq(sections.name, WHOLE_CLASS_SECTION_NAME)
-    ))
-    .limit(1);
-
-  if (existingSection) return existingSection;
-
-  const [createdSection] = await tx.insert(sections).values({
-    institutionId,
-    classId,
-    name: WHOLE_CLASS_SECTION_NAME,
-    classTeacherId: null,
-  }).returning({
-    id: sections.id,
-    classId: sections.classId,
-    name: sections.name,
-  });
-
-  return createdSection;
 }
 
 export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
@@ -212,7 +180,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
         const rowsByYear = new Map<number, PreparedStudentRow[]>();
         for (const row of preparedRows) {
           if (!row.sectionId) {
-            row.sectionId = wholeClassByClass.get(row.classId) ?? (await getOrCreateWholeClassSection(tx, tenantId, row.classId)).id;
+            row.sectionId = wholeClassByClass.get(row.classId) ?? (await getOrCreateWholeClassSection(tenantId, row.classId, tx)).id;
             wholeClassByClass.set(row.classId, row.sectionId);
           }
           rowsByYear.set(row.yearOfJoining, [...(rowsByYear.get(row.yearOfJoining) || []), row]);

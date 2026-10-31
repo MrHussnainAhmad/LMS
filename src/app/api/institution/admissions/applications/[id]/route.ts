@@ -36,16 +36,14 @@ import {
 } from "@/lib/email";
 import { enqueueEmail } from "@/lib/email-outbox";
 import { generateStudentLoginRollNumber } from "@/lib/login-identifiers";
-import { resolveStudentLoginInstitution } from "@/lib/student-login-institution";
+import { resolveStudentLoginInstitution, getOrCreateWholeClassSection } from "@/lib/student-login-institution";
 import { logAudit } from "@/lib/audit";
 import { prepareParentActivation, syncStudentGuardian } from "@/lib/parent-identity";
 import { getTenantContext, requireRole } from "@/lib/rbac";
-import { invalidateUserValidity } from "@/lib/user";
 import { admissionReviewActionSchema } from "@/lib/validators/admission-review";
 
 type ApplicationStatus = (typeof admissionApplications.$inferSelect)["status"];
 type AppointmentType = (typeof admissionAppointments.$inferSelect)["type"];
-const WHOLE_CLASS_SECTION_NAME = "Whole Class";
 
 const allowedStatuses: Record<string, ApplicationStatus[]> = {
   startReview: ["SUBMITTED"],
@@ -814,10 +812,7 @@ export const PATCH = requireRole(
           ),
         );
       try {
-        await Promise.all([
-          revokeAllSessions("STUDENT", student.id),
-          invalidateUserValidity("STUDENT", student.id),
-        ]);
+        await revokeAllSessions("STUDENT", student.id);
       } catch (sessionError) {
         console.error(
           "Student session revocation after admission reset failed:",
@@ -1017,33 +1012,7 @@ export const PATCH = requireRole(
           { status: 400 },
         );
 
-      let sectionId = sectionRows[0]?.id;
-      if (!sectionId) {
-        const [existingWholeClass] = await db
-          .select({ id: sections.id })
-          .from(sections)
-          .where(
-            and(
-              eq(sections.institutionId, institutionId),
-              eq(sections.classId, action.classId),
-              eq(sections.name, WHOLE_CLASS_SECTION_NAME),
-              isNull(sections.deletedAt),
-            ),
-          )
-          .limit(1);
-        if (existingWholeClass) sectionId = existingWholeClass.id;
-        else {
-          const [created] = await db
-            .insert(sections)
-            .values({
-              institutionId,
-              classId: action.classId,
-              name: WHOLE_CLASS_SECTION_NAME,
-            })
-            .returning({ id: sections.id });
-          sectionId = created.id;
-        }
-      }
+      const sectionId = sectionRows[0]?.id ?? (await getOrCreateWholeClassSection(institutionId, action.classId)).id;
       if (!sectionId)
         return NextResponse.json(
           { error: "Unable to prepare a class section" },
@@ -1209,9 +1178,7 @@ export const PATCH = requireRole(
           dedupeKey: `parent:${parentLink.parentId}:initial-activation`,
         });
       }
-      if (parentLink?.parentId) {
-        await invalidateUserValidity("PARENT", parentLink.parentId);
-      }
+
       after(async () => {
         try {
           await logAudit({

@@ -26,20 +26,4 @@ function createHotLaneRequest(req, NextRequest, light = false, RequestCookies) {
     },
   });
 }
-// Only the audited synchronous warm callback receives this restricted facade.
-// A miss is handled with the full Request above, including cookie authentication.
-function createNativeWarmRequest(req) {
-  const url = `http://${req.headers.host || 'localhost'}${req.url}`;
-  const deleted = new Set();
-  const headers = {
-    get(name) {
-      name = name.toLowerCase();
-      if (deleted.has(name)) return null;
-      const value = req.headers[name];
-      return value === undefined ? null : String(value).replace(/^[\t\n\r ]+|[\t\n\r ]+$/g, '');
-    },
-    delete(name) { deleted.add(name.toLowerCase()); },
-  };
-  return { method: 'GET', url, nextUrl: new URL(url), headers };
-}
-module.exports = { createHotLaneRequest, createNativeWarmRequest };
+module.exports = { createHotLaneRequest };

@@ -2,15 +2,24 @@
 
 import { ActionInputError } from "@/lib/action-input-error";
 
-import { changeInstitutionStatus } from "@/lib/institution-status";
+import { changeInstitutionStatus, wipeDatabaseForTesting } from "@/lib/institution-status";
 import { db } from "@/db";
 import { superAdmins, employees } from "@/db/schema";
 import { hash } from "@node-rs/argon2";
 import { and, eq } from "drizzle-orm";
 import { assertPlatformOperator, assertSecurityPermission } from "@/lib/security-permissions";
-import { getSession } from "@/lib/auth";
+import { getSession, clearAuthCookies } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import { invalidateUserValidity } from "@/lib/user";
+import { redirect } from 'next/navigation';
+
+export async function wipeDatabaseForTestingAction(formData: FormData) {
+  const session = await getSession();
+  if (!session) throw new ActionInputError('Unauthorized');
+  await wipeDatabaseForTesting(session, String(formData.get('confirmation') || ''));
+  await clearAuthCookies();
+  revalidatePath('/', 'layout');
+  redirect('/login/super-admin');
+}
 
 export async function createSuperAdminAction(formData: FormData) {
   const session = await getSession();
@@ -66,7 +75,7 @@ export async function deleteSuperAdminAction(adminId: number) {
   const [target] = await db.select({ root: superAdmins.isSuperAdmin }).from(superAdmins).where(eq(superAdmins.id, adminId)).limit(1);
   if (!target || target.root) throw new ActionInputError("Root accounts cannot be removed.");
   await db.delete(superAdmins).where(and(eq(superAdmins.id, adminId), eq(superAdmins.isSuperAdmin, false)));
-  await invalidateUserValidity("SUPER_ADMIN", adminId);
+
   revalidatePath("/sa/admins");
   return { success: true };
 }
@@ -114,7 +123,6 @@ export async function toggleEmployeeStatusAction(employeeId: number, currentlyDi
   await db.update(employees)
     .set({ deletedAt: currentlyDisabled ? null : new Date() })
     .where(eq(employees.id, employeeId));
-  await invalidateUserValidity("EMPLOYEE", employeeId);
 
   revalidatePath("/sa/employees");
   return { success: true };
@@ -128,7 +136,7 @@ export async function deleteEmployeeAction(employeeId: number) {
   }
 
   await db.update(employees).set({ deletedAt: new Date() }).where(eq(employees.id, employeeId));
-  await invalidateUserValidity("EMPLOYEE", employeeId);
+
   revalidatePath("/sa/employees");
   return { success: true };
 }

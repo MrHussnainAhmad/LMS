@@ -28,7 +28,7 @@ async function main() {
   const mocks: Record<string, string> = {
     'server-only': 'export {};',
     db: 'export const db=globalThis.__mobileParity.db;',
-    auth: 'export const getSession=async()=>globalThis.__mobileParity.session; export const getSessionFromRequest=getSession;export const getLightSessionFromRequest=getSession;export const getWarmSessionFromRequest=()=>null;',
+    auth: 'export const getSession=async()=>globalThis.__mobileParity.session; export const getSessionFromRequest=getSession;export const getLightSessionFromRequest=getSession;',
     'next/headers':
       'export const headers=async()=>globalThis.__mobileParity.headers;export const cookies=async()=>({get:key=>key==="access_token"&&globalThis.__mobileParity.cookieToken?{value:globalThis.__mobileParity.cookieToken}:undefined});',
     'next/cache': 'export const revalidatePath=()=>{};',

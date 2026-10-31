@@ -2,11 +2,9 @@
 
 import { ActionInputError } from "@/lib/action-input-error";
 import { z } from 'zod';
-import { createStaffSchema } from '@/lib/validators/staff';
-import { INITIAL_PORTAL_PASSWORD } from '@/lib/temporary-password';
 
 import { db } from "@/db";
-import { campuses, staff, classes, sections, subjects, announcements, notifications, institutions, institutionCustomRoles } from "@/db/schema";
+import { campuses, staff, classes, sections, subjects, announcements, notifications, institutions } from "@/db/schema";
 import { assertSecurityPermission } from "@/lib/security-permissions";
 import { getSession } from "@/lib/auth";
 import { getTenantContext } from "@/lib/rbac";
@@ -14,41 +12,13 @@ import { revalidatePath } from "next/cache";
 import { staffAssignments } from "@/db/schema";
 import { eq, and, gt, lt, inArray, count, sql } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
-import { generateStaffEmail } from "@/lib/login-identifiers";
+import { createStaffAccount } from "@/lib/user";
+import { getOrCreateWholeClassSection } from "@/lib/student-login-institution";
 import { invalidateStudentEnrichCache, invalidateTimetableReadCaches, invalidateAnnouncementReadCaches, invalidateStaffReadCaches } from "@/lib/redis";
 import { assertCampusEmailAvailable, createCampusWorkspace } from "@/lib/campus-workspaces";
 import { assertCampusWritable } from "@/lib/campus-view";
 
 import { invalidateInstitutionAcademicsCache } from "@/lib/institution-academics-data";
-
-const WHOLE_CLASS_SECTION_NAME = "Whole Class";
-
-async function getOrCreateWholeClassSection(institutionId: number, classId: number) {
-  const [classRow] = await db.select({ id: classes.id })
-    .from(classes)
-    .where(and(eq(classes.id, classId), eq(classes.institutionId, institutionId)))
-    .limit(1);
-  if (!classRow) throw new ActionInputError("Class not found");
-
-  const [existingSection] = await db.select({ id: sections.id })
-    .from(sections)
-    .where(and(
-      eq(sections.classId, classId),
-      eq(sections.institutionId, institutionId),
-      eq(sections.name, WHOLE_CLASS_SECTION_NAME)
-    ))
-    .limit(1);
-  if (existingSection) return existingSection.id;
-
-  const [createdSection] = await db.insert(sections).values({
-    institutionId,
-    classId,
-    name: WHOLE_CLASS_SECTION_NAME,
-    classTeacherId: null,
-  }).returning({ id: sections.id });
-
-  return createdSection.id;
-}
 
 export async function createCampusAction(formData: FormData) {
   const session = await getSession();
@@ -75,47 +45,10 @@ export async function createStaffAction(formData: FormData) {
   if (campusIdRaw && Number(campusIdRaw) !== campusId) throw new ActionInputError('Select your own campus.');
   const customRoleId = Number(formData.get("customRoleId"));
 
-  createStaffSchema.parse({ name, phone, campusId: campusId ?? undefined, customRoleId });
-
-  if (phone.replace(/\D/g, "").length < 4) {
-    throw new ActionInputError("Phone number must include at least 4 digits");
-  }
   if (!Number.isInteger(customRoleId) || customRoleId <= 0) {
     throw new ActionInputError("Select a staff role before creating the account");
   }
-
-  const [institution] = await db.select().from(institutions).where(eq(institutions.id, institutionId)).limit(1);
-  if (!institution) throw new ActionInputError("Institution not found");
-  const [customRole] = await db.select({ id: institutionCustomRoles.id })
-    .from(institutionCustomRoles)
-    .where(and(eq(institutionCustomRoles.id, customRoleId), eq(institutionCustomRoles.institutionId, institutionId)))
-    .limit(1);
-  if (!customRole) throw new ActionInputError("Selected staff role was not found");
-
-  const baseEmail = generateStaffEmail({ name, phone, institution });
-  const [localPart, domain] = baseEmail.split("@");
-  let email = baseEmail;
-  let count = 0;
-
-  while (true) {
-    const [existing] = await db.select().from(staff).where(eq(staff.email, email)).limit(1);
-    if (!existing) break;
-    count++;
-    email = `${localPart}${count}@${domain}`;
-  }
-
-  const passwordHash = await hash(INITIAL_PORTAL_PASSWORD);
-
-  await db.insert(staff).values({
-    institutionId,
-    name,
-    phone,
-    email,
-    passwordHash,
-    campusId,
-    customRoleId,
-    mustChangePassword: true,
-  });
+  await createStaffAccount(institutionId, { name, phone, campusId: campusId ?? undefined, customRoleId });
 
   await invalidateStaffReadCaches(institutionId);
   revalidatePath("/institution/staff");
@@ -371,7 +304,7 @@ export async function updateClassInchargeAction(formData: FormData) {
   if (classTeacherIdRaw && !Number.isInteger(classTeacherId)) throw new ActionInputError("Invalid staff ID");
 
   if (!sectionId && classId) {
-    sectionId = await getOrCreateWholeClassSection(institutionId, classId);
+    sectionId = (await getOrCreateWholeClassSection(institutionId, classId)).id;
   }
 
   const [sectionRow] = await db.select({ id: sections.id })
@@ -435,7 +368,7 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   }
 
   if (!sectionId && classId) {
-    sectionId = await getOrCreateWholeClassSection(institutionId, classId);
+    sectionId = (await getOrCreateWholeClassSection(institutionId, classId)).id;
   }
 
   const [sectionRow] = await db.select()

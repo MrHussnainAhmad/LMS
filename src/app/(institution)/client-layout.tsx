@@ -33,13 +33,11 @@ export default function InstitutionLayout({
   children,
   role,
   userId,
-  institutionId,
   initialBrand,
 }: {
   children: React.ReactNode;
   role: "INSTITUTION" | "INSTITUTION_ADMIN";
   userId?: number;
-  institutionId?: number | null;
   initialBrand?: ShellBrand;
 }) {
   return (
@@ -47,7 +45,6 @@ export default function InstitutionLayout({
       sidebarItems={SIDEBAR_ITEMS}
       userRole={role}
       userId={userId}
-      institutionId={institutionId}
       initialBrand={initialBrand}
     >
       {children}

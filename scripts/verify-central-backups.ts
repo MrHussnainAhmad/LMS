@@ -11,6 +11,8 @@ import { EventEmitter } from 'node:events';
 import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
+import { drizzle } from 'drizzle-orm/pglite';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { getTableConfig, PgDialect, type PgTable } from 'drizzle-orm/pg-core';
 import { build } from 'esbuild';
@@ -286,10 +288,123 @@ test('native worker immediately creates a real PostgreSQL 16 dump without a term
 async function isolatedModule<T>(entry: string, mocks: Record<string,string>): Promise<T> {
   const result=await build({entryPoints:[entry],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',logLevel:'silent',plugins:[{name:'backup-fixtures',setup(b){
     b.onResolve({filter:/.*/},args=>{if(args.path==='./central-backup-config'&&!mocks[args.path])return {path:'central-config-empty',namespace:'fixture'};return mocks[args.path]?{path:args.path,namespace:'fixture'}:undefined;});
-    b.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='central-config-empty'?'export const getStoredCentralDriveCredentials=async()=>null;':mocks[args.path],loader:'js'}));
+    b.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='central-config-empty'?'export const getStoredCentralDriveCredentials=async()=>null;':mocks[args.path],loader:'js',resolveDir:process.cwd()}));
   }}]});
   const loaded={exports:{} as T};new Function('require','module','exports',result.outputFiles[0].text)(require,loaded,loaded.exports);return loaded.exports;
 }
+
+test('platform removal and testing wipe preserve authorization, tenant isolation and current Super Admin', async () => {
+  const memory = await PGlite.create({ extensions: { pg_trgm } });
+  const state = { db: drizzle(memory), invalidations: 0, session: null as import('../src/lib/auth-types').JWTPayload | null };
+  const globals = globalThis as typeof globalThis & { __platformDeletion?: typeof state };
+  globals.__platformDeletion = state;
+  try {
+    await memory.exec(await readFile('drizzle/0000_baseline.sql', 'utf8'));
+    await memory.exec('SET search_path TO public');
+    const service = await isolatedModule<typeof import('../src/lib/institution-status')>('src/lib/institution-status.ts', {
+      '@/db': 'export const db=globalThis.__platformDeletion.db;',
+      './audit': 'export const logAudit=async()=>{};',
+      './redis': 'export const invalidateReadCachePatterns=async()=>{globalThis.__platformDeletion.invalidations++};export const redis={status:"end"};',
+    });
+    await state.db.insert(schema.superAdmins).values([
+      { id: 1, email: 'other-root@fixture.test', passwordHash: 'other-hash', securityQuestion: 'Question', securityAnswerHash: 'answer', isSuperAdmin: true },
+      { id: 2, email: 'current-root@fixture.test', passwordHash: 'keep-hash', securityQuestion: 'Question', securityAnswerHash: 'keep-answer', isSuperAdmin: true },
+      { id: 3, email: 'regular@fixture.test', passwordHash: 'regular-hash', securityQuestion: 'Question', securityAnswerHash: 'answer', isSuperAdmin: false },
+    ]);
+    const root = { role: 'SUPER_ADMIN', userId: 2, isSuperAdmin: true } as import('../src/lib/auth-types').JWTPayload;
+    const regular = { ...root, userId: 3, isSuperAdmin: false };
+    const institutionValues = { type: 'SCHOOL' as const, country: 'Pakistan', city: 'Lahore', address: 'Fixture', contactPhone: '03000000000', logoKey: 'fixture', proofDocumentKey: 'fixture', adminPasswordHash: 'fixture', status: 'APPROVED' as const, pricingPlan: 'PREMIUM' };
+    const schools = await state.db.insert(schema.institutions).values([
+      { ...institutionValues, name: 'Remove School', username: 'remove-school', contactEmail: 'remove@fixture.test', registrationNumber: 'REMOVE' },
+      { ...institutionValues, name: 'Keep School', username: 'keep-school', contactEmail: 'keep@fixture.test', registrationNumber: 'KEEP' },
+    ]).returning();
+    const [school, otherSchool] = schools;
+    const uiMocks = {
+      '@/components/AppsManagement': 'export const AppsManagement=()=>null;',
+      '@/db': 'export const db=globalThis.__platformDeletion.db;',
+      '@/lib/auth': 'export const getSession=async()=>globalThis.__platformDeletion.session;',
+      '@/app/actions/sa-actions': 'export const updateInstitutionStatusAction=async()=>{};export const wipeDatabaseForTestingAction=async()=>{};',
+      '@/app/actions/employee-actions': 'export const deleteInstitutionAction=async()=>{};',
+      '@/components/ui/action-form': 'import {createElement} from "react";export const ActionForm=({children})=>createElement("form",null,children);',
+      '@/components/ui/submit-button': 'import {createElement} from "react";export const SubmitButton=({children})=>createElement("button",null,children);',
+      'next/navigation': 'export const redirect=path=>{throw Error("REDIRECT:"+path)};export const unstable_rethrow=()=>{};',
+      'next/link': 'import {createElement} from "react";export default function Link({children,href}){return createElement("a",{href},children)}',
+    };
+    const testingPage = await isolatedModule<typeof import('../src/app/(superadmin)/sa/apps/page')>('src/app/(superadmin)/sa/apps/page.tsx', uiMocks);
+    const schoolPage = await isolatedModule<typeof import('../src/app/(superadmin)/sa/institutions/page')>('src/app/(superadmin)/sa/institutions/page.tsx', uiMocks);
+    state.session = root;
+    assert.match(renderToStaticMarkup(await testingPage.default({ searchParams: Promise.resolve({ testing: '1' }) })), /Testing Time only.*WIPE DATABASE/s);
+    state.session = regular;
+    await assert.rejects(testingPage.default({ searchParams: Promise.resolve({ testing: '1' }) }), /REDIRECT:\/sa\/apps/);
+    assert.match(renderToStaticMarkup(await schoolPage.default({ searchParams: Promise.resolve({}) })), /Remove permanently/);
+    const [campus] = await state.db.insert(schema.institutions).values({ ...institutionValues, name: 'Remove Campus', username: 'remove-campus', contactEmail: 'campus@fixture.test', registrationNumber: 'CAMPUS', parentInstitutionId: school.id, campusName: 'Branch' }).returning();
+    await state.db.insert(schema.employees).values({ name: 'Employee', email: 'employee@fixture.test', passwordHash: 'fixture' });
+    const [classRow] = await state.db.insert(schema.classes).values({ institutionId: campus.id, name: 'One' }).returning();
+    const [teacher] = await state.db.insert(schema.staff).values({ institutionId: campus.id, name: 'Teacher', email: 'teacher@fixture.test', passwordHash: 'fixture' }).returning();
+    const [section] = await state.db.insert(schema.sections).values({ institutionId: campus.id, classId: classRow.id, name: 'A', classTeacherId: teacher.id }).returning();
+    const [student] = await state.db.insert(schema.students).values({ institutionId: campus.id, name: 'Child', gender: 'MALE', loginRollNumber: 'fixture-child', passwordHash: 'fixture', classId: classRow.id, sectionId: section.id, yearOfJoining: 2026, admissionSequence: 1, classRollNumber: '1' }).returning();
+    const [subject] = await state.db.insert(schema.subjects).values({ institutionId: campus.id, name: 'Math' }).returning();
+    await state.db.insert(schema.courses).values({ institutionId: campus.id, staffId: teacher.id, subjectId: subject.id, title: 'Math', lectureCount: 1 });
+    await state.db.insert(schema.feeBillingBatches).values({ id: 'fixture-batch', institutionId: campus.id, label: 'Fixture', requestHash: 'fixture' });
+    const [invoice] = await state.db.insert(schema.feeInvoices).values({ institutionId: campus.id, studentId: student.id, billingMonth: '2026-11', subtotal: 100, totalAmount: 100, dueDate: '2026-11-30' }).returning();
+    await state.db.insert(schema.studentFeeAdjustments).values({ institutionId: campus.id, studentId: student.id, label: 'Adjustment', type: 'DISCOUNT', amount: 10, consumedInvoiceId: invoice.id });
+    await state.db.insert(schema.gatewayPaymentAttempts).values({ id: 'fixture-attempt', institutionId: campus.id, invoiceId: invoice.id, gateway: 'easypaisa', environment: 'sandbox', merchantId: 'fixture', amount: 100, credentialsEncrypted: 'fixture', returnUrl: 'https://fixture.test', institutionName: 'Fixture', payerName: 'Parent', description: 'Fixture', expiresAt: new Date('2099-01-01') });
+    const [cycle] = await state.db.insert(schema.admissionCycles).values({ institutionId: school.id, name: 'Fixture', academicYear: '2026' }).returning();
+    const [offering] = await state.db.insert(schema.admissionOfferings).values({ institutionId: school.id, cycleId: cycle.id, title: 'One' }).returning();
+    const [applicant] = await state.db.insert(schema.admissionApplicantAccounts).values({ institutionId: school.id, guardianEmail: 'parent@fixture.test', passwordHash: 'fixture' }).returning();
+    const [application] = await state.db.insert(schema.admissionApplications).values({ institutionId: campus.id, intakeInstitutionId: school.id, campusName: 'Branch', cycleId: cycle.id, offeringId: offering.id, applicantId: applicant.id, applicationNumber: 'FIXTURE-REMOVE', studentName: 'Child', dateOfBirth: '2015-01-01', gender: 'MALE', guardianName: 'Parent', guardianEmail: 'parent@fixture.test', guardianPhone: '03000000000', status: 'ENROLLED' }).returning();
+    await state.db.insert(schema.admissionEnrollments).values({ institutionId: campus.id, applicationId: application.id, studentId: student.id, enrolledBy: school.id });
+    const [parent] = await state.db.insert(schema.parentAccounts).values({ institutionId: campus.id, email: 'parent@fixture.test', passwordHash: 'fixture' }).returning();
+    await state.db.insert(schema.parentStudents).values({ institutionId: campus.id, parentId: parent.id, studentId: student.id, linkedById: school.id, linkedByRole: 'INSTITUTION' });
+    await state.db.insert(schema.qrLoginSessions).values({ id: 'fixture-qr', institutionId: campus.id, userRole: 'STUDENT', userId: student.id, deviceName: 'Fixture', expiresAt: new Date('2099-01-01') });
+    await state.db.insert(schema.emailOutbox).values({ institutionId: campus.id, recipient: 'parent@fixture.test', subject: 'Fixture', html: 'Fixture' });
+    await state.db.insert(schema.refreshTokens).values([
+      { userRole: 'STUDENT', userId: student.id, tokenHash: 'remove-student', qrSessionId: 'fixture-qr', expiresAt: new Date('2099-01-01') },
+      { userRole: 'SUPER_ADMIN', userId: 2, tokenHash: 'keep-admin-until-reset', expiresAt: new Date('2099-01-01') },
+    ]);
+    await state.db.insert(schema.accountLockouts).values({ userRole: 'STAFF', userId: teacher.id });
+    for (const actor of [{ ...root, role: 'EMPLOYEE' as const }, { ...root, role: 'INSTITUTION' as const }, { ...root, mustChangePassword: true }, { ...regular, isSuperAdmin: true }]) {
+      await assert.rejects(service.wipeDatabaseForTesting(actor, 'WIPE DATABASE'), /Forbidden/);
+    }
+    await assert.rejects(service.removeInstitution({ ...root, role: 'EMPLOYEE' }, school.id, 'REMOVE remove-school'), /Forbidden/);
+    await assert.rejects(service.removeInstitution(regular, school.id, 'WRONG'), /Type REMOVE/);
+    await assert.rejects(service.wipeDatabaseForTesting(root, 'WRONG'), /Type WIPE/);
+    await memory.exec('CREATE TABLE removal_guard(institution_id integer REFERENCES institutions(id))');
+    await memory.query('INSERT INTO removal_guard VALUES($1)', [school.id]);
+    await assert.rejects(service.removeInstitution(regular, school.id, 'REMOVE remove-school'));
+    assert.equal((await state.db.select().from(schema.courses)).length, 1, 'Failed deletion rolls back earlier child deletes');
+    await memory.exec('DROP TABLE removal_guard');
+    await service.removeInstitution(regular, school.id, 'REMOVE remove-school');
+    assert.deepEqual((await state.db.select().from(schema.institutions)).map(row => row.id), [otherSchool.id]);
+    for (const table of [schema.students, schema.staff, schema.classes, schema.sections, schema.subjects, schema.courses, schema.feeBillingBatches, schema.feeInvoices, schema.studentFeeAdjustments, schema.gatewayPaymentAttempts, schema.emailOutbox, schema.accountLockouts, schema.parentAccounts, schema.parentStudents, schema.admissionApplicantAccounts, schema.admissionApplications, schema.admissionEnrollments, schema.admissionCycles, schema.admissionOfferings, schema.qrLoginSessions]) {
+      assert.equal((await state.db.select().from(table)).length, 0, getTableConfig(table).name + ' removed');
+    }
+    assert.equal((await state.db.select().from(schema.refreshTokens)).length, 1, 'Another account session is preserved');
+    const [registeredAgain] = await state.db.insert(schema.institutions).values({ ...institutionValues, name: school.name, username: school.username, contactEmail: school.contactEmail, registrationNumber: school.registrationNumber }).returning();
+    assert.ok(registeredAgain.id > campus.id, 'Registration reuses email/username without reusing identity');
+    const adminBefore = (await state.db.select().from(schema.superAdmins)).find(row => row.id === root.userId);
+    const ledgerBefore = (await memory.query('SELECT * FROM nisaab360_supplemental_migrations ORDER BY name')).rows;
+    await memory.exec(`CREATE FUNCTION fixture_wipe_guard() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Fixture wipe failure'; END; $$;
+      CREATE TRIGGER fixture_wipe_guard BEFORE DELETE ON email_outbox FOR EACH STATEMENT EXECUTE FUNCTION fixture_wipe_guard();`);
+    await assert.rejects(service.wipeDatabaseForTesting(root, 'WIPE DATABASE'));
+    assert.equal((await state.db.select().from(schema.superAdmins)).length, 3, 'Failed wipe preserves every admin');
+    assert.equal((await state.db.select().from(schema.institutions)).length, 2, 'Failed wipe restores application records');
+    await memory.exec('DROP TRIGGER fixture_wipe_guard ON email_outbox; DROP FUNCTION fixture_wipe_guard();');
+    await memory.exec(`CREATE ROLE fixture_runtime NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE;
+      GRANT USAGE ON SCHEMA public TO fixture_runtime;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO fixture_runtime;
+      GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO fixture_runtime;
+      SET ROLE fixture_runtime;`);
+    await service.wipeDatabaseForTesting(root, 'WIPE DATABASE');
+    assert.deepEqual(await state.db.select().from(schema.superAdmins), [adminBefore]);
+    assert.deepEqual((await memory.query('SELECT * FROM nisaab360_supplemental_migrations ORDER BY name')).rows, ledgerBefore);
+    const tables = (await memory.query<{ tablename: string }>("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('super_admins','nisaab360_supplemental_migrations')")).rows;
+    for (const table of tables) assert.equal((await memory.query<{ count: number }>(`SELECT count(*)::int AS count FROM public."${table.tablename}"`)).rows[0].count, 0, table.tablename + ' wiped');
+    const next = (await memory.query<{ id: number }>("SELECT nextval('institutions_id_seq')::int AS id")).rows[0].id;
+    assert.ok(next > registeredAgain.id, 'Wipe preserves monotonic account IDs');
+    assert.equal(state.invalidations, 2);
+  } finally { delete globals.__platformDeletion; await memory.close(); }
+});
 
 test('Drive OAuth callback uses the configured public origin behind a proxy on success, denial and replay', async () => {
   const previousFetch = globalThis.fetch;

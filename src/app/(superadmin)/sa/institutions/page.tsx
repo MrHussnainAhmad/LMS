@@ -8,6 +8,9 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Building2, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { updateInstitutionStatusAction } from "@/app/actions/sa-actions";
+import { deleteInstitutionAction } from '@/app/actions/employee-actions';
+import { getSession } from '@/lib/auth';
+import { authorizeSecurityPermission } from '@/lib/security-permissions';
 import { redirect } from "next/navigation";
 import { SubmitButton } from "@/components/ui/submit-button";
 import Link from "next/link";
@@ -15,6 +18,8 @@ import Link from "next/link";
 const PAGE_SIZE = 50;
 
 export default async function SAInstitutionsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const session = await getSession();
+  if (!session || !await authorizeSecurityPermission(session, 'platform.accounts')) redirect('/login/super-admin');
   const resolvedSearchParams = await searchParams;
   const page = Math.max(parseInt(resolvedSearchParams.page || "1", 10) || 1, 1);
   const offset = (page - 1) * PAGE_SIZE;
@@ -51,6 +56,14 @@ export default async function SAInstitutionsPage({ searchParams }: { searchParam
     await updateInstitutionStatusAction(id, status);
     redirect("/sa/institutions");
 
+    });
+  }
+
+  async function remove(formData: FormData) {
+    'use server';
+    return actionFeedback(async () => {
+      await deleteInstitutionAction(Number(formData.get('id')), String(formData.get('confirmation') || ''));
+      redirect('/sa/institutions');
     });
   }
 
@@ -133,6 +146,19 @@ export default async function SAInstitutionsPage({ searchParams }: { searchParam
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
+                        {inst.status === 'APPROVED' && <details className="relative">
+                          <summary className="cursor-pointer rounded border border-red-200 px-3 py-1 text-xs font-medium text-red-700">Remove</summary>
+                          <div className="mt-2 w-72 space-y-3 rounded-md border bg-white p-4 shadow-lg">
+                            <p className="text-sm">Permanently remove {inst.name}, all its campuses and related records. Its username and email can then be reused.</p>
+                            <ActionForm action={remove} className="space-y-3">
+                              <input type="hidden" name="id" value={inst.id} />
+                              <label className="block text-sm">Type REMOVE {inst.username}
+                                <input name="confirmation" required autoComplete="off" className="mt-1 w-full rounded border p-2" />
+                              </label>
+                              <SubmitButton variant="danger" size="sm" loadingText="Removing...">Remove permanently</SubmitButton>
+                            </ActionForm>
+                          </div>
+                        </details>}
                         {inst.status !== 'APPROVED' && (
                           <ActionForm action={updateStatus}>
                             <input type="hidden" name="id" value={inst.id} />

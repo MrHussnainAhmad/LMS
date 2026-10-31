@@ -44,14 +44,12 @@ export function StudentShell({
   children,
   isGraduated,
   userId,
-  institutionId,
   initialBrand,
   coursesEnabled,
 }: {
   children: React.ReactNode;
   isGraduated: boolean;
   userId?: number;
-  institutionId?: number | null;
   initialBrand?: import("@/components/layout/BrandMark").ShellBrand;
   coursesEnabled: boolean;
 }) {
@@ -66,7 +64,6 @@ export function StudentShell({
       sidebarItems={sidebarItems}
       userRole={isGraduated ? "GRADUATED" : "STUDENT"}
       userId={userId}
-      institutionId={institutionId}
       initialBrand={initialBrand}
     >
       {children}

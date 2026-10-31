@@ -20,10 +20,9 @@ interface TopbarProps {
   onMenuClick: () => void;
   role: string;
   brand: ShellBrand;
-  onLogoutStart?: () => void;
 }
 
-export function Topbar({ onMenuClick, role, brand, onLogoutStart }: TopbarProps) {
+export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const pathParts = pathname.split("/").filter(Boolean);
@@ -39,8 +38,6 @@ export function Topbar({ onMenuClick, role, brand, onLogoutStart }: TopbarProps)
     else if (role === "EMPLOYEE") loginPath = "/employee-login";
     else if (role === "INSTITUTION" || role === "INSTITUTION_ADMIN") loginPath = "/institution-login";
     const redirectUrl = isLocal ? loginPath : `https://nisaab360.app${loginPath}`;
-
-    onLogoutStart?.();
 
     try {
       await api.post("/api/auth/logout", {});
