@@ -1,1 +1,0 @@
-CREATE INDEX "expo_push_tickets_status_created_at_idx" ON "expo_push_tickets" USING btree ("status","created_at");

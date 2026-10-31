@@ -1,6 +1,7 @@
 import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
 import { assertStudentPlanCapacity } from '@/lib/plan-entitlements';
+import { INITIAL_PORTAL_PASSWORD } from '@/lib/temporary-password';
 import { applicantCredentialResetAllowedSql } from "@/lib/admission-campus";
 import { after, NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
@@ -1059,29 +1060,13 @@ export const PATCH = requireRole(
         yearOfJoining: action.yearOfJoining,
         admissionSequence,
       });
-      const temporaryPassword = crypto.randomBytes(9).toString("base64url");
+      const temporaryPassword = INITIAL_PORTAL_PASSWORD;
       const passwordHash = await hashPassword(temporaryPassword);
       const enrollmentIp = getClientIp(req);
-      const [applicantAccount] = application.applicantId
-        ? await db
-            .select({
-              id: admissionApplicantAccounts.id,
-              passwordHash: admissionApplicantAccounts.passwordHash,
-            })
-            .from(admissionApplicantAccounts)
-            .where(and(eq(admissionApplicantAccounts.id, application.applicantId), eq(admissionApplicantAccounts.institutionId, application.intakeInstitutionId)))
-            .limit(1)
-        : [];
-
-      const parentActivation = applicantAccount?.passwordHash
-        ? {
-            temporaryPassword: "",
-            passwordHash: applicantAccount.passwordHash,
-          }
-        : await prepareParentActivation(
-            institutionId,
-            application.guardianEmail,
-          );
+      const parentActivation = await prepareParentActivation(
+        institutionId,
+        application.guardianEmail,
+      );
       let parentLink!: Awaited<ReturnType<typeof syncStudentGuardian>>;
       const birthDate = new Date(`${application.dateOfBirth}T00:00:00Z`);
       const now = new Date();
@@ -1213,16 +1198,13 @@ export const PATCH = requireRole(
         await enqueueEmail({
           institutionId,
           to: parentLink.guardianEmail,
-          subject: applicantAccount?.passwordHash
-            ? `Parent account active - ${application.institutionName}`
-            : `Parent account credentials - ${application.institutionName}`,
+          subject: `Parent account credentials - ${application.institutionName}`,
           html: ParentAccountActivationEmail({
             institutionName: application.institutionName,
             studentName: application.studentName,
             institutionUsername: application.institutionUsername,
             guardianEmail: parentLink.guardianEmail,
             temporaryPassword: parentLink.activation.temporaryPassword,
-            hasExistingPassword: Boolean(applicantAccount?.passwordHash),
           }),
           dedupeKey: `parent:${parentLink.parentId}:initial-activation`,
         });

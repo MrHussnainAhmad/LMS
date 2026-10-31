@@ -1,8 +1,9 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
 // Isolated script checks: in-memory PostgreSQL, no service, build output, or Docker.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
+
 import { build } from 'esbuild';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
@@ -97,7 +98,7 @@ async function main() {
       UPDATE students SET deleted_at=now() WHERE id=7;
       UPDATE students SET academic_status='GRADUATED' WHERE id=8;
     `);
-    const migration = readFileSync('drizzle/0088_attendance_delegation.sql', 'utf8');
+    const migration = readLegacyFile('0088_attendance_delegation.sql');
     await memory.exec(migration);
     await memory.exec(migration);
     check('additive attendance migration is repeatable and preserves existing tables');

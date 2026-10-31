@@ -1,3 +1,5 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
+import { readSchemaCatalog } from '../drizzle/schema-catalog.mjs';
 // Offline fixtures only. Never loads .env or contacts Drive/AWS.
 import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdtemp, rm, stat, access } from 'node:fs/promises';
@@ -55,8 +57,8 @@ async function verifySchema(query: Query) {
 }
 
 async function freshMigrations(memory: PGlite) {
-  const journal = JSON.parse(await readFile('drizzle/meta/_journal.json','utf8'));
-  for (const entry of journal.entries) await memory.exec(await readFile(`drizzle/${entry.tag}.sql`, 'utf8'));
+  const journal = JSON.parse(await readLegacyFile('meta/_journal.json'));
+  for (const entry of journal.entries) await memory.exec(await readLegacyFile(`${entry.tag}.sql`));
   const runner = await readFile('scripts/migrate-production.mjs','utf8');
   const list = runner.match(/const SUPPLEMENTAL_MIGRATIONS = (\[[\s\S]*?\]);/)![1].replace(/\/\/[^\n]*/g,'');
   const files = JSON.parse(list.replace(/,\s*\]/, ']')) as string[];
@@ -64,7 +66,7 @@ async function freshMigrations(memory: PGlite) {
   await memory.exec('CREATE TABLE nisaab360_supplemental_migrations(name text PRIMARY KEY,sha256 text NOT NULL,applied_at timestamptz NOT NULL DEFAULT now())');
   for (const file of files) {
     try {
-      const sql=await readFile(`drizzle/${file}`, 'utf8');
+      const sql=await readLegacyFile(`${file}`);
       if (/CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY/i.test(sql)) {
         for (const statement of sql.replace(/^\s*--.*$/gm,'').split(';').map(value=>value.trim()).filter(Boolean)) await memory.exec(statement);
       } else await memory.exec(sql);
@@ -73,6 +75,31 @@ async function freshMigrations(memory: PGlite) {
     catch (error) { throw new Error(`Fresh migration failed: ${file}`, { cause: error }); }
   }
 }
+
+test('consolidated migration baseline matches archived history', async () => {
+  const history = await PGlite.create({ extensions: { pg_trgm } });
+  let expectedCatalog;
+  let expectedPlans;
+  try {
+    await freshMigrations(history);
+    expectedCatalog = await readSchemaCatalog(history);
+    expectedPlans = (await history.query('SELECT id, name, monthly_fee_paisa, platforms FROM subscription_plans ORDER BY id')).rows;
+  } finally {
+    await history.close();
+  }
+  const fresh = await PGlite.create({ extensions: { pg_trgm } });
+  try {
+    const journal = JSON.parse(await readFile('drizzle/meta/_journal.json', 'utf8'));
+    assert.equal(journal.entries[0].tag, '0000_baseline');
+    await fresh.exec(await readFile('drizzle/0000_baseline.sql', 'utf8'));
+    assert.deepEqual(await readSchemaCatalog(fresh), expectedCatalog);
+    assert.deepEqual((await fresh.query('SELECT id, name, monthly_fee_paisa, platforms FROM subscription_plans ORDER BY id')).rows, expectedPlans);
+    assert.equal((await fresh.query<{ count: number }>('SELECT count(*)::int AS count FROM notification_rollout')).rows[0].count, 1);
+    assert.equal((await fresh.query<{ count: number }>('SELECT count(*)::int AS count FROM nisaab360_supplemental_migrations')).rows[0].count, 76);
+  } finally {
+    await fresh.close();
+  }
+});
 
 test('fresh actual migration chain matches backup/restore Drizzle definitions; audit all table columns', async () => {
   const memory = await PGlite.create({ extensions: { pg_trgm } });
@@ -94,7 +121,7 @@ test('fresh actual migration chain matches backup/restore Drizzle definitions; a
       (id,kind,name,student_count,student_limit,per_student_fee_paisa,monthly_fee_paisa)
       VALUES ('NO_DEVICE_LIMIT','DEAL','No device allowance',10,20,100,1000)`);
     await memory.exec("UPDATE subscription_plans SET device_limit=1 WHERE id='NO_DEVICE_LIMIT'");
-    const removeDeviceLimits = await readFile('drizzle/0085_remove_plan_device_limits.sql', 'utf8');
+    const removeDeviceLimits = await readLegacyFile('0085_remove_plan_device_limits.sql');
     await memory.exec(removeDeviceLimits);
     await memory.exec(removeDeviceLimits);
     const { rows: [legacyPlan] } = await memory.query<{ device_limit: number }>("SELECT device_limit FROM subscription_plans WHERE id='NO_DEVICE_LIMIT'");
@@ -102,7 +129,7 @@ test('fresh actual migration chain matches backup/restore Drizzle definitions; a
     await memory.exec("UPDATE subscription_plans SET device_limit=NULL WHERE id='NO_DEVICE_LIMIT'");
     await assert.rejects(() => memory.exec("UPDATE subscription_plans SET student_limit=NULL WHERE id='NO_DEVICE_LIMIT'"));
     await assert.rejects(() => memory.exec("UPDATE subscription_plans SET monthly_fee_paisa=999 WHERE id='NO_DEVICE_LIMIT'"));
-    await memory.exec(await readFile(`drizzle/${repairName}`, 'utf8'));
+    await memory.exec(await readLegacyFile(`${repairName}`));
     await verifySchema((sql, params) => memory.query(sql, params));
   } finally { await memory.close(); }
 });
@@ -111,10 +138,10 @@ test('legacy upgrade and manually patched production preserve history and long i
   for (const patched of [false, true]) {
     const memory = await PGlite.create();
     try {
-      await memory.exec(await readFile('drizzle/0060_central_database_backups.sql','utf8'));
+      await memory.exec(await readLegacyFile('0060_central_database_backups.sql'));
       await memory.exec(`INSERT INTO central_database_backups(run_id,file_name,error_message) VALUES('${'x'.repeat(200)}','${'y'.repeat(300)}','historical failure');`);
       if (patched) await memory.exec("ALTER TABLE central_database_backups ADD COLUMN b2_status varchar(16), ADD COLUMN error text; UPDATE central_database_backups SET error='newer error'");
-      const sql = await readFile(`drizzle/${repairName}`, 'utf8'); await memory.exec(sql); await memory.exec(sql);
+      const sql = await readLegacyFile(`${repairName}`); await memory.exec(sql); await memory.exec(sql);
       const { rows: [row] } = await memory.query<Record<string, unknown>>('SELECT * FROM central_database_backups');
       assert.equal(row.error, patched ? 'newer error' : 'historical failure'); assert.equal(row.error_message, 'historical failure');
       assert.equal(String(row.run_id).length,200); assert.equal(String(row.file_name).length,300); assert.equal(row.status,'UPLOADING');
@@ -369,7 +396,7 @@ test('central endpoint: auth, missing IDs, checksum, database failure, retry, id
     '@/lib/central-drive-backups':`export const centralDriveFolderId=()=> 'fixture-folder';export const reserveCentralDriveFileId=async()=> 'reserved-id';export const applyCentralDriveRetention=async()=>({kept:1,deleted:0,errors:0});export async function verifyCentralDriveFile(o){const r=globalThis.__backupFixture.remote.get(o.driveFileId);if(!r)throw Object.assign(Error('not found'),{status:404});return r.size===o.expectedSize&&r.hash===o.expectedSha256}export async function uploadCentralBackupFile(o){const s=globalThis.__backupFixture;s.uploads++;if(s.uploadFail)throw Error('SECRET provider message');const fs=await import('fs/promises');const crypto=await import('crypto');const data=await fs.readFile(s.encryptedPath);s.remote.set(o.driveFileId,{size:data.length,hash:crypto.createHash('sha256').update(data).digest('hex')});return {driveFileId:o.driveFileId,size:data.length};}`,
   };
   try {
-    await memory.exec(await readFile('drizzle/0060_central_database_backups.sql','utf8'));
+    await memory.exec(await readLegacyFile('0060_central_database_backups.sql'));
     await memory.exec("CREATE TABLE central_backup_settings(id integer PRIMARY KEY,database_password_encrypted text);INSERT INTO central_backup_settings VALUES(1,'fixture')");
     const {POST}=await isolatedModule<{POST:(r:NextRequest)=>Promise<Response>}>('src/app/api/cron/central-backup/route.ts',mocks);
     process.env.CRON_SECRET='isolated-backup-cron-secret';
@@ -380,9 +407,9 @@ test('central endpoint: auth, missing IDs, checksum, database failure, retry, id
     assert.equal((await call(body,false)).status,401);assert.equal((await call({...body,runId:undefined})).status,400);
     assert.equal((await call({...body,filePath:'/backups/../secret'})).status,400);
     assert.equal((await call()).status,500,'Legacy missing columns must produce a controlled database failure');
-    await memory.exec(await readFile(`drizzle/${repairName}`,'utf8'));
+    await memory.exec(await readLegacyFile(`${repairName}`));
     await memory.exec('CREATE TABLE super_admins(id integer PRIMARY KEY)');
-    await memory.exec(await readFile('drizzle/0087_database_backup_recovery.sql','utf8'));
+    await memory.exec(await readLegacyFile('0087_database_backup_recovery.sql'));
     assert.equal((await call({...body,sha256:'0'.repeat(64)})).status,400);
     state.dbFail=true;const dbFailure=await call();assert.equal(dbFailure.status,500);assert.ok(!(await dbFailure.text()).includes('SECRET'));state.dbFail=false;
     state.locked=true;assert.equal((await call()).status,409);state.locked=false;

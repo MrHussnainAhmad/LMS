@@ -234,7 +234,7 @@ export function StudentsClient({
       }
       toast({
         title: "Students Imported",
-        description: `${result.imported || 0} students imported. Unique credentials downloaded; share each password privately.`,
+        description: `${result.imported || 0} students imported. Login credentials downloaded. The temporary password is 1234567890; students must change it on first login.`,
         variant: "success",
       });
       setImportFile(null);

@@ -76,7 +76,7 @@ They do not constitute an external security certification.
 
 New files:
 
-- `drizzle/0078_qr_account_login.sql`
+- `drizzle/0000_baseline.sql` and the archived `0078_qr_account_login.sql` in `drizzle/legacy-history.json.gz`
 - `src/lib/qr-login.ts`
 - `src/lib/qr-login-http.ts`
 - `src/app/api/auth/qr-login/route.ts`

@@ -1,5 +1,6 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { build } from 'esbuild';
@@ -59,7 +60,7 @@ async function main() {
     }
     await memory.exec('CREATE UNIQUE INDEX public_event_fixture_slug ON public_events(institution_id,slug)');
     await memory.exec("INSERT INTO institution_public_profiles(institution_id,tagline,theme) VALUES(99,'Preserve this content','mosaic'); INSERT INTO public_events(institution_id,title,slug) VALUES(99,'Preserve event','original')");
-    const migration = await readFile('drizzle/0075_public_site_builder.sql', 'utf8');
+    const migration = await readLegacyFile('0075_public_site_builder.sql');
     await memory.exec(migration); await memory.exec(migration);
     assert.equal((await memory.query<{ tagline: string }>('SELECT tagline FROM institution_public_profiles WHERE institution_id=99')).rows[0].tagline, 'Preserve this content');
     assert.deepEqual((await memory.query<{ design: object }>('SELECT design FROM public_events WHERE institution_id=99')).rows[0].design, {});

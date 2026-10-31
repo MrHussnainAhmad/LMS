@@ -1,5 +1,6 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
 import assert from 'node:assert/strict';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -35,7 +36,7 @@ async function main(){
         return `"${column.name}" ${column.columnType==='PgEnumColumn'?'text':column.getSQLType()}${column.primary?' PRIMARY KEY':''}${column.notNull?' NOT NULL':''}${value}`;
       });await memory.exec(`CREATE TABLE "${config.name}" (${columns.join(',')})`);
     }
-    const migration=await readFile('drizzle/0074_explicit_fee_billing.sql','utf8');await memory.exec(migration);
+    const migration=await readLegacyFile('0074_explicit_fee_billing.sql');await memory.exec(migration);
     const values={name:'Fixture',type:'COLLEGE' as const,username:'school',country:'PK',city:'Test',address:'Test',contactEmail:'test@example.test',contactPhone:'0',registrationNumber:'0',pricingPlan:'BASIC' as const,logoKey:'fixture',proofDocumentKey:'fixture',adminPasswordHash:'fixture',status:'APPROVED' as const,publicSlug:'school'};
     const [root,foreign]=await db.insert(schema.institutions).values([values,{...values,username:'other',publicSlug:'other'}]).returning();
     const [schoolClass]=await db.insert(schema.classes).values({institutionId:root.id,name:'Class A'}).returning();

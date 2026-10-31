@@ -62,7 +62,7 @@ service, WebSocket, camera session or password-session polling is required.
 
 ## Source changes
 
-New: drizzle/0079_qr_login_sessions.sql; src/lib/qr-session.ts;
+Schema: drizzle/0000_baseline.sql (historical 0079_qr_login_sessions.sql is in drizzle/legacy-history.json.gz); src/lib/qr-session.ts;
 src/components/auth/QrLoginSessions.tsx; the sessions, sessions/[id], and session
 routes under src/app/api/auth/qr-login/. Extended: schema.ts, auth-types.ts,
 auth-edge.ts, auth.ts, qr-login.ts, existing redeem/refresh routes,

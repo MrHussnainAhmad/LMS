@@ -1,14 +1,8 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
 // Synthetic/offline tests only. No .env, SMTP, Drive, application server or production targets.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  mkdtemp,
-  writeFile,
-  readFile,
-  rm,
-  mkdir,
-  access,
-} from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm, mkdir, access,  } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
@@ -244,19 +238,19 @@ test("central backup setup, OTP, queue, encrypted password delivery, retries and
       "CREATE TABLE super_admins(id integer PRIMARY KEY,password_hash text,is_super_admin boolean);INSERT INTO super_admins VALUES(1,'synthetic-hash',true)",
     );
     await memory.exec(
-      await readFile("drizzle/0059_central_backup_settings.sql", "utf8"),
+      await readLegacyFile("0059_central_backup_settings.sql"),
     );
     await memory.exec(
-      await readFile("drizzle/0060_central_database_backups.sql", "utf8"),
+      await readLegacyFile("0060_central_database_backups.sql"),
     );
     await memory.exec(
-      await readFile("drizzle/0076_central_backup_reconciliation.sql", "utf8"),
+      await readLegacyFile("0076_central_backup_reconciliation.sql"),
     );
     await memory.exec(
-      await readFile("drizzle/0087_database_backup_recovery.sql", "utf8"),
+      await readLegacyFile("0087_database_backup_recovery.sql"),
     );
     await memory.exec(
-      await readFile("drizzle/0087_database_backup_recovery.sql", "utf8"),
+      await readLegacyFile("0087_database_backup_recovery.sql"),
     );
     const config = await load<
       typeof import("../src/lib/central-backup-config")

@@ -1,3 +1,4 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
 // Disposable PostgreSQL fixture. No .env, production database, app build or network.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -65,12 +66,12 @@ async function main() {
         window_started_at timestamp DEFAULT now(),updated_at timestamp DEFAULT now());
       INSERT INTO institutions(id,username,public_slug,parent_institution_id)VALUES(1,'ncs','ncs',NULL),(2,'other','other',NULL),(3,'campus','campus',1);
     `);
-    const migration = readFileSync('drizzle/0081_institution_mobile_apps.sql', 'utf8');
+    const migration = readLegacyFile('0081_institution_mobile_apps.sql');
     await memory.exec(migration); await memory.exec(migration);
     await memory.exec("ALTER TABLE institutions ADD COLUMN pricing_plan varchar(20) NOT NULL DEFAULT 'BASIC'");
-    await memory.exec(readFileSync('drizzle/0082_institution_agreement_acceptance.sql', 'utf8'));
-    await memory.exec(readFileSync('drizzle/0083_admin_managed_plans.sql', 'utf8'));
-    await memory.exec(readFileSync('drizzle/0086_security_sessions.sql', 'utf8'));
+    await memory.exec(readLegacyFile('0082_institution_agreement_acceptance.sql'));
+    await memory.exec(readLegacyFile('0083_admin_managed_plans.sql'));
+    await memory.exec(readLegacyFile('0086_security_sessions.sql'));
     assert.ok((await memory.query<{ apps_enabled: boolean }>('SELECT apps_enabled FROM institutions')).rows.every(row => row.apps_enabled));
     assert.match(readFileSync('scripts/migrate-production.mjs', 'utf8'), /0081_institution_mobile_apps\.sql/);
     pass('forward migration is idempotent and preserves existing institutions with Apps enabled');

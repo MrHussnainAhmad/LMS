@@ -1,7 +1,8 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { build } from 'esbuild';
@@ -88,15 +89,15 @@ try {
     await memory.exec(`CREATE TABLE "${config.name}" (${columns.join(',')});`);
   }
   await memory.exec('CREATE UNIQUE INDEX fee_head_fixture_name_unique ON fee_heads(institution_id,name)');
-  await memory.exec(await readFile('drizzle/0082_institution_agreement_acceptance.sql', 'utf8'));
-  await memory.exec(await readFile('drizzle/0083_admin_managed_plans.sql', 'utf8'));
+  await memory.exec(await readLegacyFile('0082_institution_agreement_acceptance.sql'));
+  await memory.exec(await readLegacyFile('0083_admin_managed_plans.sql'));
   const rootPassword = await hash('fixture-main-password');
   const rootValues = { name: 'National College', type: 'COLLEGE' as const, username: 'national', country: 'Pakistan', city: 'Lahore', address: 'Main address', contactEmail: 'main@example.test', contactPhone: '03001234567', registrationNumber: 'NCS01', pricingPlan: 'PREMIUM' as const, logoKey: 'fixture-logo', proofDocumentKey: 'fixture-proof', adminPasswordHash: rootPassword, status: 'APPROVED' as const };
   // Pre-migration insert must not reference the newly introduced columns.
   await memory.query(`INSERT INTO institutions(name,type,username,country,city,address,contact_email,contact_phone,registration_number,pricing_plan,logo_key,proof_document_key,admin_password_hash,status)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, Object.values(rootValues));
   await testDb.insert(schema.campuses).values([{ institutionId: 1, name: 'Main', address: 'Main address' }, { institutionId: 1, name: 'Green', address: 'Green address' }]);
-  const migration = await readFile('drizzle/0066_campus_workspaces.sql', 'utf8');
+  const migration = await readLegacyFile('0066_campus_workspaces.sql');
   await memory.exec(migration);
   await memory.exec(migration);
   const originalCampuses = await testDb.select().from(schema.campuses);

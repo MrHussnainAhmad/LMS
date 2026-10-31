@@ -1,6 +1,7 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
-import { readFile } from 'node:fs/promises';
+
 import { createRequire } from 'node:module';
 import { PGlite } from '@electric-sql/pglite';
 import { getTableConfig, PgDialect, type PgTable } from 'drizzle-orm/pg-core';
@@ -84,8 +85,8 @@ before(async () => {
     for (const unique of config.uniqueConstraints) columns.push(`UNIQUE(${unique.columns.map(column => `"${column.name}"`).join(',')})`);
     await memory.exec(`CREATE TABLE "${name}" (${columns.join(',')})`);
   }
-  await memory.exec(await readFile(new URL('../drizzle/0061_institution_restore_requests.sql', import.meta.url), 'utf8'));
-  const permissionsMigration = await readFile(new URL('../drizzle/0062_employee_backup_permissions.sql', import.meta.url), 'utf8');
+  await memory.exec(await readLegacyFile('0061_institution_restore_requests.sql'));
+  const permissionsMigration = await readLegacyFile('0062_employee_backup_permissions.sql');
   await memory.exec(permissionsMigration);
   await memory.exec(permissionsMigration); // Cached local migrators can replay this migration.
   await memory.exec(`INSERT INTO assignments(id,institution_id,staff_id,class_id,section_id,title,due_at) VALUES(1,1,1,1,1,'Old assignment','2026-10-01'),(2,2,2,2,2,'Other assignment','2026-10-01');

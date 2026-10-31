@@ -1,5 +1,5 @@
 import { readBoundedFormData } from '@/lib/http';
-import { temporaryPassword } from '@/lib/temporary-password';
+import { INITIAL_PORTAL_PASSWORD } from '@/lib/temporary-password';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { assertStudentPlanCapacity } from '@/lib/plan-entitlements';
 import { parseStudentCsv, studentImportRollErrors, type ImportRoll } from "@/lib/student-import-csv";
@@ -196,7 +196,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
     const previewErrors = await findConflicts(db);
     if (previewErrors.length) return NextResponse.json({ error: "Fix the conflicting student rows and try again.", errors: previewErrors }, { status: 409 });
     for (const row of preparedRows) {
-      const password = temporaryPassword();
+      const password = INITIAL_PORTAL_PASSWORD;
       credentials.set(row, password);
       row.passwordHash = await hash(password);
     }

@@ -3,6 +3,7 @@
 import { ActionInputError } from "@/lib/action-input-error";
 import { z } from 'zod';
 import { createStaffSchema } from '@/lib/validators/staff';
+import { INITIAL_PORTAL_PASSWORD } from '@/lib/temporary-password';
 
 import { db } from "@/db";
 import { campuses, staff, classes, sections, subjects, announcements, notifications, institutions, institutionCustomRoles } from "@/db/schema";
@@ -69,13 +70,12 @@ export async function createStaffAction(formData: FormData) {
   const institutionId = session.institutionId || session.userId;
   const name = formData.get("name") as string;
   const phone = ((formData.get("phone") as string) || "").trim();
-  const password = formData.get("password") as string;
   const campusIdRaw = formData.get("campusId") as string;
   const campusId = session.campusId ?? (campusIdRaw ? parseInt(campusIdRaw, 10) : null);
   if (campusIdRaw && Number(campusIdRaw) !== campusId) throw new ActionInputError('Select your own campus.');
   const customRoleId = Number(formData.get("customRoleId"));
 
-  createStaffSchema.extend({ password: z.string().min(8).max(1024).refine(value => value !== "1234567890", "Use a unique password") }).parse({ name, phone, campusId: campusId ?? undefined, customRoleId, password });
+  createStaffSchema.parse({ name, phone, campusId: campusId ?? undefined, customRoleId });
 
   if (phone.replace(/\D/g, "").length < 4) {
     throw new ActionInputError("Phone number must include at least 4 digits");
@@ -104,7 +104,7 @@ export async function createStaffAction(formData: FormData) {
     email = `${localPart}${count}@${domain}`;
   }
 
-  const passwordHash = await hash(password);
+  const passwordHash = await hash(INITIAL_PORTAL_PASSWORD);
 
   await db.insert(staff).values({
     institutionId,

@@ -1,1 +1,0 @@
-ALTER TABLE "institutions" ADD COLUMN "signature_key" varchar(255);

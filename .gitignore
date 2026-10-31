@@ -200,6 +200,11 @@ instituion_settings.png
 /DEPLOY.md
 
 # Unwanted AI/Local files
+/context*.md
+/CONTEXT*.md
+/handoff*.md
+/HANDOFF*.md
+/cleanup-deleted-files.json
 CLAUDE.md
 guide.md
 reset-job.js
@@ -207,6 +212,9 @@ tt template.jpeg
 scripts/reset-parent-password.ts
 
 # Local archives, database dumps, and generated worker bundles
+*.gz
+# Required immutable migration source archive; contains SQL/schema metadata only.
+!/drizzle/legacy-history.json.gz
 *.zip
 *.tar
 *.tar.gz

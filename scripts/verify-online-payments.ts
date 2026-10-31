@@ -1,3 +1,4 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
 // Isolated PostgreSQL fixtures and mocked provider transport; never loads .env.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -43,17 +44,17 @@ test('online payments: migration, configuration, access, provider verification a
     process.env.JAZZCASH_SANDBOX_CHECKOUT_URL='https://sandbox.jazzcash.com.pk/CustomerPortal/transactionmanagement/merchantform/';
     process.env.EASYPAISA_SANDBOX_INITIATE_URL='https://easypaystg.easypaisa.com.pk/easypay-service/rest/v4/initiate-ma-transaction';
     process.env.EASYPAISA_SANDBOX_INQUIRY_URL='https://easypaystg.easypaisa.com.pk/easypay-service/rest/v4/inquire-transaction';
-    const journal=JSON.parse(await readFile('drizzle/meta/_journal.json','utf8'));
-    for(const entry of journal.entries)await memory.exec(await readFile(`drizzle/${entry.tag}.sql`,'utf8'));
+    const journal=JSON.parse(await readLegacyFile('meta/_journal.json'));
+    for(const entry of journal.entries)await memory.exec(await readLegacyFile(`${entry.tag}.sql`));
     await memory.exec('CREATE TABLE nisaab360_supplemental_migrations(name text PRIMARY KEY,sha256 text NOT NULL)');
     const runner=await readFile('scripts/migrate-production.mjs','utf8');
     const names=JSON.parse(runner.match(/const SUPPLEMENTAL_MIGRATIONS = (\[[\s\S]*?\]);/)![1].replace(/\/\/[^\n]*/g,'').replace(/,\s*\]/,']')) as string[];
-    for(const name of names){const sql=await readFile(`drizzle/${name}`,'utf8');
+    for(const name of names){const sql=await readLegacyFile(`${name}`);
       if(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY/i.test(sql))for(const statement of sql.replace(/^\s*--.*$/gm,'').split(';').map(v=>v.trim()).filter(Boolean))await memory.exec(statement);
       else await memory.exec(sql);
       await memory.query('INSERT INTO nisaab360_supplemental_migrations VALUES($1,$2)',[name,'fixture']);
     }
-    await memory.exec(await readFile('drizzle/0077_online_payment_modes.sql','utf8'));
+    await memory.exec(await readLegacyFile('0077_online_payment_modes.sql'));
     const institution={name:'Fixture school',type:'COLLEGE' as const,username:'school',country:'PK',city:'Test',address:'Test',contactEmail:'fixture@example.test',contactPhone:'0',registrationNumber:'0',pricingPlan:'BASIC' as const,logoKey:'fixture',proofDocumentKey:'fixture',adminPasswordHash:'fixture',status:'APPROVED' as const,publicSlug:'school'};
     const [root,other]=await db.insert(schema.institutions).values([institution,{...institution,name:'Other school',username:'other',publicSlug:'other'}]).returning();
     state.session.institutionId=root.id;state.session.userId=root.id;

@@ -1,5 +1,6 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { build } from 'esbuild';
@@ -66,8 +67,8 @@ async function main() {
       });
       await memory.exec(`CREATE TABLE "${config.name}" (${columns.join(',')});`);
     }
-    await memory.exec(await readFile('drizzle/0082_institution_agreement_acceptance.sql', 'utf8'));
-    await memory.exec(await readFile('drizzle/0083_admin_managed_plans.sql', 'utf8'));
+    await memory.exec(await readLegacyFile('0082_institution_agreement_acceptance.sql'));
+    await memory.exec(await readLegacyFile('0083_admin_managed_plans.sql'));
     await memory.exec(`CREATE UNIQUE INDEX applicant_tenant ON admission_applicant_accounts(id,institution_id);
       CREATE UNIQUE INDEX applicant_email ON admission_applicant_accounts(institution_id,lower(guardian_email));
       CREATE UNIQUE INDEX offering_tenant ON admission_offerings(id,institution_id,cycle_id);
@@ -90,7 +91,7 @@ async function main() {
     await memory.exec("SELECT setval(pg_get_serial_sequence('admission_applicant_accounts','id'),1);");
     await memory.exec(`INSERT INTO admission_applications(institution_id,cycle_id,offering_id,applicant_id,application_number,student_name,date_of_birth,gender,guardian_name,guardian_email,guardian_phone)
       VALUES(1,1,1,1,'LEGACY','Legacy Student','2010-01-01','MALE','Parent','legacy@example.test','03000000000');`);
-    const migration = await readFile('drizzle/0067_admission_campus_intake.sql', 'utf8');
+    const migration = await readLegacyFile('0067_admission_campus_intake.sql');
     await memory.exec(migration);
     const legacy = (await testDb.select().from(schema.admissionApplications))[0];
     assert.equal(legacy.intakeInstitutionId, 1); assert.equal(legacy.campusId, 1); assert.equal(legacy.campusName, 'Main');
@@ -99,7 +100,7 @@ async function main() {
     console.log('PASS: additive migration preserves legacy applications and replays safely');
 
     await memory.exec('CREATE TABLE nisaab360_supplemental_migrations (name text PRIMARY KEY, sha256 text NOT NULL);');
-    const availabilityMigration = await readFile('drizzle/0068_admission_campus_availability.sql', 'utf8');
+    const availabilityMigration = await readLegacyFile('0068_admission_campus_availability.sql');
     await memory.exec(availabilityMigration);
     assert.deepEqual((await testDb.select().from(schema.admissionCycleCampuses)).map(row => [row.campusId, row.isOpen]), [[1, true]]);
     await memory.exec("INSERT INTO nisaab360_supplemental_migrations VALUES ('0068_admission_campus_availability.sql','fixture');");
@@ -262,9 +263,9 @@ async function main() {
     assert.match(mainPage, /Admissions setup/); assert.match(mainPage, /section=setup/);
     assert.equal((await config.GET(request('http://localhost/api/institution/admissions', 'GET'))).status, 200);
     assert.equal((await config.POST(request('http://localhost/api/institution/admissions', 'POST', { action: 'setCycleStatus', cycleId: 1, status: 'CLOSED' }))).status, 200);
-    const archiveMigration = await readFile('drizzle/0072_admission_cycle_archive.sql', 'utf8');
+    const archiveMigration = await readLegacyFile('0072_admission_cycle_archive.sql');
     await memory.exec(archiveMigration);
-    const frozenMigration = await readFile('drizzle/0073_fee_snapshots_and_archive_write_guards.sql', 'utf8');
+    const frozenMigration = await readLegacyFile('0073_fee_snapshots_and_archive_write_guards.sql');
     await memory.exec(frozenMigration);
     const historyTables = [schema.admissionApplicantAccounts, schema.admissionApplications, schema.admissionDocumentRequests, schema.admissionAppointments, schema.admissionApplicationEvents, schema.admissionFeePayments, schema.admissionFeeProofs, schema.admissionEnrollments, schema.students];
     const snapshot = () => Promise.all(historyTables.map(table => testDb.select().from(table)));

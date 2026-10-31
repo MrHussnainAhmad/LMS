@@ -89,7 +89,8 @@ existing app access takes effect on its next server request, not while offline.
 
 ## Schema and release
 
-Forward-only, repeatable migration `drizzle/0081_institution_mobile_apps.sql`:
+These changes are included in the consolidated baseline and archived migration
+`0081_institution_mobile_apps.sql` (see [database migrations](../drizzle/README.md)):
 
 - `institutions.apps_enabled boolean NOT NULL DEFAULT true`
 - `refresh_tokens.client_type varchar(8) NOT NULL DEFAULT 'WEB'`

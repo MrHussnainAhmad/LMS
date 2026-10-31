@@ -8,8 +8,8 @@ import {
 import type { UserRole } from "@/lib/auth-types";
 import { and, count, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import crypto from "crypto";
 import { hashPassword } from "@/lib/argon2-pool";
+import { INITIAL_PORTAL_PASSWORD } from "@/lib/temporary-password";
 
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -50,7 +50,7 @@ export async function prepareParentActivation(
     .limit(1);
   if (existing?.passwordHash) return null;
 
-  const temporaryPassword = crypto.randomBytes(9).toString("base64url");
+  const temporaryPassword = INITIAL_PORTAL_PASSWORD;
   return {
     temporaryPassword,
     passwordHash: await hashPassword(temporaryPassword),
@@ -172,6 +172,7 @@ export async function syncStudentGuardian(
       email: normalizedEmail,
       phone: params.guardianPhone?.trim() || null,
       passwordHash: params.activation?.passwordHash || null,
+      mustChangePassword: true,
     })
     .onConflictDoNothing({
       target: [parentAccounts.institutionId, parentAccounts.email],

@@ -1,5 +1,5 @@
 import { readBoundedJson } from '@/lib/http';
-import { temporaryPassword } from '@/lib/temporary-password';
+import { INITIAL_PORTAL_PASSWORD } from '@/lib/temporary-password';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { after, NextRequest, NextResponse } from 'next/server';
@@ -113,7 +113,7 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
     const [admissionSequence] = await allocateAdmissionSequences(tenantId, yearOfJoining);
     const loginRollNumber = generateStudentLoginRollNumber({ institution: loginInstitution, yearOfJoining, admissionSequence });
 
-    const initialPassword = temporaryPassword();
+    const initialPassword = INITIAL_PORTAL_PASSWORD;
     const passwordHash = await hash(initialPassword);
     const name = `${firstName} ${lastName}`.trim();
     

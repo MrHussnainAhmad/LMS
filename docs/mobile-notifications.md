@@ -203,7 +203,7 @@ limitation in mind before rolling back deployed mobile clients.
 ## Source map
 
 - Backend schema/migration: `src/db/schema.ts`,
-  `drizzle/0080_mobile_notifications.sql`, `scripts/migrate-production.mjs`.
+  `drizzle/0000_baseline.sql` (includes the archived `0080_mobile_notifications.sql` changes), `scripts/migrate-production.mjs`.
 - Delivery/events/reminders: `src/lib/notification-delivery.ts`,
   `src/lib/notification-events.ts`, `src/lib/notification-reminders.ts`,
   `src/lib/notifications.ts`, `scripts/push-receipt-worker.ts`.

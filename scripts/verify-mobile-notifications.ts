@@ -1,3 +1,4 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -56,7 +57,7 @@ async function main(){
  INSERT INTO staff(id,institution_id,name)VALUES(10,1,'Teacher'),(20,2,'Other Teacher');
  INSERT INTO parent_accounts(id,institution_id)VALUES(100,1),(200,2);
  INSERT INTO parent_students(institution_id,parent_id,student_id)VALUES(1,100,1),(1,100,3),(2,200,2);`);
- const migration=readFileSync('drizzle/0080_mobile_notifications.sql','utf8');await memory.exec(migration);await memory.exec(migration);await memory.exec(readFileSync('drizzle/0081_institution_mobile_apps.sql','utf8'));
+ const migration=readLegacyFile('0080_mobile_notifications.sql');await memory.exec(migration);await memory.exec(migration);await memory.exec(readLegacyFile('0081_institution_mobile_apps.sql'));
  for(const [role,id,token]of [['STUDENT',1,tokenA],['STUDENT',1,tokenB],['PARENT',100,tokenP],['STUDENT',2,tokenOther]] as const)await query("INSERT INTO refresh_tokens(user_role,user_id,token_hash,expires_at)VALUES($1,$2,$3,now()+interval '30 days')",[role,id,hash(token)]);
  pass('forward migration creates devices, parent preferences, metadata, deduplication and reminder indexes and is idempotent');
  const delivery=await load<typeof import('../src/lib/notification-delivery')>('src/lib/notification-delivery.ts');

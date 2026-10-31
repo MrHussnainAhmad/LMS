@@ -1,7 +1,9 @@
 # Release and tenant-host setup
 
-The attendance substitute update requires supplemental migration
-`0088_attendance_delegation.sql` before the new app replicas start. It adds dated
+The migration runner must complete before the new app replicas start. Fresh
+databases use the consolidated baseline; existing databases use the archived
+upgrade history as needed (see [database migrations](../drizzle/README.md)).
+The attendance substitute schema adds dated
 substitute assignments and nullable marking-account fields without resetting
 existing attendance or accounts. Deploy matching multipart upload clients with
 this release: `/api/upload/signature` now returns an update-required response.

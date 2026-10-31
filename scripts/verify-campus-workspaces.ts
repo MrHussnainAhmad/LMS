@@ -1,6 +1,7 @@
+import { readLegacyFile } from '../drizzle/legacy-history.mjs';
 import assert from 'node:assert/strict';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { build } from 'esbuild';
@@ -81,7 +82,7 @@ try {
   await memory.query(`INSERT INTO institutions(name,type,username,country,city,address,contact_email,contact_phone,registration_number,pricing_plan,logo_key,proof_document_key,admin_password_hash,status)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, Object.values(rootValues));
   await testDb.insert(schema.campuses).values([{ institutionId: 1, name: 'Main', address: 'Main address' }, { institutionId: 1, name: 'Green', address: 'Green address' }]);
-  const migration = await readFile('drizzle/0066_campus_workspaces.sql', 'utf8');
+  const migration = await readLegacyFile('0066_campus_workspaces.sql');
   await memory.exec(migration);
   await memory.exec(migration);
   const originalCampuses = await testDb.select().from(schema.campuses);
@@ -365,7 +366,7 @@ try {
   // Simulate an old generated name and a global collision, then replay the migration.
   await testDb.update(schema.institutions).set({username:'campus2f73b6518'}).where(eq(schema.institutions.id,greenRow.id));
   await testDb.update(schema.institutions).set({username:'green'}).where(eq(schema.institutions.id,1));
-  const identityMigration = await readFile('drizzle/0069_campus_identity.sql','utf8');
+  const identityMigration = await readLegacyFile('0069_campus_identity.sql');
   await memory.exec('BEGIN;'+identityMigration+'COMMIT;');
   const afterMigration = (await testDb.select().from(schema.institutions).where(eq(schema.institutions.id,greenRow.id)))[0];
   assert.equal(afterMigration.username,'green-1');

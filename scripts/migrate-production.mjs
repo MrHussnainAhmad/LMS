@@ -4,8 +4,11 @@ import { resolve } from "node:path";
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { readLegacyFile } from "../drizzle/legacy-history.mjs";
+import { assertBaselineSchema } from "../drizzle/schema-catalog.mjs";
 
 const SUPPLEMENTAL_MIGRATIONS = [
+  // Frozen pre-baseline upgrade history. Add future changes to the active journal.
   // Functional lower-case login indexes were maintained manually and are not
   // represented by the generated Drizzle journal.
   "0006_login_lookup_indexes.sql",
@@ -129,7 +132,7 @@ async function baselineLegacyDrizzleSchema(client) {
   // generated schema but no migration ledger. Verify the complete final snapshot
   // before recording a baseline; a partial or unexpected schema is refused.
   const snapshot = JSON.parse(
-    await readFile(resolve("drizzle", "meta", "0015_snapshot.json"), "utf8"),
+    readLegacyFile("meta/0015_snapshot.json"),
   );
   const columnsResult = await client.query(
     "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'",
@@ -195,10 +198,10 @@ async function baselineLegacyDrizzleSchema(client) {
   }
 
   const journal = JSON.parse(
-    await readFile(resolve("drizzle", "meta", "_journal.json"), "utf8"),
+    readLegacyFile("meta/_journal.json"),
   );
   for (const entry of journal.entries) {
-    const sql = await readFile(resolve("drizzle", `${entry.tag}.sql`), "utf8");
+    const sql = readLegacyFile(`${entry.tag}.sql`);
     const hash = createHash("sha256").update(sql).digest("hex");
     await client.query(
       "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
@@ -210,12 +213,35 @@ async function baselineLegacyDrizzleSchema(client) {
   );
 }
 
-try {
-  await lockClient.query(
-    "SELECT pg_advisory_lock(hashtext('nisaab360-production-migrations'))",
-  );
+async function applyLegacyGeneratedMigrations(client) {
+  const journal = JSON.parse(readLegacyFile("meta/_journal.json"));
+  const { rows } = await client.query("SELECT hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at");
+  for (const row of rows) {
+    const entry = journal.entries.find(entry => entry.when === Number(row.created_at));
+    if (!entry) throw new Error(`Unknown legacy migration timestamp: ${row.created_at}`);
+    readLegacyFile(`${entry.tag}.sql`, row.hash);
+  }
+  const lastWhen = rows.length ? Number(rows.at(-1).created_at) : -1;
+  await client.query("BEGIN");
+  try {
+    for (const entry of journal.entries) {
+      if (entry.when <= lastWhen) continue;
+      const sql = readLegacyFile(`${entry.tag}.sql`);
+      for (const statement of sql.split("--> statement-breakpoint")) {
+        if (statement.trim()) await client.query(statement);
+      }
+      await client.query("INSERT INTO drizzle.__drizzle_migrations(hash, created_at) VALUES ($1, $2)", [createHash("sha256").update(sql).digest("hex"), entry.when]);
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}
+
+async function applyLegacyHistory() {
   await baselineLegacyDrizzleSchema(lockClient);
-  await migrate(drizzle(pool), { migrationsFolder: resolve("drizzle") });
+  await applyLegacyGeneratedMigrations(lockClient);
   await lockClient.query(`CREATE TABLE IF NOT EXISTS nisaab360_supplemental_migrations (
     name text PRIMARY KEY,
     sha256 text NOT NULL,
@@ -223,15 +249,14 @@ try {
   )`);
 
   for (const name of SUPPLEMENTAL_MIGRATIONS) {
-    const sql = await readFile(resolve("drizzle", name), "utf8");
+    const sql = readLegacyFile(name);
     const sha256 = createHash("sha256").update(sql).digest("hex");
     const prior = await lockClient.query(
       "SELECT sha256 FROM nisaab360_supplemental_migrations WHERE name = $1",
       [name],
     );
     if (prior.rows[0]) {
-      if (prior.rows[0].sha256 !== sha256)
-        throw new Error(`Applied migration was modified: ${name}`);
+      readLegacyFile(name, prior.rows[0].sha256);
       continue;
     }
 
@@ -264,6 +289,44 @@ try {
     }
     process.stdout.write(`Applied ${name}\n`);
   }
+}
+
+try {
+  await lockClient.query("SELECT pg_advisory_lock(hashtext('nisaab360-production-migrations'))");
+  const journal = JSON.parse(await readFile(resolve("drizzle/meta/_journal.json"), "utf8"));
+  const baseline = journal.entries[0];
+  if (baseline?.tag !== "0000_baseline") throw new Error("The consolidated baseline must remain the first migration");
+  const baselineSql = await readFile(resolve("drizzle/0000_baseline.sql"), "utf8");
+  const baselineHash = createHash("sha256").update(baselineSql).digest("hex");
+  const [{ ledger }] = (await lockClient.query("SELECT to_regclass('drizzle.__drizzle_migrations') AS ledger")).rows;
+  const checkpoint = ledger
+    ? (await lockClient.query("SELECT hash FROM drizzle.__drizzle_migrations WHERE created_at=$1", [baseline.when])).rows[0]
+    : null;
+  if (checkpoint) {
+    const lf = baselineSql.replace(/\r\n/g, "\n");
+    if (![baselineSql, lf, lf.replace(/\n/g, "\r\n")].some(sql => createHash("sha256").update(sql).digest("hex") === checkpoint.hash)) {
+      throw new Error("Applied baseline was modified: 0000_baseline.sql");
+    }
+  } else {
+    const hasLegacyRecords = ledger && (await lockClient.query("SELECT 1 FROM drizzle.__drizzle_migrations LIMIT 1")).rowCount > 0;
+    const [{ populated }] = (await lockClient.query(`SELECT
+      EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='public' AND c.relkind IN ('r','p','S','v','m','f')
+          AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e'))
+      OR EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname='public' AND t.typtype='e')
+      OR $1::boolean AS populated
+    `, [Boolean(hasLegacyRecords)])).rows;
+    if (populated) {
+      await applyLegacyHistory();
+      const catalog = JSON.parse(await readFile(resolve("drizzle/baseline-catalog.json"), "utf8"));
+      await assertBaselineSchema(lockClient, catalog);
+      await lockClient.query("INSERT INTO drizzle.__drizzle_migrations(hash, created_at) VALUES ($1, $2)", [baselineHash, baseline.when]);
+      process.stdout.write("Verified existing schema and adopted the consolidated baseline without replaying it.\n");
+    } else {
+      process.stdout.write("Empty database: installing the consolidated baseline.\n");
+    }
+  }
+  await migrate(drizzle(pool), { migrationsFolder: resolve("drizzle") });
   process.stdout.write("Database migrations are current.\n");
 } finally {
   try {

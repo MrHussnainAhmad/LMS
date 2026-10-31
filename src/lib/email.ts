@@ -224,7 +224,7 @@ export const ParentAccountActivationEmail = ({
     EmailBodyText(content) +
     (hasExistingPassword
       ? EmailBodyText(`<strong>Portal Login ID:</strong> ${escapeEmailHtml(guardianEmail)}<br><strong>Password:</strong> (Use your admissions portal password)`)
-      : EmailCredentialStub({ loginId: guardianEmail, temporaryPassword: temporaryPassword || '' })) +
+      : EmailCredentialStub({ loginId: guardianEmail, temporaryPassword: temporaryPassword || '', footerNote: 'You must change this temporary password on first login.' })) +
     EmailSecurityNote(`If you do not recognize this institution or student link, contact the institution directly.`);
 
   return BaseEmailTemplate({
