@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -116,6 +117,7 @@ export function RegistrationForm({ selectedPlan, plans: pricingPlans }: { select
           icon={CheckCircle2}
           title="Registration Submitted" 
           description="Your application is now pending verification. We will email you once it's approved."
+          action={<Button asChild><Link href="/">Back to home</Link></Button>}
         />
       </Card>
     );

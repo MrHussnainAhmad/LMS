@@ -134,6 +134,10 @@ export default async function SAInstitutionDetailPage({ params }: { params: Prom
                 <p className="text-sm text-stone-500">Type</p>
                 <p className="font-medium text-stone-900">{institution.type}</p>
               </div>
+              <div className="min-w-0 sm:col-span-2">
+                <p className="text-sm text-stone-500">Institution login email</p>
+                <p className="break-all font-medium text-stone-900">{institution.contactEmail}</p>
+              </div>
               <div>
                 <p className="text-sm text-stone-500">Selected Plan</p>
                 <p className="font-medium text-stone-900">

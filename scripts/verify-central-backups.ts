@@ -339,6 +339,11 @@ test('platform removal and testing wipe preserve authorization, tenant isolation
     const schoolHtml = renderToStaticMarkup(await schoolPage.default({ searchParams: Promise.resolve({}) }));
     assert.match(schoolHtml, /aria-label="Remove Remove School"/);
     assert.ok(!schoolHtml.includes('<details'), 'Removal uses a dialog without expanding the table row');
+    assert.doesNotMatch(schoolHtml, />\s*Reject\s*</, 'Approved institutions only show removal');
+    await memory.query("UPDATE institutions SET status='PENDING' WHERE id=$1", [school.id]);
+    const pendingSchoolHtml = renderToStaticMarkup(await schoolPage.default({ searchParams: Promise.resolve({}) }));
+    assert.match(pendingSchoolHtml, />\s*Approve\s*</); assert.match(pendingSchoolHtml, />\s*Reject\s*</);
+    await memory.query("UPDATE institutions SET status='APPROVED' WHERE id=$1", [school.id]);
     const [campus] = await state.db.insert(schema.institutions).values({ ...institutionValues, name: 'Remove Campus', username: 'remove-campus', contactEmail: 'campus@fixture.test', registrationNumber: 'CAMPUS', parentInstitutionId: school.id, campusName: 'Branch' }).returning();
     await state.db.insert(schema.employees).values({ name: 'Employee', email: 'employee@fixture.test', passwordHash: 'fixture' });
     const [classRow] = await state.db.insert(schema.classes).values({ institutionId: campus.id, name: 'One' }).returning();

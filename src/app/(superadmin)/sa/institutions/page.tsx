@@ -188,7 +188,7 @@ export default async function SAInstitutionsPage({ searchParams }: { searchParam
                             </SubmitButton>
                           </ActionForm>
                         )}
-                        {inst.status !== 'REJECTED' && (
+                        {inst.status === 'PENDING' && (
                           <ActionForm action={updateStatus}>
                             <input type="hidden" name="id" value={inst.id} />
                             <input type="hidden" name="status" value="REJECTED" />
