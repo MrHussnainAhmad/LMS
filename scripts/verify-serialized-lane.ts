@@ -27,6 +27,11 @@ async function send(response: Response) {
 }
 
 async function main() {
+  const dynamicRoute = withApiPolicy(async (_req: NextRequest, context: { params: Promise<{ id: string }> }) => Response.json(await context.params));
+  const contextIsRequired: undefined extends Parameters<typeof dynamicRoute>[1] ? false : true = true;
+  assert.equal(contextIsRequired, true);
+  const dynamicResponse = await dynamicRoute(new NextRequest('http://localhost/api/fixture/42'), { params: Promise.resolve({ id: '42' }) });
+  assert.deepEqual(await dynamicResponse.json(), { id: '42' });
   await assert.rejects(withApiPolicy(async () => redirect('/fixture'))(new NextRequest('http://localhost/api/fixture')),
     error => error instanceof Error && 'digest' in error && String(error.digest).startsWith('NEXT_REDIRECT'));
   const captured: string[] = [];

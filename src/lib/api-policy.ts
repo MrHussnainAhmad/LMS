@@ -8,15 +8,15 @@ import { inputErrorResponse } from './input-error-response';
 import type { NativeJsonResponse } from './native-json-response';
 
 /** Keep API transport policy in guarded routes so hot endpoints can skip Proxy. */
-export function withApiPolicy<TContext, TResult extends Response | NativeJsonResponse = Response>(handler: (req: NextRequest, context: TContext) => Promise<TResult>) {
-  return async (req: NextRequest, context: TContext = {} as TContext) => {
+export function withApiPolicy<TContext extends unknown[], TResult extends Response | NativeJsonResponse = Response>(handler: (req: NextRequest, ...context: TContext) => Promise<TResult>) {
+  return async (req: NextRequest, ...context: TContext extends [] ? [context?: unknown] : TContext) => {
     const requestId = crypto.randomUUID();
     const started = performance.now();
     req.headers.set('x-request-id', requestId);
     if (unsafeOrigin(req)) return Response.json({ error: 'Forbidden origin', code: 'FORBIDDEN' }, { status: 403, headers: { 'X-Request-ID': requestId } });
     stripSessionHeaders(req.headers);
     try {
-      const response = applyCorsHeaders(req, await handler(req, context));
+      const response = applyCorsHeaders(req, await handler(req, ...context as TContext));
       response.headers.set('X-Request-ID', requestId);
       if (response.status >= 500) console.error(JSON.stringify({ event: 'api_unavailable', requestId, method: req.method, route: req.nextUrl.pathname.split('/').slice(0, 4).join('/'), status: response.status, durationMs: Math.round(performance.now() - started) }));
       return response;
