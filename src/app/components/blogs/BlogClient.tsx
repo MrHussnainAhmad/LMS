@@ -6,10 +6,9 @@ import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toaster";
-import { Loader2, Plus, Sparkles, Settings2, Eye, PenTool, Trash2, X } from "lucide-react";
+import { Loader2, Sparkles, Settings2, Eye, PenTool, Trash2, X, ArrowUpRight } from "lucide-react";
 
 const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false });
-const MDPreview = dynamic(() => import("@uiw/react-md-editor").then(mod => mod.default.Markdown), { ssr: false });
 
 export default function BlogClient({
   initialBlogs,
@@ -32,6 +31,7 @@ export default function BlogClient({
   const [slug, setSlug] = useState("");
   const [content, setContent] = useState("");
   const [excerpt, setExcerpt] = useState("");
+  const [tags, setTags] = useState("");
   const [metaTitle, setMetaTitle] = useState("");
   const [metaDescription, setMetaDescription] = useState("");
   const [status, setStatus] = useState("PUBLISHED");
@@ -99,6 +99,7 @@ export default function BlogClient({
           slug: finalSlug, 
           content,
           excerpt,
+          tags: tags.split(',').map(tag => tag.trim()).filter(Boolean),
           metaTitle,
           metaDescription,
           status,
@@ -108,7 +109,7 @@ export default function BlogClient({
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Failed to save");
+        throw new Error(apiErrorMessage(data));
       }
 
       toast({ title: "Success", description: `Blog ${editingId ? 'updated' : 'saved'} successfully.` });
@@ -127,6 +128,7 @@ export default function BlogClient({
     setSlug(blog.slug);
     setContent(blog.content);
     setExcerpt(blog.excerpt || "");
+    setTags((blog.tags ?? []).join(', '));
     setMetaTitle(blog.metaTitle || "");
     setMetaDescription(blog.metaDescription || "");
     setStatus(blog.status);
@@ -153,6 +155,7 @@ export default function BlogClient({
     setSlug("");
     setContent("");
     setExcerpt("");
+    setTags("");
     setMetaTitle("");
     setMetaDescription("");
     setStatus("PUBLISHED");
@@ -266,6 +269,12 @@ export default function BlogClient({
             </div>
 
             <div>
+              <label htmlFor="blog-tags" className="mb-2 block text-sm font-medium text-stone-700">Tags</label>
+              <input id="blog-tags" type="text" value={tags} onChange={event => setTags(event.target.value)} placeholder="School management, Education, Updates" aria-describedby="blog-tags-help" className="w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm outline-none focus:border-brand-500" />
+              <p id="blog-tags-help" className="mt-2 text-xs leading-5 text-stone-500">Separate tags with commas. Up to 12 tags, 50 characters each.</p>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-stone-700 mb-2">Publish Date Override</label>
               <input
                 type="datetime-local"
@@ -310,7 +319,7 @@ export default function BlogClient({
             className="w-full bg-brand-600 hover:bg-brand-700 text-white rounded-xl py-6 h-auto font-medium shadow-lg shadow-brand-500/20 transition-all hover:shadow-brand-500/40 hover:-translate-y-0.5"
           >
             {isSaving ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Sparkles className="w-5 h-5 mr-2" />}
-            {editingId ? "Save Changes" : "Save & Publish"}
+            {editingId ? "Save Changes" : status === 'DRAFT' ? "Save Draft" : "Save & Publish"}
           </Button>
         </div>
       </div>
@@ -320,41 +329,39 @@ export default function BlogClient({
         <div className="space-y-6 pt-12 border-t border-stone-200">
           <h2 className="text-2xl font-bold font-display tracking-tight text-stone-900 flex items-center gap-3">
             Manage Blogs
-            <span className="text-sm font-medium px-3 py-1 bg-stone-100 text-stone-600 rounded-full">{blogs.length}</span>
+            <span className="text-sm font-medium px-3 py-1 bg-stone-100 text-stone-600 rounded-full">{totalCount}</span>
           </h2>
           
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             {blogs.map((b) => (
-              <div key={b.id} className="group bg-white rounded-2xl shadow-sm hover:shadow-xl border border-stone-100 transition-all duration-300 overflow-hidden flex flex-col">
-                <div className="p-6 border-b border-stone-100/50 bg-stone-50/50 flex-1">
+              <article key={b.id} className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-white shadow-sm">
+                <div className="flex-1 space-y-3 p-5 sm:p-6">
                   <div className="flex justify-between items-start mb-3">
-                    <span className={`text-xs font-bold px-2 py-1 rounded uppercase ${b.status === 'PUBLISHED' ? 'bg-green-100 text-green-700' : 'bg-stone-200 text-stone-600'}`}>
-                      {b.status}
+                    <span className={`rounded-md border px-2 py-1 text-[11px] font-semibold ${b.status === 'PUBLISHED' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-stone-200 bg-stone-50 text-stone-600'}`}>
+                      {b.status === 'PUBLISHED' ? 'Published' : 'Draft'}
                     </span>
                     <time className="text-xs text-stone-400 font-medium">
-                      {new Date(b.createdAt).toLocaleDateString()}
+                      {new Date(b.publishedAt || b.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </time>
                   </div>
-                  <h3 className="font-bold font-display tracking-tight text-xl text-stone-900 mb-2 group-hover:text-brand-600 transition-colors line-clamp-2">
+                  <h3 className="break-words font-display text-xl font-semibold leading-snug tracking-tight text-brand-950">
                     {b.title}
                   </h3>
                   <p className="text-sm text-stone-500 line-clamp-3">
                     {b.excerpt || b.content.substring(0, 100).replace(/[#*`_>-]/g, "") + '...'}
                   </p>
+                  {(b.tags ?? []).length > 0 && <div className="flex flex-wrap gap-1.5">{b.tags.map((tag: string) => <span key={tag} className="rounded-md bg-brand-50 px-2 py-1 text-xs text-brand-800">{tag}</span>)}</div>}
+                  <p className="truncate text-xs text-stone-400" title={`blog.nisaab360.app/${b.slug}`}>blog.nisaab360.app/{b.slug}</p>
                 </div>
                 
-                <div className="px-6 py-4 bg-white flex justify-between items-center text-sm font-medium border-t border-stone-100">
-                  <span className="text-stone-500">/{b.slug}</span>
-                  <div className="flex gap-4">
-                    <span onClick={() => handleEdit(b)} className="text-brand-600 hover:text-brand-700 hover:underline cursor-pointer flex items-center gap-1">
-                      Edit
-                    </span>
-                    <span onClick={() => handleDelete(b.id)} className="text-red-500 hover:text-red-600 hover:underline cursor-pointer flex items-center gap-1">
-                      <Trash2 className="w-4 h-4" /> Delete
-                    </span>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-stone-50/60 px-5 py-3 sm:px-6">
+                  {b.status === 'PUBLISHED' ? <a href={`https://blog.nisaab360.app/${b.slug}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline">View article <ArrowUpRight className="h-3.5 w-3.5" /></a> : <span className="text-xs text-stone-500">Only visible to your team</span>}
+                  <div className="flex items-center gap-1">
+                    <Button type="button" variant="outline" size="sm" onClick={() => handleEdit(b)} aria-label={`Edit ${b.title}`}><PenTool className="mr-1.5 h-3.5 w-3.5" />Edit</Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => handleDelete(b.id)} aria-label={`Delete ${b.title}`} className="text-red-700 hover:bg-red-50 hover:text-red-800"><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
 

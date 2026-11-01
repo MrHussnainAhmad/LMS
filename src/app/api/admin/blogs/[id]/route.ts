@@ -15,6 +15,7 @@ const blogUpdateSchema = z.object({
   metaTitle: z.string().max(255).optional(),
   metaDescription: z.string().optional(),
   excerpt: z.string().optional(),
+  tags: z.array(z.string().trim().min(1).max(50)).max(12).transform(tags => [...new Map(tags.map(tag => [tag.toLowerCase(), tag])).values()]).optional(),
   status: z.enum(['DRAFT', 'PUBLISHED']).default('DRAFT'),
   publishedAt: z.string().optional().transform(str => str ? new Date(str) : undefined),
 });
@@ -50,6 +51,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         metaTitle: result.data.metaTitle,
         metaDescription: result.data.metaDescription,
         excerpt: result.data.excerpt,
+        tags: result.data.tags,
+        updatedAt: new Date(),
         status: result.data.status,
         publishedAt: result.data.publishedAt,
       })

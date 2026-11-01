@@ -12,7 +12,7 @@ export function PublicPageHeader({
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-[#f2efe7]/95 backdrop-blur-md">
       <div className="mx-auto flex h-[68px] w-full max-w-[1440px] items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2.5">
+        <Link href="https://nisaab360.app/" className="flex items-center gap-2.5">
           <span className="h-8 w-8 overflow-hidden border border-border bg-white">
             <Image src="/Logo.png" alt="Nisaab360" width={32} height={32} className="h-full w-full object-contain" />
           </span>

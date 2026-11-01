@@ -29,6 +29,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return {
     title: { absolute: `${title} | Nisaab360 Blog` },
     description: desc,
+    authors: [{ name: 'Nisaab360', url: 'https://nisaab360.app/' }],
+    keywords: blog.tags,
     alternates: {
       canonical: `https://blog.nisaab360.app/${resolvedParams.slug}`,
     },
@@ -37,6 +39,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       description: desc,
       url: `https://blog.nisaab360.app/${resolvedParams.slug}`,
       type: "article",
+      authors: ['https://nisaab360.app/'],
+      tags: blog.tags,
       publishedTime: new Date(blog.publishedAt || blog.createdAt).toISOString(),
       modifiedTime: blog.updatedAt.toISOString(),
     },
@@ -60,9 +64,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         <article className="prose prose-stone max-w-none md:prose-lg prose-headings:font-display prose-headings:font-semibold prose-a:text-brand-700 hover:prose-a:text-brand-900 prose-img:rounded-md">
           <h1 className="mb-6">{blog.title}</h1>
           <div className="flex items-center gap-4 text-sm text-stone-500 mb-12 font-medium border-b border-stone-200 pb-8">
-            <span className="px-3 py-1 bg-stone-100 rounded-full">{blog.authorRole.replace('_', ' ')}</span>
+            <span className="px-3 py-1 bg-stone-100 rounded-full">Nisaab360</span>
             <time>Published on {new Date(blog.publishedAt || blog.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</time>
           </div>
+          {blog.tags.length > 0 && <div aria-label="Article tags" className="not-prose mb-8 flex flex-wrap gap-2">{blog.tags.map(tag => <span key={tag} className="rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-800">{tag}</span>)}</div>}
           <ReactMarkdown
             components={{
               ul: ({ children, ...props }) => (

@@ -15,6 +15,7 @@ const blogSchema = z.object({
   metaTitle: z.string().max(255).optional(),
   metaDescription: z.string().optional(),
   excerpt: z.string().optional(),
+  tags: z.array(z.string().trim().min(1).max(50)).max(12).transform(tags => [...new Map(tags.map(tag => [tag.toLowerCase(), tag])).values()]).default([]),
   status: z.enum(['DRAFT', 'PUBLISHED']).default('DRAFT'),
   publishedAt: z.string().optional().transform(str => str ? new Date(str) : undefined),
 });
@@ -79,6 +80,7 @@ export async function POST(req: Request) {
       metaTitle: result.data.metaTitle,
       metaDescription: result.data.metaDescription,
       excerpt: result.data.excerpt,
+      tags: result.data.tags,
       status: result.data.status,
       publishedAt: result.data.publishedAt,
       authorRole: session.role as any, // Enum type match

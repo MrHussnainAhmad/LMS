@@ -74,10 +74,11 @@ export default async function BlogIndexPage({ searchParams }: { searchParams: Pr
                     <p className="text-stone-500 line-clamp-3 mb-6">
                       {post.excerpt || post.content.replace(/[#*`_>-]/g, "").substring(0, 150) + '...'}
                     </p>
+                    {post.tags.length > 0 && <div className="flex flex-wrap gap-2">{post.tags.map(tag => <span key={tag} className="rounded-md border border-brand-200 bg-brand-50 px-2 py-1 text-xs font-medium text-brand-800">{tag}</span>)}</div>}
                   </div>
                   <div className="px-4 sm:px-8 py-4 bg-stone-50/50 border-t border-stone-100/50 flex items-center justify-between">
                     <span className="text-sm font-medium text-stone-500">
-                      {post.authorRole.replace('_', ' ')}
+                      Nisaab360
                     </span>
                     <time className="text-sm text-stone-400">
                       {new Date(post.publishedAt || post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
