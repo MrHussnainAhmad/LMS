@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import { PublicPageHeader } from "@/components/layout/PublicPageHeader";
 import type { Metadata } from 'next';
 import BlogViews from '@/app/components/blogs/BlogViews';
+import type { Root } from 'mdast';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -72,6 +73,19 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           </div>
           {blog.tags.length > 0 && <div aria-label="Article tags" className="not-prose mb-8 flex flex-wrap gap-2">{blog.tags.map(tag => <span key={tag} className="rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-800">{tag}</span>)}</div>}
           <ReactMarkdown
+            remarkPlugins={[() => (tree: Root) => {
+              const first = tree.children[0];
+              if (first?.type !== 'heading') return;
+              let heading = '';
+              const nodes = [...first.children];
+              while (nodes.length) {
+                const node = nodes.shift()!;
+                if ('value' in node) heading += node.value;
+                else if ('children' in node) nodes.unshift(...node.children);
+                else if (node.type === 'image') heading += node.alt ?? '';
+              }
+              if (heading.trim().replace(/\s+/g, ' ').toLowerCase() === blog.title.trim().replace(/\s+/g, ' ').toLowerCase()) tree.children.shift();
+            }]}
             components={{
               ul: ({ children, ...props }) => (
                 <ul className="my-5 list-disc space-y-2 pl-7 marker:text-brand-600" {...props}>
