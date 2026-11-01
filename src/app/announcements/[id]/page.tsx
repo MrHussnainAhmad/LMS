@@ -1,3 +1,4 @@
+import { AnnouncementResponsePanel } from '@/components/announcements/AnnouncementResponsePanel';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LocalDateTime } from "@/components/LocalDateTime";
 import { getSession } from "@/lib/auth";
@@ -13,6 +14,8 @@ function portalHref(role: string) {
   if (role === "INSTITUTION") return "/institution/dashboard";
   if (role === "STAFF") return "/staff/dashboard";
   if (role === "STUDENT") return "/student/dashboard";
+  if (role === "PARENT") return "/parent/announcements";
+  if (role === "INSTITUTION_ADMIN") return "/institution/dashboard";
   return "/login";
 }
 
@@ -74,6 +77,7 @@ export default async function AnnouncementDetailPage({ params }: { params: Promi
             <article className="prose prose-stone max-w-none">
               <p className="whitespace-pre-wrap text-base leading-8 text-stone-700">{announcement.content}</p>
             </article>
+            <AnnouncementResponsePanel id={announcement.id} studentId={announcement.response?.studentId} policy={announcement.responsePolicy} response={announcement.response} isRead parent={session.role==='PARENT'} />
           </CardContent>
         </Card>
 

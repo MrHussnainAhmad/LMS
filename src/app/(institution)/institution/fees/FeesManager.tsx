@@ -1,7 +1,7 @@
 "use client";
 
 
-import { MonthlyBillingPanel, OneTimeBillingPanel } from "@/components/fees/BillingPanels";
+import { MonthlyBillingPanel, OneTimeBillingPanel, InvoiceSupportPanel, FamilyDiscountPanel } from "@/components/fees/BillingPanels";
 import { Fragment, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ type ClassItem = {
   amount: number;
 };
 type Invoice = {
+  plan?: import('@/db/schema').FeeInvoicePlan;
   id: number;
   studentId: number;
   studentName: string;
@@ -122,6 +123,8 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [planInvoice, setPlanInvoice] = useState<Invoice | null>(null);
+  const [allOverdue,setAllOverdue]=useState(false);
   const [studentQuery, setStudentQuery] = useState("");
   const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<StudentOption | null>(
@@ -191,6 +194,7 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
       setLoading(true);
       try {
         const params = new URLSearchParams({ view: mode });
+        if(allOverdue && mode==='collections')params.set('overdue','1');
         if (Date.now() - metadataLoaded.current < 30_000 && !force) params.set("meta", "0");
         if (mode === "collections" && summaryMonth.current === readMonth && Date.now() - summaryLoadedAt.current < 10_000 && !force) params.set("summary", "0");
         if (mode === "collections" || mode === "paid") {
@@ -239,7 +243,7 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [mode, readMonth, status, classId, debouncedQuery, page, toast, reads],
+    [mode, readMonth, status, classId, debouncedQuery, page, toast, reads, allOverdue],
   );
 
   useEffect(() => {
@@ -396,8 +400,8 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
           startMonth: form.get("startMonth") || undefined,
           endMonth: form.get("endMonth") || undefined,
           studentId: selectedStudent.id,
-          label: form.get("label"),
-          type: form.get("type"),
+          label: form.get('type') === 'SCHOLARSHIP' ? `Scholarship: ${form.get('label')}` : form.get('label'),
+          type: form.get('type') === 'SCHOLARSHIP' ? 'DISCOUNT' : form.get('type'),
           amount: form.get("amount"),
         },
         "Student adjustment saved",
@@ -439,7 +443,7 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
               Icon: Users,
             },
             {
-              label: "Monthly billed",
+              label: allOverdue ? "Overdue billed" : "Monthly billed",
               value: money(data?.summary.billed || 0),
               Icon: ReceiptText,
             },
@@ -623,6 +627,7 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-5">
+              <FamilyDiscountPanel key={`${selectedStudent?.id}:${month}`} studentId={selectedStudent?.id ?? null} month={month} onSaved={async()=>{await load(undefined,true);}} />
               <form onSubmit={addAdjustment} className="space-y-3 text-left">
                 <div className="relative">
                   <Input
@@ -668,6 +673,7 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
                     className="h-11 rounded-sm border border-border bg-white px-3 text-left text-sm text-brand-950"
                   >
                     <option value="DISCOUNT">Discount</option>
+                    <option value="SCHOLARSHIP">Scholarship</option>
                     <option value="CHARGE">Extra charge</option>
                   </select>
                   <Input
@@ -732,9 +738,11 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
               </div>
               {mode === "collections" && (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[160px_140px_minmax(180px,1fr)_180px]">
+                  <label className="flex items-center gap-2 text-sm sm:col-span-2 xl:col-span-4"><input type="checkbox" checked={allOverdue} onChange={event=>{summaryMonth.current='';setAllOverdue(event.target.checked);setPage(1);}}/>All overdue balances across every month</label>
                   <Input
                     type="month"
                     aria-label="Billing month"
+                    disabled={allOverdue}
                     value={month}
                     onChange={(event) => { setMonth(event.target.value); setPage(1); }}
                     className="w-full min-w-0 tabular-nums"
@@ -897,6 +905,7 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
                                 Collect
                               </Button>
                             )}
+                            {mode === 'collections' && invoice.status !== 'VOID' && <Button size="sm" variant="outline" onClick={()=>setPlanInvoice(invoice)}>Plan / follow-up</Button>}
                           </td>
                         </tr>
                         </Fragment>
@@ -1000,6 +1009,7 @@ export function FeesManager({ mode }: { mode: FeeSection }) {
         </div>
       )}
 
+      {planInvoice && <InvoiceSupportPanel key={planInvoice.id} invoice={planInvoice} onClose={()=>setPlanInvoice(null)} onSaved={async()=>{await load(undefined,true);}} />}
       {selectedInvoice && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"

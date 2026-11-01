@@ -1,3 +1,5 @@
+import { effectiveTeachingStaffId } from '@/lib/timetable-coverage';
+import { pakistanDateKey } from '@/lib/parent-period';
 import { NextRequest, NextResponse } from 'next/server';
 export { corsPreflight as OPTIONS } from '@/lib/cors';
 import { db } from '@/db';
@@ -20,6 +22,7 @@ let membershipQuery: ReturnType<typeof prepareMembership> | undefined;
 
 export const GET = requireRole(['STUDENT'], async (req: NextRequest, { session }) => {
   const tenantId = getTenantContext(session);
+  const date=pakistanDateKey();
 
   const student = getAuthenticatedStudentPlacement(session) ?? (await (membershipQuery ??= prepareMembership()).execute({ userId: session.userId, tenantId }))[0];
   if (!student) {
@@ -30,7 +33,7 @@ export const GET = requireRole(['STUDENT'], async (req: NextRequest, { session }
   // Until student↔group membership exists, return every period for the section
   // (including parallel elective groups) so the slot shows the full split.
   const timetable = await getCachedOrFetch(
-    `cache:timetable:student:${tenantId}:${student.sectionId}`,
+    `cache:timetable:student:${tenantId}:${student.sectionId}:${date}`,
     600,
     () => db.select({
       dayOfWeek: staffAssignments.dayOfWeek,
@@ -41,7 +44,7 @@ export const GET = requireRole(['STUDENT'], async (req: NextRequest, { session }
     })
       .from(staffAssignments)
       .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-      .leftJoin(staff, eq(staffAssignments.staffId, staff.id))
+      .leftJoin(staff, eq(effectiveTeachingStaffId(date), staff.id))
       .where(and(eq(staffAssignments.sectionId, student.sectionId), eq(staffAssignments.institutionId, tenantId))),
     decodeDashboardPayload,
   );

@@ -58,7 +58,7 @@ async function verifySchema(query: Query) {
   }
 }
 
-async function freshMigrations(memory: PGlite) {
+async function freshMigrations(memory: PGlite, archivedOnly = false) {
   const journal = JSON.parse(await readLegacyFile('meta/_journal.json'));
   for (const entry of journal.entries) await memory.exec(await readLegacyFile(`${entry.tag}.sql`));
   const runner = await readFile('scripts/migrate-production.mjs','utf8');
@@ -76,6 +76,10 @@ async function freshMigrations(memory: PGlite) {
     }
     catch (error) { throw new Error(`Fresh migration failed: ${file}`, { cause: error }); }
   }
+  if (!archivedOnly) {
+    const activeJournal = JSON.parse(await readFile('drizzle/meta/_journal.json', 'utf8'));
+    for (const entry of activeJournal.entries.slice(1)) await memory.exec(await readFile(`drizzle/${entry.tag}.sql`, 'utf8'));
+  }
 }
 
 test('consolidated migration baseline matches archived history', async () => {
@@ -83,7 +87,7 @@ test('consolidated migration baseline matches archived history', async () => {
   let expectedCatalog;
   let expectedPlans;
   try {
-    await freshMigrations(history);
+    await freshMigrations(history, true);
     expectedCatalog = await readSchemaCatalog(history);
     expectedPlans = (await history.query('SELECT id, name, monthly_fee_paisa, platforms FROM subscription_plans ORDER BY id')).rows;
   } finally {

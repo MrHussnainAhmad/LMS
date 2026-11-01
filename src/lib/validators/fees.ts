@@ -5,6 +5,10 @@ const month = z
   .string()
   .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Use a valid billing month");
 export const feeActionSchema = z.discriminatedUnion("action", [
+  z.object({action:z.literal('setInstallments'),invoiceId:z.coerce.number().int().positive(),expectedPaidAmount:z.number().int().min(0),revision:z.number().int().min(0),
+    reason:z.string().trim().min(5).max(500),installments:z.array(z.object({dueDate:z.string().date(),amount:positiveMoney})).min(2).max(12)}),
+  z.object({action:z.literal('feeFollowUp'),invoiceId:z.coerce.number().int().positive(),note:z.string().trim().min(2).max(500),nextDate:z.string().date().optional()}),
+  z.object({action:z.literal('siblingDiscount'),studentId:z.coerce.number().int().positive(),amount:positiveMoney,startMonth:month,endMonth:month.optional(),confirm:z.boolean().default(false),expectedPreviewHash:z.string().regex(/^[a-f0-9]{64}$/).optional()}),
   z.object({
     action: z.literal("removeHead"),
     feeHeadId: z.coerce.number().int().positive(),

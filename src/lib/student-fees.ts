@@ -1,5 +1,7 @@
+import { invoiceInstallments } from './fee-installments';
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { effectiveFeeDueDate } from './fee-billing';
 import { feeInvoices, feeInvoiceItems, feePayments, feePaymentSubmissions } from "@/db/schema";
 import { getPaymentAccounts } from "@/lib/manual-payment-accounts";
 import { pagination, positiveInteger } from "@/lib/pagination";
@@ -16,7 +18,7 @@ export async function getStudentFeeAccount(institutionId: number, studentId: num
   const activePagination = pagination(positiveInteger(activePage), totals.activeCount, 20);
   const paidPagination = pagination(positiveInteger(paidPage), totals.paidCount, 20);
   const fields = { id: feeInvoices.id, billingMonth: feeInvoices.billingMonth, billingKind: feeInvoices.billingKind, billingLabel: feeInvoices.billingLabel,
-    dueDate: feeInvoices.dueDate, status: feeInvoices.status, totalAmount: feeInvoices.totalAmount, paidAmount: feeInvoices.paidAmount };
+    dueDate: sql<string>`${effectiveFeeDueDate}::text`, status: feeInvoices.status, totalAmount: feeInvoices.totalAmount, paidAmount: feeInvoices.paidAmount, plan: sql<import('@/db/schema').FeeInvoicePlan>`jsonb_build_object('installments',COALESCE(${feeInvoices.plan}->'installments','[]'::jsonb),'paidAtSetup',COALESCE(${feeInvoices.plan}->'paidAtSetup','0'::jsonb))` };
   const list = (status: ("DUE" | "PARTIAL" | "PAID")[], paging: typeof activePagination) => db.select(fields).from(feeInvoices)
     .where(and(owned, inArray(feeInvoices.status, status)))
     .orderBy(desc(feeInvoices.billingMonth), desc(feeInvoices.createdAt), desc(feeInvoices.id)).limit(paging.pageSize).offset(paging.offset);
@@ -26,7 +28,7 @@ export async function getStudentFeeAccount(institutionId: number, studentId: num
     id: feePaymentSubmissions.id, invoiceId: feePaymentSubmissions.invoiceId, status: feePaymentSubmissions.status, reviewerNote: feePaymentSubmissions.reviewerNote,
   }).from(feePaymentSubmissions).where(and(eq(feePaymentSubmissions.institutionId, institutionId), eq(feePaymentSubmissions.studentId, studentId), inArray(feePaymentSubmissions.invoiceId, ids)))
     .orderBy(feePaymentSubmissions.invoiceId, desc(feePaymentSubmissions.submittedAt), desc(feePaymentSubmissions.id)) : [];
-  return { invoices: [...active, ...paid], submissions, paymentAccounts, activePagination, paidPagination,
+  return { invoices: [...active, ...paid].map(invoice=>({...invoice,installments:invoiceInstallments(invoice).installments})), submissions, paymentAccounts, activePagination, paidPagination,
     summary: { billed: totals.billed, paid: totals.paid, balance: totals.billed - totals.paid } };
 }
 export type StudentFeeAccount = Awaited<ReturnType<typeof getStudentFeeAccount>>;

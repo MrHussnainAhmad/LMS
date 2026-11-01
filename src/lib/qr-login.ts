@@ -16,7 +16,7 @@ export type QrOwner = { payload: JWTPayload; sourceHash: string; accessExpiresAt
 type Challenge = typeof qrLoginChallenges.$inferSelect;
 
 export class QrLoginError extends Error {
-  constructor(message: string, public readonly status = 401) { super(message); }
+  constructor(message: string, public readonly status = 401, public readonly code = status === 401 ? 'QR_INVALID' : status === 403 ? 'QR_FORBIDDEN' : 'QR_INVALID_REQUEST') { super(message); }
 }
 const invalid = () => new QrLoginError('QR login is invalid or no longer available. Generate a new code.');
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -89,7 +89,7 @@ export async function createQrLogin(owner: QrOwner) {
   return db.transaction(async tx => {
     const source = await ownerSource(tx, owner);
     const account = await eligibleAccount(tx, owner.payload.role, owner.payload.userId, owner.payload.institutionId!);
-    if (!await mobileAppAccessAllowed(account.payload, true, tx)) throw new QrLoginError(MOBILE_APPS_DISABLED.error, 403);
+    if (!await mobileAppAccessAllowed(account.payload, true, tx)) throw new QrLoginError(MOBILE_APPS_DISABLED.error, 403, MOBILE_APPS_DISABLED.code);
     const secret = randomBytes(32).toString('base64url');
     const id = randomUUID();
     const expiresAt = new Date(Math.min(Date.now() + QR_LOGIN_TTL_SECONDS * 1000, owner.accessExpiresAt, source.expiresAt.getTime()));
@@ -145,7 +145,7 @@ export async function redeemQrLogin(qr: unknown, roleHint?: 'STUDENT' | 'STAFF',
     )).for('update').limit(1);
     if (!row) throw invalid();
     const account = await eligibleAccount(tx, row.userRole, row.userId, row.institutionId);
-    if (!await mobileAppAccessAllowed(account.payload, true, tx)) throw new QrLoginError(MOBILE_APPS_DISABLED.error, 403);
+    if (!await mobileAppAccessAllowed(account.payload, true, tx)) throw new QrLoginError(MOBILE_APPS_DISABLED.error, 403, MOBILE_APPS_DISABLED.code);
     if (account.fingerprint !== row.accountFingerprint) throw invalid();
     if (roleHint && account.payload.role !== roleHint) throw new QrLoginError('QR code does not match the selected sign-in type.', 403);
     // The existing issuer writes into this transaction. A failure, including a

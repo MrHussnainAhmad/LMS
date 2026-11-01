@@ -134,6 +134,9 @@ export function AnnouncementFormClient({
               placeholder="Type your message here..."
             />
           </div>
+          <label className="block space-y-1 text-sm">Response requested<select name="responseMode" className="w-full rounded-md border border-border bg-white px-3 py-2"><option value="NONE">Read receipt only</option><option value="ACKNOWLEDGE">Explicit acknowledgement</option><option value="CONSENT">Parent consent (yes / no)</option></select></label>
+          <label className="block space-y-1 text-sm">Response deadline (optional)<input type="date" name="responseDeadline" className="w-full rounded-md border border-border px-3 py-2"/></label>
+          <p className="text-xs text-stone-500">Opening a notice records a read receipt only. Parent consent needs an explicit response for each child.</p>
           <SubmitButton
             className="w-full bg-brand-800 text-white rounded-md py-2 text-sm font-medium hover:bg-brand-900 transition-colors"
           >
@@ -143,4 +146,17 @@ export function AnnouncementFormClient({
       </CardContent>
     </Card>
   );
+}
+
+export function AnnouncementReceipts({id}:{id:number}){
+  const [data,setData]=useState<{studentRecipients:number;studentReads:number;parents:Array<{parentId:number;name:string;studentId:number;student:string;readAt:string|null;response:{answer:string;at:string}|null}>}|null>(null);
+  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[limit,setLimit]=useState(100);
+  return <div className="mt-2 space-y-2"><button type="button" disabled={busy} className="text-xs font-medium text-brand-700 underline" onClick={async()=>{
+    if(data){setData(null);return;}setBusy(true);setError('');
+    try{const response=await fetch('/api/institution/announcements?id='+id,{cache:'no-store'}),result=await response.json();if(!response.ok)throw new Error(result.error);setData(result);}catch(err){setError(err instanceof Error?err.message:'Could not load receipts.');}finally{setBusy(false);}
+  }}>{busy?'Loading...':data?'Hide receipts':'Read receipts / parent responses'}</button>
+  {data&&<div className="space-y-2"><p className="text-xs">{data.studentReads}/{data.studentRecipients} student reads / {data.parents.filter(row=>row.readAt).length}/{data.parents.length} parent-child reads / {data.parents.filter(row=>row.response).length} explicit responses</p>
+    <div className="max-h-80 overflow-auto"><table className="w-full text-left text-xs"><thead><tr><th className="p-1">Parent</th><th className="p-1">Child</th><th className="p-1">Read</th><th className="p-1">Response</th></tr></thead><tbody>{data.parents.slice(0,limit).map(row=><tr key={row.parentId+':'+row.studentId}><td className="p-1">{row.name}</td><td className="p-1">{row.student}</td><td className="p-1">{row.readAt?new Date(row.readAt).toLocaleString():'Not yet'}</td><td className="p-1">{row.response?row.response.answer+' / '+new Date(row.response.at).toLocaleString():'Awaiting response'}</td></tr>)}</tbody></table></div>
+    {data.parents.length>limit&&<button className="text-xs text-brand-700 underline" onClick={()=>setLimit(value=>value+100)}>Show more</button>}
+  </div>}{error&&<p role="alert" className="text-xs text-red-700">{error}</p>}</div>;
 }

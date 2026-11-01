@@ -1,3 +1,5 @@
+import { invoiceInstallments } from '@/lib/fee-installments';
+import { effectiveTeachingStaffId } from '@/lib/timetable-coverage';
 import { positiveInteger } from '@/lib/pagination';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
@@ -65,11 +67,12 @@ async function readParentPortal(req: NextRequest) {
       const page = positiveInteger(req.nextUrl.searchParams.get('page'));
       const batchId=Number(req.nextUrl.searchParams.get('notificationBatchExamId'));
       if(Number.isSafeInteger(batchId)&&batchId>0){
-        const result=await db.execute(sql`SELECT r.id,e.title,e.type,to_char(e.created_at,'YYYY-MM-DD') AS date,s.name AS subject,r.marks_obtained AS obtained,b.max_marks AS total,count(*) OVER()::int AS "totalRows"
+        const result=await db.execute(sql`SELECT r.id,e.title,e.type,to_char(e.created_at,'YYYY-MM-DD') AS date,s.name AS subject,r.marks_obtained AS obtained,b.max_marks AS total,COALESCE(r.details->>'status','MARKED') AS status,r.details->>'remark' AS remark,count(*) OVER()::int AS "totalRows"
           FROM batch_exam_results r JOIN batch_exam_subjects b ON b.id=r.batch_exam_subject_id
           JOIN batch_exams e ON e.id=b.batch_exam_id JOIN subjects s ON s.id=b.subject_id
           WHERE r.student_id=${child.id} AND e.institution_id=${institutionId} AND e.id=${batchId}
-          AND NOT EXISTS(SELECT 1 FROM batch_exam_subjects pending WHERE pending.batch_exam_id=e.id AND NOT pending.is_published AND pending.review_deadline>clock_timestamp())
+          AND e.official_published_at IS NOT NULL
+          AND NOT EXISTS(SELECT 1 FROM batch_exam_results hidden JOIN batch_exam_subjects hs ON hs.id=hidden.batch_exam_subject_id WHERE hs.batch_exam_id=e.id AND hidden.student_id=r.student_id AND COALESCE(hidden.details->>'status','MARKED') IN ('WITHHELD','NOT_ENTERED'))
           ORDER BY r.id LIMIT 20 OFFSET ${(page-1)*20}`);
         const total=Number(result.rows[0]?.totalRows || 0);
         return NextResponse.json({...base,results:result.rows,performance:[],pagination:{page,pages:Math.max(1,Math.ceil(total/20)),total}});
@@ -105,7 +108,7 @@ async function readParentPortal(req: NextRequest) {
 
     if (section === "timetable") {
       const [schedule, upcomingTests] = await Promise.all([
-        db.select({ id: staffAssignments.id, day: staffAssignments.dayOfWeek, start: staffAssignments.startTime, end: staffAssignments.endTime, subject: subjects.name, teacher: staff.name, isBreak: staffAssignments.isBreak }).from(staffAssignments).leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id)).leftJoin(staff, eq(staffAssignments.staffId, staff.id)).where(and(eq(staffAssignments.institutionId, institutionId), eq(staffAssignments.sectionId, child.sectionId))).orderBy(asc(staffAssignments.dayOfWeek), asc(staffAssignments.startTime)),
+        db.select({ id: staffAssignments.id, day: staffAssignments.dayOfWeek, start: staffAssignments.startTime, end: staffAssignments.endTime, subject: subjects.name, teacher: staff.name, isBreak: staffAssignments.isBreak }).from(staffAssignments).leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id)).leftJoin(staff, eq(effectiveTeachingStaffId(period.anchor), staff.id)).where(and(eq(staffAssignments.institutionId, institutionId), eq(staffAssignments.sectionId, child.sectionId))).orderBy(asc(staffAssignments.dayOfWeek), asc(staffAssignments.startTime)),
         db.select({ id: tests.id, title: tests.title, type: tests.type, date: tests.date, subject: subjects.name }).from(tests).innerJoin(subjects, eq(tests.subjectId, subjects.id)).where(and(eq(tests.institutionId, institutionId), eq(tests.classId, child.classId), or(eq(tests.sectionId, child.sectionId), isNull(tests.sectionId)), gte(tests.date, period.from), lte(tests.date, period.to))).orderBy(asc(tests.date)).limit(20),
       ]);
       return NextResponse.json({ ...base, schedule, upcomingTests });
@@ -115,11 +118,11 @@ async function readParentPortal(req: NextRequest) {
       const invoices = await db.select().from(feeInvoices).where(and(eq(feeInvoices.institutionId, institutionId), eq(feeInvoices.studentId, child.id))).orderBy(desc(feeInvoices.billingMonth), desc(feeInvoices.createdAt), desc(feeInvoices.id)).limit(24);
       const invoiceIds = invoices.map((row) => row.id);
       const submissions = invoiceIds.length ? await db.select({ id: feePaymentSubmissions.id, invoiceId: feePaymentSubmissions.invoiceId, amount: feePaymentSubmissions.amount, sourceBankName: feePaymentSubmissions.sourceBankName, transactionId: feePaymentSubmissions.transactionId, status: feePaymentSubmissions.status, submittedAt: feePaymentSubmissions.submittedAt }).from(feePaymentSubmissions).where(and(eq(feePaymentSubmissions.institutionId, institutionId), eq(feePaymentSubmissions.studentId, child.id), inArray(feePaymentSubmissions.invoiceId, invoiceIds))).orderBy(desc(feePaymentSubmissions.submittedAt)).limit(30) : [];
-      return NextResponse.json({ ...base, invoices, submissions });
+      return NextResponse.json({ ...base, invoices:invoices.map(({plan,...invoice})=>{const schedule=invoiceInstallments({...invoice,plan});return {...invoice,dueDate:schedule.nextDueDate??invoice.dueDate,installments:schedule.installments};}), submissions });
     }
 
     if (section === "notices") {
-      const announcements = await getVisibleAnnouncements({ ...session, role: "STUDENT", userId: child.id }, 30, { campusId: child.campusId, classId: child.classId, sectionId: child.sectionId, createdAt: child.createdAt }, { includeReadStatus: false, forceRefresh });
+      const announcements = await getVisibleAnnouncements(session,30,undefined,{studentId:child.id,forceRefresh});
       return NextResponse.json({ ...base, announcements: announcements.filter((item) => pakistanDateKey(item.createdAtIso) >= period.from && pakistanDateKey(item.createdAtIso) <= period.to) });
     }
 

@@ -1,5 +1,16 @@
 # Release and tenant-host setup
 
+For updates without schema changes, keep the currently running image references
+as the rollback target, validate the release with `npm run release:preflight`,
+and update one web replica at a time using the same Compose/env files used for
+the current deployment. Wait for `app2` to become healthy and check a real
+institution login and campus switch before replacing `app`. Do not replace both
+replicas if the first fails readiness. Recreate the failed replica with its
+previous immutable image to roll back. A restart does not invalidate existing
+mobile sessions; retain the JWT signing key. Schema changes still follow the
+migration and backup sequence below. Preflight requires a clean checkout and a
+release revision matching its Git commit.
+
 The migration runner must complete before the new app replicas start. Fresh
 databases use the consolidated baseline; existing databases use the archived
 upgrade history as needed (see [database migrations](../drizzle/README.md)).
@@ -68,6 +79,22 @@ new privileges. Deployment commands below explicitly start services when run.
    Application rollback uses previous image digests. It does not undo migrations;
    migration 0074 enables multiple challans in a month, so an older fee generator
    must not be used after one-time billing begins.
+
+## Exam and institution operations release
+
+This release adds journaled migrations `0001_exam_result_workflow` and
+`0002_institution_operations`. Run the existing migrator against the existing
+migration ledger before starting the matching application. Do not replay the
+baseline manually or use schema push. Complete and validate a production backup
+first; retain the previous images and existing authentication/encryption keys.
+
+Deploy the web replicas and worker images from the same source revision. The
+institution operations migration adds six JSONB columns with empty defaults; the
+exam migration also preserves historical publication and promotion state.
+Student/staff and parent app changes live in their separate GitHub repositories.
+Deploy the backend first, then distribute the matching apps through their own
+EAS projects. Native/SDK changes in the pending mobile release require new
+binaries; a Git push alone does not update installed apps.
 
 ## Institution/campus certificates
 

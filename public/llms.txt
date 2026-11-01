@@ -27,7 +27,7 @@ The platform provides dedicated portals for administrators, teachers, students, 
 - [Register](https://nisaab360.app/register): Institution registration and onboarding.
 - [LMS in Pakistan](https://nisaab360.app/lms-pakistan): Information about the platform for educational institutions in Pakistan.
 - [Frequently asked questions](https://nisaab360.app/faq): Common questions about the platform.
-- [Blog](https://nisaab360.app/blog): Public articles and product information.
+- [Blog](https://blog.nisaab360.app/): Public articles and product information.
 - [Download app](https://nisaab360.app/download-app): Published app download information.
 - [Download software](https://nisaab360.app/download-software): Published desktop software download information.
 

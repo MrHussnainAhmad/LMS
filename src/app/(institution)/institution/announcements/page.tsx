@@ -10,7 +10,7 @@ import { getSession } from "@/lib/auth";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createAnnouncementAction, deleteAnnouncementAction } from "@/app/actions/institution-actions";
-import { AnnouncementFormClient } from "./AnnouncementFormClient";
+import { AnnouncementFormClient, AnnouncementReceipts } from "./AnnouncementFormClient";
 import { PaginationNav } from "@/components/ui/pagination-nav";
 
 const ANNOUNCEMENTS_PER_PAGE = 10;
@@ -103,6 +103,7 @@ export default async function InstitutionAnnouncementsPage({ searchParams }: { s
                           <Link href={`/announcements/${ann.id}`} prefetch={false} className="hover:text-brand-700 hover:underline">
                             {ann.title}
                           </Link>
+                          <AnnouncementReceipts id={ann.id}/>
                         </td>
                         <td className="px-6 py-4">
                           <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-brand-100 text-brand-800 rounded-md">

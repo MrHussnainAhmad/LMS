@@ -3,13 +3,18 @@ import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { classes, sections, staff, subjects } from '@/db/schema';
+import { academicSessions, classes, sections, staff, subjects } from '@/db/schema';
 import { getTenantContext, requireRole } from '@/lib/rbac';
-import { getInstitutionAcademicsData, invalidateInstitutionAcademicsCache } from '@/lib/institution-academics-data';
+import { getInstitutionAcademicsData, invalidateInstitutionAcademicsCache, rolloverAcademicSession } from '@/lib/institution-academics-data';
 import { AcademicDeleteError, deleteInstitutionAcademic, type AcademicKind } from '@/lib/delete-institution-academic';
 
 export const GET = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (_req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
+  if (_req.nextUrl.searchParams.get('view') === 'sessions') {
+    const rows = await db.select().from(academicSessions).where(eq(academicSessions.institutionId,institutionId)).orderBy(academicSessions.startDate);
+    const selectedId = Number(_req.nextUrl.searchParams.get('sessionId'));
+    return NextResponse.json({ sessions: rows.map(row => ({ ...row, record: row.id === selectedId ? row.record : {closedAt:row.record.closedAt,openingBalance:row.record.openingBalance,archivedStudents:row.record.closingRoster?.length ?? 0} })) }, {headers:{'Cache-Control':'private, no-store'}});
+  }
   return NextResponse.json(await getInstitutionAcademicsData(institutionId), { headers: { 'Cache-Control': 'no-store' } });
 });
 
@@ -39,6 +44,7 @@ export const POST = requireRole(['INSTITUTION', 'INSTITUTION_ADMIN'], async (req
   let body: Record<string, unknown>;
   try { body = await readBoundedJson(req); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
   const action = String(body.action || '');
+  if (action === 'previewSession' || action === 'rolloverSession') return NextResponse.json(await rolloverAcademicSession(session,body,action === 'rolloverSession'));
 
   if (action === 'createSubject') {
     const names = Array.from(new Map(

@@ -1,3 +1,5 @@
+import { effectiveTeachingStaffId } from '@/lib/timetable-coverage';
+import { pakistanDateKey } from '@/lib/parent-period';
 import { db } from "@/db";
 import { students, staffAssignments, subjects, staff } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -28,7 +30,7 @@ export default async function StudentTimetablePage() {
   })
     .from(staffAssignments)
     .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-    .leftJoin(staff, eq(staffAssignments.staffId, staff.id))
+    .leftJoin(staff, eq(effectiveTeachingStaffId(pakistanDateKey()), staff.id))
     .where(and(eq(staffAssignments.sectionId, currentStudent.sectionId), eq(staffAssignments.institutionId, session.institutionId)))
     .orderBy(staffAssignments.startTime);
 

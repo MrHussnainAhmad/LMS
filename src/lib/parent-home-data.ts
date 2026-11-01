@@ -1,3 +1,5 @@
+import { effectiveTeachingStaffId } from './timetable-coverage';
+import { pakistanDateKey } from './parent-period';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendances, diaries, feeInvoices, marks, staff, staffAssignments, subjects, tests } from '@/db/schema';
@@ -25,7 +27,7 @@ export async function getParentHomeData(institutionId: number, child: NonNullabl
     start: sql<string>`${staffAssignments.startTime}`.as('start'), end: sql<string>`${staffAssignments.endTime}`.as('end'),
     subject: sql<string | null>`${subjects.name}`.as('subject'), teacher: sql<string | null>`${staff.name}`.as('teacher'),
     isBreak: sql<boolean>`${staffAssignments.isBreak}`.as('isBreak'),
-  }).from(staffAssignments).leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id)).leftJoin(staff, eq(staffAssignments.staffId, staff.id))
+  }).from(staffAssignments).leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id)).leftJoin(staff, eq(effectiveTeachingStaffId(pakistanDateKey()), staff.id))
     .where(and(eq(staffAssignments.institutionId, institutionId), eq(staffAssignments.sectionId, child.sectionId),
       eq(staffAssignments.dayOfWeek, dayOfWeek))).orderBy(asc(staffAssignments.startTime));
   const diary = db.select({ id: diaries.id, date: diaries.date, content: diaries.content,

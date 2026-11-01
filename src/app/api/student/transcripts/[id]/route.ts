@@ -1,76 +1,31 @@
-import { inputErrorResponse } from '@/lib/input-error-response';
-import { db } from "@/db";
-import { batchExamResults, batchExamSubjects, batchExams, subjects, students, institutions, classes, sections } from "@/db/schema";
-import { getSession } from "@/lib/auth";
-import { eq, and } from "drizzle-orm";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
+import { and, eq } from 'drizzle-orm';
+import { db } from '@/db';
+import { institutions, students } from '@/db/schema';
+import { getTenantContext, requireRole } from '@/lib/rbac';
+import { getStudentBatchReports } from '@/lib/batch-exams';
+import { ActionInputError } from '@/lib/action-input-error';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const session = await getSession();
-    if (!session || session.role !== "STUDENT" || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { id } = await params;
-    const examId = Number(id);
-    if (!Number.isSafeInteger(examId) || examId <= 0) return NextResponse.json({error:"Invalid transcript"},{status:400});
-
-    const rawResults = await db.select({
-      examTitle: batchExams.title,
-      examType: batchExams.type,
-      officialPublishedAt: batchExams.officialPublishedAt,
-      examCreatedAt: batchExams.createdAt,
-      subjectName: subjects.name,
-      maxMarks: batchExamSubjects.maxMarks,
-      marksObtained: batchExamResults.marksObtained,
-      isPublished: batchExamSubjects.isPublished,
-      reviewDeadline: batchExamSubjects.reviewDeadline,
-    })
-    .from(batchExamResults)
-    .innerJoin(batchExamSubjects, eq(batchExamResults.batchExamSubjectId, batchExamSubjects.id))
-    .innerJoin(batchExams, eq(batchExamSubjects.batchExamId, batchExams.id))
-    .innerJoin(subjects, eq(batchExamSubjects.subjectId, subjects.id))
-    .where(
-      and(
-        eq(batchExamResults.studentId, session.userId),
-        eq(batchExams.id, examId)
-      )
-    );
-
-    if (rawResults.length === 0) {
-      return NextResponse.json({ error: "Transcript not found" }, { status: 404 });
-    }
-
-    const now = new Date();
-    const allPublished = rawResults.every(r => r.isPublished || now > r.reviewDeadline);
-    const isOfficiallyPublished = rawResults[0].examType !== "PROMOTION" || Boolean(rawResults[0].officialPublishedAt);
-    
-    if (!allPublished || !isOfficiallyPublished) {
-      return NextResponse.json({ error: "Transcript is pending review" }, { status: 400 });
-    }
-
-    const [identity] = await db.select({
-      student: { name: students.name, fatherName: students.fatherName, phone: students.phone, emergencyContact: students.emergencyContact, profilePictureUrl: students.profilePictureUrl, loginRollNumber: students.loginRollNumber, classRollNumber: students.classRollNumber, className: classes.name, sectionName: sections.name },
-      institution: { name: institutions.name, logoKey: institutions.logoKey, signatureKey: institutions.signatureKey },
-    }).from(students).innerJoin(institutions, eq(students.institutionId, institutions.id)).innerJoin(classes, eq(students.classId, classes.id)).innerJoin(sections, eq(students.sectionId, sections.id)).where(and(eq(students.id, session.userId), eq(students.institutionId, session.institutionId!))).limit(1);
-    if (!identity) return NextResponse.json({error:'Student record unavailable'}, {status:404});
-    return NextResponse.json({
-      identity,
-      examTitle: rawResults[0].examTitle,
-      examType: rawResults[0].examType,
-      examCreatedAt: rawResults[0].examCreatedAt,
-      results: rawResults.map(r => ({
-        subjectName: r.subjectName,
-        maxMarks: r.maxMarks,
-        marksObtained: r.marksObtained
-      }))
-    });
-  } catch (error) {
-    const publicInputError = inputErrorResponse(error);
-    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
-
-    console.error("Transcript details GET error:", error);
-    return NextResponse.json({ error: "Failed to fetch transcript details" }, { status: 500 });
-  }
-}
+export const GET = requireRole(['STUDENT'], async (_req: NextRequest, { session, params }) => {
+  const institutionId = getTenantContext(session), id = Number((await params).id);
+  if (!Number.isSafeInteger(id) || id < 1) throw new ActionInputError('Invalid transcript.');
+  const [report] = await getStudentBatchReports(institutionId, session.userId, id);
+  if (!report) return NextResponse.json({ error: 'Transcript not found or awaiting publication' }, { status: 404 });
+  const [identity] = await db.select({
+    student: { name: students.name, fatherName: students.fatherName, phone: students.phone, emergencyContact: students.emergencyContact,
+      profilePictureUrl: students.profilePictureUrl, loginRollNumber: students.loginRollNumber, classRollNumber: students.classRollNumber },
+    institution: { name: institutions.name, logoKey: institutions.logoKey, signatureKey: institutions.signatureKey },
+  }).from(students).innerJoin(institutions, eq(institutions.id, students.institutionId))
+    .where(and(eq(students.id, session.userId), eq(students.institutionId, institutionId))).limit(1);
+  if (!identity) return NextResponse.json({ error: 'Student record unavailable' }, { status: 404 });
+  return NextResponse.json({
+    identity: { ...identity, student: { ...identity.student, name: report.student.name, classRollNumber: report.student.roll,
+      className: report.student.className, sectionName: report.student.sectionName } },
+    examTitle: report.title, examType: report.type, examCreatedAt: report.createdAt,
+    version: report.version, publishedAt: report.publishedAt, grading: report.grading,
+    totalMax: report.totalMax, totalObtained: report.totalObtained, percentage: report.percentage,
+    grade: report.student.grade, result: report.student.result, attendance: report.student.attendance,
+    results: report.student.results.map(row => ({ subjectName: row.subjectName, maxMarks: row.maxMarks, marksObtained: row.marks,
+      status: row.status, components: row.components, remark: row.remark, passed: row.passed })),
+  }, { headers: { 'Cache-Control': 'private, no-store' } });
+});

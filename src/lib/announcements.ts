@@ -1,9 +1,15 @@
 import { db } from "@/db";
-import { announcementReads, announcements, staff, staffAssignments, students, sections } from "@/db/schema";
+import { announcementReads, announcements, staff, staffAssignments, students, sections, parentAccounts, parentStudents, auditLogs, type AnnouncementResponse } from "@/db/schema";
 import type { JWTPayload } from "@/lib/auth-types";
 import { and, desc, eq, inArray, gte, isNull, or, sql } from "drizzle-orm";
 import { getUserCreatedAt } from "@/lib/user";
-import { getCachedOrFetch } from "@/lib/redis";
+import { getCachedOrFetch, invalidateAnnouncementReadCaches } from "@/lib/redis";
+import { getParentPortalContext } from './parent-access';
+import { ActionInputError } from './action-input-error';
+import { pakistanDateKey } from './parent-period';
+import { z } from 'zod';
+export const announcementResponsePolicySchema=z.object({mode:z.enum(['NONE','ACKNOWLEDGE','CONSENT']).default('NONE'),dueDate:z.string().date().optional()})
+  .refine(value=>!value.dueDate||value.dueDate>=pakistanDateKey(),'Choose today or a future response deadline.');
 
 export type AnnouncementRecipientRole = "STUDENT" | "STAFF";
 
@@ -20,6 +26,8 @@ export type VisibleAnnouncement = {
   senderRole: JWTPayload["role"];
   createdAtIso: string;
   isRead: boolean;
+  responsePolicy: typeof announcements.$inferSelect['responsePolicy'];
+  response?: AnnouncementResponse;
 };
 
 type AnnouncementRow = typeof announcements.$inferSelect;
@@ -156,7 +164,12 @@ export async function resolveAnnouncementRecipients(announcement: AnnouncementRo
   return Array.from(recipients.values());
 }
 
-async function isAnnouncementRecipient(announcement: AnnouncementRow, session: JWTPayload) {
+async function isAnnouncementRecipient(announcement: AnnouncementRow, session: JWTPayload, studentId?: number) {
+  if (session.role === 'PARENT') {
+    const context=await getParentPortalContext(session,studentId,{selectedOnly:Boolean(studentId)});
+    for(const child of context.children) if(announcement.createdAt>=child.createdAt && await isAnnouncementRecipient(announcement,{...session,role:'STUDENT',userId:child.id})) return true;
+    return false;
+  }
   if (session.role !== "STUDENT" && session.role !== "STAFF") {
     return false;
   }
@@ -335,6 +348,7 @@ function toVisibleAnnouncement(announcement: AnnouncementRow, isRead: boolean): 
     senderRole: announcement.senderRole,
     createdAtIso: announcement.createdAt.toISOString(),
     isRead,
+    responsePolicy: announcement.responsePolicy ?? {},
   };
 }
 
@@ -342,10 +356,18 @@ export async function getVisibleAnnouncements(
   session: JWTPayload,
   limit = 4,
   studentInfo?: { campusId: number | null; classId: number; sectionId: number; createdAt: Date },
-  options?: { includeReadStatus?: boolean; forceRefresh?: boolean }
-) {
+  options?: { includeReadStatus?: boolean; forceRefresh?: boolean; studentId?: number }
+): Promise<VisibleAnnouncement[]> {
   const institutionId = getSessionInstitutionId(session);
   if (!institutionId) return [];
+  if (session.role === 'PARENT') {
+    const context=await getParentPortalContext(session,options?.studentId,{selectedOnly:true});
+    const child=context.selectedChild;if(!child)return [];
+    const rows=await getVisibleAnnouncements({...session,role:'STUDENT',userId:child.id},limit,child,{includeReadStatus:false,forceRefresh:options?.forceRefresh});
+    if(!rows.length)return [];
+    const receipts=await db.select().from(announcementReads).where(and(eq(announcementReads.userRole,'PARENT'),eq(announcementReads.userId,session.userId),inArray(announcementReads.announcementId,rows.map(row=>row.id))));
+    return rows.map(row=>{const read=receipts.find(item=>item.announcementId===row.id);const answer=read?.response.children?.[child.id];return {...row,isRead:Boolean(read),response:answer?{...answer,studentId:child.id}:undefined};});
+  }
 
   let visibleRows: AnnouncementRow[] = [];
   // A dashboard preview and a notices page have different result limits.
@@ -449,9 +471,19 @@ export async function getVisibleAnnouncements(
   return visibleRows.map((announcement) => toVisibleAnnouncement(announcement, readIds.has(announcement.id)));
 }
 
-export async function getVisibleAnnouncementById(session: JWTPayload, id: number) {
+export async function getVisibleAnnouncementById(session: JWTPayload, id: number, studentId?: number): Promise<VisibleAnnouncement | null> {
   const institutionId = getSessionInstitutionId(session);
   if (!institutionId) return null;
+  if(session.role==='PARENT'){
+    const context=await getParentPortalContext(session,studentId,{selectedOnly:Boolean(studentId)});
+    for(const child of context.children){
+      const visible=await getVisibleAnnouncementById({...session,role:'STUDENT',userId:child.id},id);
+      if(!visible)continue;
+      const [read]=await db.select().from(announcementReads).where(and(eq(announcementReads.announcementId,id),eq(announcementReads.userRole,'PARENT'),eq(announcementReads.userId,session.userId))).limit(1);
+      return {...visible,isRead:Boolean(read),response:{...read?.response.children?.[child.id],studentId:child.id}};
+    }
+    return null;
+  }
 
   const userCreatedAt = await getUserCreatedAt(session);
 
@@ -480,10 +512,10 @@ export async function getVisibleAnnouncementById(session: JWTPayload, id: number
     .where(and(eq(announcementReads.announcementId, id), eq(announcementReads.userRole, session.role), eq(announcementReads.userId, session.userId)))
     .limit(1);
 
-  return toVisibleAnnouncement(announcement, Boolean(read));
+  return {...toVisibleAnnouncement(announcement, Boolean(read)),response:read?.response};
 }
 
-export async function markAnnouncementRead(session: JWTPayload, id: number) {
+export async function markAnnouncementRead(session: JWTPayload, id: number, input: unknown = {}) {
   const institutionId = getSessionInstitutionId(session);
   if (!institutionId) throw new Error("Announcement not found");
 
@@ -495,15 +527,63 @@ export async function markAnnouncementRead(session: JWTPayload, id: number) {
 
   if (!announcement) throw new Error("Announcement not found");
 
-  const isRecipient = await isAnnouncementRecipient(announcement, session);
+  const value=z.object({answer:z.enum(['ACKNOWLEDGED','YES','NO']).optional(),studentId:z.number().int().positive().optional()}).parse(input);
+  if(session.mustChangePassword || session.campusReadOnly) throw new ActionInputError('Forbidden');
+  const isRecipient = await isAnnouncementRecipient(announcement, session,value.studentId);
   if (!isRecipient) {
     if (canViewSentOrManagedAnnouncement(announcement, session)) return;
     throw new Error("Announcement not found");
   }
 
-  await db.insert(announcementReads).values({
-    announcementId: id,
-    userRole: session.role,
-    userId: session.userId,
-  }).onConflictDoNothing();
+  await db.transaction(async tx=>{
+    const locked=await tx.select({id:announcements.id}).from(announcements).where(eq(announcements.id,id)).for('update');
+    if(!locked.length)throw new ActionInputError('Notice not found.');
+    if(session.role==='PARENT'&&value.studentId){const link=await tx.select({id:parentStudents.id}).from(parentStudents).where(and(eq(parentStudents.parentId,session.userId),eq(parentStudents.studentId,value.studentId),eq(parentStudents.institutionId,institutionId))).for('update');if(!link.length)throw new ActionInputError('Child not found.');}
+    const [existing]=await tx.select().from(announcementReads).where(and(eq(announcementReads.announcementId,id),eq(announcementReads.userRole,session.role),eq(announcementReads.userId,session.userId))).limit(1);
+    const response:AnnouncementResponse={...existing?.response};
+    if(value.answer){
+      const mode=announcement.responsePolicy.mode;
+      if((mode==='ACKNOWLEDGE'&&value.answer!=='ACKNOWLEDGED') || (mode==='CONSENT'&&(session.role!=='PARENT'||!['YES','NO'].includes(value.answer))) || !mode || mode==='NONE')throw new ActionInputError('Choose a valid response for this notice.');
+      if(session.role==='PARENT'&&!value.studentId)throw new ActionInputError('Choose the child this response applies to.');
+      if(announcement.responsePolicy.dueDate&&announcement.responsePolicy.dueDate<pakistanDateKey())throw new ActionInputError('The response deadline passed. Contact the institution.');
+      const previous=session.role==='PARENT'?response.children?.[value.studentId!]?.answer:response.answer;
+      if(previous&&previous!==value.answer)throw Object.assign(new ActionInputError('A response was already recorded. Contact the institution to request a new consent notice.'),{status:409});
+      const answer={answer:value.answer,at:new Date().toISOString()};
+      if(session.role==='PARENT')response.children={...response.children,[value.studentId!]:response.children?.[value.studentId!]??answer};
+      else if(!previous)Object.assign(response,answer);
+      if(!previous)await tx.insert(auditLogs).values({institutionId,actorRole:session.role,actorId:session.userId,action:'NOTICE_RESPONSE',target:`Announcement:${id}:${value.studentId??0}:${value.answer}`,ip:'server'});
+    }
+    if(existing)await tx.update(announcementReads).set({response}).where(eq(announcementReads.id,existing.id));
+    else await tx.insert(announcementReads).values({announcementId:id,userRole:session.role,userId:session.userId,response});
+  });
+}
+
+/** Response records must survive ordinary notice removal. Serializes with responding. */
+export async function deleteInstitutionAnnouncement(session: JWTPayload, id: number) {
+  if(!session.institutionId||!['INSTITUTION','INSTITUTION_ADMIN'].includes(session.role)||session.mustChangePassword||session.campusReadOnly)throw new ActionInputError('Forbidden');
+  const institutionId=session.institutionId;
+  await db.transaction(async tx=>{
+    const [notice]=await tx.select({id:announcements.id}).from(announcements).where(and(eq(announcements.id,id),eq(announcements.institutionId,institutionId))).for('update');
+    if(!notice)throw new ActionInputError('Notice not found.');
+    const responses=await tx.select({id:announcementReads.id}).from(announcementReads).where(and(eq(announcementReads.announcementId,id),sql`${announcementReads.response} <> '{}'::jsonb`)).limit(1);
+    if(responses.length)throw new ActionInputError('This notice has recorded responses and must be kept for your records.');
+    await tx.execute(sql`DELETE FROM notifications WHERE institution_id=${institutionId} AND reference_id=${id} AND type IN ('ANNOUNCEMENT','EXAM_TIMETABLE')`);
+    await tx.delete(announcements).where(eq(announcements.id,id));
+  });
+  await invalidateAnnouncementReadCaches(institutionId);
+}
+
+export async function getAnnouncementReceipts(session: JWTPayload, id: number) {
+  if(!session.institutionId||!['INSTITUTION','INSTITUTION_ADMIN'].includes(session.role))throw new ActionInputError('Forbidden');
+  const [notice]=await db.select().from(announcements).where(and(eq(announcements.id,id),eq(announcements.institutionId,session.institutionId))).limit(1);
+  if(!notice)throw new ActionInputError('Notice not found.');
+  const recipients=await resolveAnnouncementRecipients(notice),studentIds=recipients.filter(row=>row.userRole==='STUDENT').map(row=>row.userId);
+  const parents=studentIds.length?await db.select({parentId:parentAccounts.id,name:parentAccounts.email,studentId:students.id,student:students.name}).from(parentStudents)
+    .innerJoin(parentAccounts,and(eq(parentAccounts.id,parentStudents.parentId),eq(parentAccounts.institutionId,session.institutionId),eq(parentAccounts.status,'ACTIVE'),isNull(parentAccounts.deletedAt)))
+    .innerJoin(students,and(eq(students.id,parentStudents.studentId),isNull(students.deletedAt)))
+    .where(and(eq(parentStudents.institutionId,session.institutionId),inArray(parentStudents.studentId,studentIds))):[];
+  const reads=await db.select().from(announcementReads).where(eq(announcementReads.announcementId,id));
+  const parentReads=new Map(reads.filter(row=>row.userRole==='PARENT').map(row=>[row.userId,row]));
+  return {notice:{id:notice.id,title:notice.title,responsePolicy:notice.responsePolicy},studentRecipients:studentIds.length,studentReads:reads.filter(row=>row.userRole==='STUDENT'&&studentIds.includes(row.userId)).length,
+    parents:parents.map(parent=>{const read=parentReads.get(parent.parentId);return {...parent,readAt:read?.readAt??null,response:read?.response.children?.[parent.studentId]??null};})};
 }

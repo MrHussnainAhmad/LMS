@@ -13,6 +13,7 @@ import { InchargeForm } from "./InchargeForm";
 import { WeeklyTimetable, type TimetableEntry } from "@/components/timetable/ScheduleViews";
 import { formatClassSection } from "@/lib/class-section-label";
 import Link from "next/link";
+import { StaffWorkloadPanel } from '@/components/institution/StaffWorkloadPanel';
 
 type TimetableRow = {
   assignment: typeof staffAssignments.$inferSelect;
@@ -119,6 +120,7 @@ export default async function InstitutionTimetablePage({ searchParams }: { searc
 
   return (
     <div className="space-y-8 animate-fade-in">
+      <StaffWorkloadPanel readOnly={session.campusReadOnly}/>
       <div className="flex flex-col sm:flex-row justify-end items-start sm:items-center gap-4">
 
         <div className="flex flex-wrap items-center gap-3">

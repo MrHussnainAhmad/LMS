@@ -78,6 +78,23 @@ rejection or disabled mobile access still clears the session. Delayed requests
 reuse a token already refreshed by another request, and rotated refresh tokens
 are saved before access tokens so interrupted saves remain recoverable.
 
+New mobile clients send their existing `accessToken` with a refresh request.
+Its signature and device identity bind the operation to that device even when
+the access JWT has expired. The server derives the replacement refresh token
+using its signing key and the original token/proof pair; only its hash is stored.
+For five minutes the identical request can recover that same replacement if it
+is still active. A different proof, expired/revoked device or revoked QR session
+cannot recover it. Older clients retain their existing single-use rotation.
+Recovery never extends the QR session deadline or revives a logged-out session.
+
+The apps remember successful login identifiers, with a clear-saved-details action,
+and never save entered passwords. Temporary secure-storage errors show a retry
+screen without deleting the session. Selected timetable, diary and notice reads
+can fall back to account-scoped snapshots up to 24 hours old, with a visible
+saved-time notice. Authentication failures never fall back to offline data;
+logout removes that account's snapshots. Payment and attendance writes are
+neither cached nor automatically retried.
+
 Ordinary fresh session guards, including light/unread endpoints and server
 actions, reject disabled mobile sessions. A mobile-marked token cannot bypass
 this by being placed in a cookie. Protected requests normally return the

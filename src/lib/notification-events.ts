@@ -22,11 +22,11 @@ export async function notifyAssignment(institutionId:number,id:number) {
  await createBulkNotifications(rows.map(s=>({institutionId,userRole:'STUDENT' as const,userId:s.id,type:'ASSIGNMENT' as const,title:'New assignment',message:`${assignment.title} is available.`,referenceId:id,eventKey:`assignment:${id}`})));
 }
 export async function notifyBatchResults(institutionId:number,subjectId:number) {
- const [subject]=await db.select({published:batchExamSubjects.isPublished,examId:batchExamSubjects.batchExamId}).from(batchExamSubjects).innerJoin(batchExams,eq(batchExams.id,batchExamSubjects.batchExamId)).where(and(eq(batchExamSubjects.id,subjectId),eq(batchExams.institutionId,institutionId))).limit(1);
+ const [subject]=await db.select({published:batchExams.officialPublishedAt,examId:batchExamSubjects.batchExamId}).from(batchExamSubjects).innerJoin(batchExams,eq(batchExams.id,batchExamSubjects.batchExamId)).where(and(eq(batchExamSubjects.id,subjectId),eq(batchExams.institutionId,institutionId))).limit(1);
  if(!subject?.published)return;
- const pending=await db.select({id:batchExamSubjects.id}).from(batchExamSubjects).where(and(eq(batchExamSubjects.batchExamId,subject.examId),eq(batchExamSubjects.isPublished,false),sql`${batchExamSubjects.reviewDeadline}>clock_timestamp()`)).limit(1);
+ const pending=await db.select({id:batchExamSubjects.id}).from(batchExamSubjects).where(and(eq(batchExamSubjects.batchExamId,subject.examId),eq(batchExamSubjects.isPublished,false))).limit(1);
  if(pending.length)return;
- const rows=await db.selectDistinct({studentId:batchExamResults.studentId}).from(batchExamResults).innerJoin(batchExamSubjects,eq(batchExamSubjects.id,batchExamResults.batchExamSubjectId)).where(eq(batchExamSubjects.batchExamId,subject.examId));
+ const rows=await db.selectDistinct({studentId:batchExamResults.studentId}).from(batchExamResults).innerJoin(batchExamSubjects,eq(batchExamSubjects.id,batchExamResults.batchExamSubjectId)).where(and(eq(batchExamSubjects.batchExamId,subject.examId),sql`NOT EXISTS (SELECT 1 FROM batch_exam_results blocked JOIN batch_exam_subjects bs ON bs.id=blocked.batch_exam_subject_id WHERE bs.batch_exam_id=${subject.examId} AND blocked.student_id=${batchExamResults.studentId} AND COALESCE(blocked.details->>'status','MARKED') IN ('WITHHELD','NOT_ENTERED'))`));
  await createBulkNotifications(rows.map(s=>({institutionId,userRole:'STUDENT' as const,userId:s.studentId,type:'MARKS' as const,title:'Exam results published',message:'New exam results are available in your results section.',referenceId:subject.examId,data:{screen:'transcripts'},eventKey:`batch-result:${subject.examId}`})));
 }
 export async function notifyApprovedStudentLeave(institutionId:number,studentId:number,leaveId:number) {

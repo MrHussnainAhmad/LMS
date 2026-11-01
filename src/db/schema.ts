@@ -862,6 +862,22 @@ export const accountDeletions = pgTable("account_deletions", {
   deletedAt: timestamp("deleted_at").defaultNow().notNull(),
 });
 
+export type AcademicSessionRecord = {
+  rolloverId?: string; fromSessionId?: number | null; openedBy?: number;
+  closedAt?: string; closedBy?: number;
+  closingRoster?: Array<{ id: number; name: string; loginId: string; roll: string; classId: number; className: string; sectionId: number; sectionName: string; balance: number }>;
+  openingBalance?: number;
+};
+export type StudentSupportRecord = { status?: 'OPEN' | 'MONITORING' | 'RESOLVED'; assignedTo?: number | null; nextDate?: string | null; note?: string; revision?: number; updatedAt?: string;
+  history?: Array<{ status: string; note: string; actorId: number; at: string }> };
+export type FeeInvoicePlan = { installments?: Array<{ dueDate: string; amount: number }>; paidAtSetup?: number; revision?: number; reason?: string; updatedBy?: number; updatedAt?: string;
+  followUps?: Array<{ note: string; nextDate?: string; actorId: number; at: string }> };
+export type AnnouncementResponsePolicy = { mode?: 'NONE' | 'ACKNOWLEDGE' | 'CONSENT'; dueDate?: string };
+export type AnnouncementResponse = { answer?: 'ACKNOWLEDGED' | 'YES' | 'NO'; at?: string; studentId?: number;
+  children?: Record<string,{answer:'ACKNOWLEDGED'|'YES'|'NO';at:string}> };
+export type TeachingCoverage = Record<string, { staffId: number | null; reason: string; assignedBy: number; at: string; revision?:number;
+  history?:Array<{staffId:number|null;reason:string;assignedBy:number;at:string}> }>;
+
 // --- ACADEMIC SESSIONS ---
 export const academicSessions = pgTable(
   "academic_sessions",
@@ -874,6 +890,7 @@ export const academicSessions = pgTable(
     startDate: date("start_date").notNull(),
     endDate: date("end_date").notNull(),
     isCurrent: boolean("is_current").default(false).notNull(),
+    record: jsonb('record').$type<AcademicSessionRecord>().default(sql`'{}'::jsonb`).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => ({
@@ -1081,6 +1098,7 @@ export const students = pgTable(
       onDelete: "set null",
     }),
     name: varchar("name", { length: 255 }).notNull(),
+    supportRecord: jsonb('support_record').$type<StudentSupportRecord>().default(sql`'{}'::jsonb`).notNull(),
     fatherName: varchar("father_name", { length: 255 }),
     phone: varchar("phone", { length: 50 }),
     gender: varchar("gender", { length: 10 }).default("MALE").notNull(),
@@ -1410,6 +1428,7 @@ export const staffAssignments = pgTable(
     institutionId: integer("institution_id")
       .notNull()
       .references(() => institutions.id, { onDelete: "cascade" }),
+    coverage: jsonb('coverage').$type<TeachingCoverage>().default(sql`'{}'::jsonb`).notNull(),
     staffId: integer("staff_id").references(() => staff.id, {
       onDelete: "cascade",
     }),
@@ -1739,6 +1758,7 @@ export const announcements = pgTable(
     automationKey: varchar("automation_key", { length: 255 }).unique(),
     title: varchar("title", { length: 255 }).notNull(),
     content: text("content").notNull(),
+    responsePolicy: jsonb('response_policy').$type<AnnouncementResponsePolicy>().default(sql`'{}'::jsonb`).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => ({
@@ -1759,6 +1779,7 @@ export const announcementReads = pgTable(
       .references(() => announcements.id, { onDelete: "cascade" }),
     userRole: roleEnum("user_role").notNull(),
     userId: integer("user_id").notNull(),
+    response: jsonb('response').$type<AnnouncementResponse>().default(sql`'{}'::jsonb`).notNull(),
     readAt: timestamp("read_at").defaultNow().notNull(),
   },
   (t) => ({
@@ -2189,6 +2210,7 @@ export const feeInvoices = pgTable(
     totalAmount: integer("total_amount").notNull(),
     paidAmount: integer("paid_amount").default(0).notNull(),
     notes: text("notes"),
+    plan: jsonb('plan').$type<FeeInvoicePlan>().default(sql`'{}'::jsonb`).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -2406,6 +2428,23 @@ export const featuredInstitutions = pgTable("featured_institutions", {
 });
 
 // --- BATCH EXAMS (TRANSCRIPTS) ---
+export type BatchResultStatus = 'MARKED' | 'ABSENT' | 'EXEMPT' | 'WITHHELD' | 'NOT_ENTERED';
+export type BatchMarkState = { status: BatchResultStatus; marks: number; components?: Record<string, number>; remark?: string };
+export type BatchResultDetails = Partial<BatchMarkState> & {
+  revision?: number; updatedAt?: string;
+  history?: Array<{ before: BatchMarkState; reportVersion: number; reason: string; actorId: number; actorRole: string; at: string }>;
+};
+export type BatchSubjectPolicy = { passingPercentage?: number; components?: Array<{ name: string; maxMarks: number }> };
+export type BatchExamSettings = {
+  workflow?: 'MANUAL' | 'LEGACY'; phase?: 'DRAFT' | 'REVIEW'; reviewHours?: number;
+  requireSubjectPass?: boolean; reportVersion?: number; promotionAppliedAt?: string;
+  gradingSnapshot?: { passingPercentage: number; grades: Array<{ letter: string; min: number; max: number }> };
+  roster?: Record<string, { name: string; roll: string; loginId: string; className: string; sectionName: string }>;
+  periodStart?: string; periodEnd?: string; attendance?: Record<string, { present: number; total: number }>;
+  ownWeight?: number; termWeights?: Array<{ examId: number; weight: number }>;
+  weightedSources?: Array<{ examId: number; title: string; weight: number; version: number; percentages: Record<string, number> }>;
+  supplementaryOf?: number;
+};
 export const batchExams = pgTable(
   "batch_exams",
   {
@@ -2422,6 +2461,7 @@ export const batchExams = pgTable(
     title: varchar("title", { length: 255 }).notNull(),
     type: testTypeEnum("type").default("FINAL").notNull(),
     officialPublishedAt: timestamp("official_published_at"),
+    settings: jsonb('settings').$type<BatchExamSettings>().default(sql`'{}'::jsonb`).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => ({
@@ -2443,6 +2483,7 @@ export const batchExamSubjects = pgTable(
       .notNull()
       .references(() => subjects.id, { onDelete: "cascade" }),
     maxMarks: real("max_marks").notNull(),
+    policy: jsonb('policy').$type<BatchSubjectPolicy>().default(sql`'{}'::jsonb`).notNull(),
     staffId: integer("staff_id").references(() => staff.id, {
       onDelete: "set null",
     }),
@@ -2470,6 +2511,7 @@ export const batchExamResults = pgTable(
       .notNull()
       .references(() => students.id, { onDelete: "cascade" }),
     marksObtained: real("marks_obtained").notNull(),
+    details: jsonb('details').$type<BatchResultDetails>().default(sql`'{}'::jsonb`).notNull(),
     isEdited: boolean("is_edited").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

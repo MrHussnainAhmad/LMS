@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, ArrowRight, CheckCircle2, Clock, CalendarDays } from "lucide-react";
+import { Loader2, ArrowRight, Clock, CalendarDays } from "lucide-react";
 import Link from "next/link";
 import { formatClassSection } from "@/lib/class-section-label";
 function formatDistanceToNow(date: Date) {
@@ -66,7 +66,7 @@ export default function StaffBatchResultsPage() {
                   </div>
                   {res.isEffectivelyPublished ? (
                     <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
-                      Published
+                      Review submitted
                     </span>
                   ) : (
                     <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
@@ -83,7 +83,7 @@ export default function StaffBatchResultsPage() {
                     <div className="flex items-center gap-1.5 text-amber-600 mt-2">
                       <Clock className="h-4 w-4" />
                       <span className="font-medium text-xs">
-                        Auto-publishes in {formatDistanceToNow(new Date(res.reviewDeadline))}
+                        Review deadline: {formatDistanceToNow(new Date(res.reviewDeadline))}
                       </span>
                     </div>
                   )}

@@ -1,4 +1,6 @@
 "use client";
+import { invoiceInstallments } from "@/lib/fee-installments";
+import { pakistanDateKey } from "@/lib/parent-period";
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toaster";
@@ -119,4 +121,52 @@ export function OneTimeBillingPanel({month,heads,classes,onIssued}:{month:string
       <div className="flex justify-end gap-2"><Button variant="outline" disabled={busy} onClick={()=>setRequest(null)}>Cancel</Button><Button disabled={busy} onClick={()=>void issue()}>{busy ? "Issuing…":"Issue challans"}</Button></div>
     </DialogContent></Dialog>
   </CardContent></Card>;
+}
+
+export function InvoiceSupportPanel({invoice,onClose,onSaved}:{invoice:{id:number;studentName:string;totalAmount:number;paidAmount:number;plan?:import('@/db/schema').FeeInvoicePlan};onClose:()=>void;onSaved:()=>Promise<void>}) {
+  const balance=invoice.totalAmount-invoice.paidAmount;
+  const [rows,setRows]=useState(()=>[{dueDate:pakistanDateKey(),amount:Math.floor(balance/2)},{dueDate:new Date(Date.now()+30*86400000).toISOString().slice(0,10),amount:balance-Math.floor(balance/2)}]);
+  const [reason,setReason]=useState(''),[note,setNote]=useState(''),[nextDate,setNextDate]=useState('');
+  const [busy,setBusy]=useState(false),[error,setError]=useState('');
+  const schedule=invoiceInstallments(invoice);
+  const save=async(installments:boolean)=>{
+    setBusy(true);setError('');
+    try{
+      await api.post('/api/institution/fees',installments?{action:'setInstallments',invoiceId:invoice.id,expectedPaidAmount:invoice.paidAmount,revision:invoice.plan?.revision??0,reason,installments:rows}
+        :{action:'feeFollowUp',invoiceId:invoice.id,note,nextDate:nextDate||undefined});
+      await onSaved();onClose();
+    }catch(err){setError(err instanceof Error?err.message:'Could not save invoice changes.');}finally{setBusy(false);}
+  };
+  return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose();}}><DialogContent className="max-h-[90vh] max-w-2xl overflow-auto"><DialogHeader><DialogTitle>Fee plan and follow-up</DialogTitle><DialogDescription>{invoice.studentName} / Outstanding PKR {balance.toLocaleString()}. A payment plan changes due dates, not the invoice total.</DialogDescription></DialogHeader>
+    {schedule.installments.length>0&&<div className="space-y-1 rounded-md border border-border p-3 text-sm">{schedule.installments.map(row=><p key={row.dueDate}>{row.dueDate} / PKR {row.amount.toLocaleString()} / Remaining {row.remaining.toLocaleString()}</p>)}</div>}
+    {balance>=2&&<details className="rounded-md border border-border p-3"><summary className="cursor-pointer text-sm font-medium">{schedule.installments.length?'Replace remaining installment schedule':'Create installment schedule'}</summary><div className="mt-3 space-y-3">
+      <p className="text-xs text-stone-500">Split only the current outstanding balance. New payments settle the earliest installment first.</p>
+      {rows.map((row,index)=><div key={index} className="flex gap-2"><Input type="date" aria-label={'Installment '+(index+1)+' due date'} min={pakistanDateKey()} value={row.dueDate} onChange={event=>setRows(previous=>previous.map((item,position)=>position===index?{...item,dueDate:event.target.value}:item))}/><Input type="number" min={1} aria-label={'Installment '+(index+1)+' amount'} value={row.amount} onChange={event=>setRows(previous=>previous.map((item,position)=>position===index?{...item,amount:Number(event.target.value)}:item))}/><Button variant="outline" size="sm" disabled={rows.length<=2||busy} onClick={()=>setRows(previous=>previous.filter((_,position)=>position!==index))}>Remove</Button></div>)}
+      <Button variant="outline" size="sm" disabled={rows.length>=12||busy} onClick={()=>setRows(previous=>[...previous,{dueDate:'',amount:0}])}>Add installment</Button>
+      <p className="text-sm">Scheduled total: PKR {rows.reduce((sum,row)=>sum+row.amount,0).toLocaleString()} / Required: {balance.toLocaleString()}</p>
+      <label className="block space-y-1 text-sm">Reason<Input maxLength={500} value={reason} onChange={event=>setReason(event.target.value)}/></label>
+      <Button disabled={busy||reason.trim().length<5||rows.reduce((sum,row)=>sum+row.amount,0)!==balance} onClick={()=>save(true)}>Save installment plan</Button>
+    </div></details>}
+    <div className="space-y-3 border-t border-border pt-3"><h3 className="text-sm font-semibold">Collection follow-up</h3><label className="block text-sm">Contact note<textarea className="mt-1 w-full rounded-md border border-border p-2" maxLength={500} value={note} onChange={event=>setNote(event.target.value)}/></label><label className="block text-sm">Next contact date (optional)<Input type="date" min={pakistanDateKey()} value={nextDate} onChange={event=>setNextDate(event.target.value)}/></label><Button disabled={busy||note.trim().length<2} onClick={()=>save(false)}>Record follow-up</Button>
+      {(invoice.plan?.followUps??[]).slice(-5).reverse().map((row,index)=><p key={index} className="rounded-md bg-stone-50 p-2 text-xs">{new Date(row.at).toLocaleString()} / {row.note}{row.nextDate?' / Next contact: '+row.nextDate:''}</p>)}
+    </div>{error&&<p role="alert" className="text-sm text-red-800">{error}</p>}
+  </DialogContent></Dialog>;
+}
+
+export function FamilyDiscountPanel({studentId,month,onSaved}:{studentId:number|null;month:string;onSaved:()=>Promise<void>}) {
+  const [amount,setAmount]=useState(''),[endMonth,setEnd]=useState('');
+  const [preview,setPreview]=useState<{previewHash:string;family:Array<{id:number;name:string;loginId:string}>}|null>(null);
+  const [busy,setBusy]=useState(false),[error,setError]=useState('');
+  const run=async(confirm:boolean)=>{
+    if(!studentId)return;setBusy(true);setError('');
+    try{
+      const result=await api.post<{previewHash:string;family:Array<{id:number;name:string;loginId:string}>}>('/api/institution/fees',{action:'siblingDiscount',studentId,amount:Number(amount),startMonth:month,endMonth:endMonth||undefined,confirm,expectedPreviewHash:preview?.previewHash});
+      if(confirm){setPreview(null);setAmount('');await onSaved();}else setPreview(result);
+    }catch(err){setError(err instanceof Error?err.message:'Could not save family discount.');}finally{setBusy(false);}
+  };
+  return <div className="space-y-3 rounded-md border border-border p-3"><h3 className="text-sm font-semibold">Recurring sibling discount</h3><p className="text-xs text-stone-500">Select a student above. Preview active siblings linked to the same parent before applying an equal monthly discount to each child.</p>
+    <div className="grid gap-3 sm:grid-cols-2"><Input aria-label="Sibling discount per child" type="number" min={1} value={amount} placeholder="PKR discount per child" onChange={event=>{setAmount(event.target.value);setPreview(null);}}/><Input aria-label="Sibling discount end month" type="month" min={month} value={endMonth} onChange={event=>{setEnd(event.target.value);setPreview(null);}}/></div>
+    {preview&&<p className="text-sm">{preview.family.map(row=>row.name+' ('+row.loginId+')').join(', ')}</p>}
+    <Button type="button" variant="outline" disabled={busy||!studentId||!Number(amount)} onClick={()=>run(Boolean(preview))}>{preview?'Confirm discount for listed siblings':'Preview eligible siblings'}</Button>{error&&<p role="alert" className="text-sm text-red-800">{error}</p>}
+  </div>;
 }

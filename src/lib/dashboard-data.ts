@@ -1,3 +1,4 @@
+import { effectiveTeachingStaffId } from './timetable-coverage';
 import { and, asc, desc, eq, gt, isNotNull, isNull, or, sql, type SQLWrapper } from 'drizzle-orm';
 import { db } from '@/db';
 import { assignments, classes, marks, sections, staff, staffAssignments, students, subjects, submissions, tests } from '@/db/schema';
@@ -28,7 +29,7 @@ function prepareStaffDashboard() {
     .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
     .leftJoin(sections, eq(staffAssignments.sectionId, sections.id))
     .leftJoin(classes, eq(sections.classId, classes.id))
-    .where(and(eq(staffAssignments.staffId, staffId), eq(staffAssignments.institutionId, tenantId), eq(staffAssignments.dayOfWeek, dayOfWeek)));
+    .where(and(eq(effectiveTeachingStaffId(sql`to_char(${now}::timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Karachi','YYYY-MM-DD')`), staffId), eq(staffAssignments.institutionId, tenantId), eq(staffAssignments.dayOfWeek, dayOfWeek)));
   const previewSection = db.select({ sectionId: staffAssignments.sectionId }).from(staffAssignments)
     .where(and(eq(staffAssignments.staffId, staffId), eq(staffAssignments.institutionId, tenantId)))
     .orderBy(asc(staffAssignments.sectionId)).limit(1);

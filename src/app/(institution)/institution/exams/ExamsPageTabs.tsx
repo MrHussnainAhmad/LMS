@@ -23,7 +23,7 @@ export function ExamsPageTabs({
     <Tabs value={tab} onValueChange={setTab} className="w-full">
       <TabsList className="mb-4">
         <TabsTrigger value="timetable">Exam Timetable</TabsTrigger>
-        <TabsTrigger value="publish">Publish Results</TabsTrigger>
+        <TabsTrigger value="publish">Results</TabsTrigger>
       </TabsList>
 
       <TabsContent value="timetable" className="grid gap-6 lg:grid-cols-[420px_1fr]">

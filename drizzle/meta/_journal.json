@@ -8,6 +8,20 @@
       "when": 1793404800000,
       "tag": "0000_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793508520233,
+      "tag": "0001_exam_result_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793521443200,
+      "tag": "0002_institution_operations",
+      "breakpoints": true
     }
   ]
 }

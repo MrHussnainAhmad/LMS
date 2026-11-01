@@ -1,6 +1,7 @@
 "use client";
 
 import { FeePaymentForm } from "@/components/FeePaymentForm";
+import { invoiceInstallments } from '@/lib/fee-installments';
 import { PaymentHistory } from "@/components/PaymentHistory";
 import type { StudentFeeAccount, StudentFeeDetails } from "@/lib/student-fees";
 
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 
 type Invoice = {
+  plan?: import('@/db/schema').FeeInvoicePlan;
   id: number;
   billingMonth: string;
   billingKind?: "MONTHLY" | "ONE_TIME";
@@ -187,6 +189,7 @@ export function StudentFeesClient({ studentId, initialData }: { studentId?: numb
                   <h3 className="text-xs font-bold uppercase text-stone-500">
                     Challan
                   </h3>
+                  {invoiceInstallments(invoice).installments.map(row=><p key={row.dueDate} className="mt-2 rounded-md border border-border p-2 text-sm">Installment due {row.dueDate}: {money(row.amount)} / Remaining {money(row.remaining)}</p>)}
                   {(details[invoice.id]?.items ?? [])
                     .filter((item) => item.invoiceId === invoice.id)
                     .map((item) => (

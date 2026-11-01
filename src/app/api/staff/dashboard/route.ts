@@ -1,3 +1,4 @@
+import { pakistanDateKey } from '@/lib/parent-period';
 import type { JWTPayload } from '@/lib/auth-types';
 import { NextRequest } from "next/server";
 import { fetchStaffDashboardData } from '@/lib/dashboard-data';
@@ -23,7 +24,7 @@ async function fetchDashboardPayload(session: JWTPayload): Promise<DashboardPayl
   const tenantId = getTenantContext(session);
   const staffId = session.userId;
 
-  const todayDayOfWeek = new Date().getDay();
+  const todayDayOfWeek = new Date(pakistanDateKey()+'T12:00:00Z').getUTCDay();
 
   const [staffRow, visibleAnnouncements] = await Promise.all([
     fetchStaffDashboardData(tenantId, staffId, todayDayOfWeek),

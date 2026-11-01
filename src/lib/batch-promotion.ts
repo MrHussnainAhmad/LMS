@@ -1,6 +1,8 @@
-import { and, eq, inArray, sql, SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { batchExamResults, batchExamSubjects, batchExams, classes, gradingScales, sections, studentPromotions, students } from "@/db/schema";
+import { batchExams, classes, sections, studentPromotions, students } from "@/db/schema";
+import { getBatchExamReport } from './batch-exams';
+import { ActionInputError } from './action-input-error';
 import { invalidateStudentEnrichCache, invalidateInstitutionRosterCaches } from "@/lib/redis";
 
 const numericRoll = (value: string) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -19,40 +21,37 @@ function rollNumberCase(assignments: Map<number, string>): SQL {
   return sql.join(chunks, sql` `);
 }
 
-/** Promotes a completed PROMOTION batch exam once; safe to invoke after every subject publish. */
-export async function autoPromotePublishedBatch(batchExamId: number) {
-  const [exam] = await db.select().from(batchExams).where(eq(batchExams.id, batchExamId)).limit(1);
-  if (!exam || exam.type !== "PROMOTION") return { promoted: false, reason: "not_promotion" };
-  const subjectRows = await db.select({ id: batchExamSubjects.id, published: batchExamSubjects.isPublished }).from(batchExamSubjects).where(eq(batchExamSubjects.batchExamId, exam.id));
-  if (!subjectRows.length || subjectRows.some((subject) => !subject.published)) return { promoted: false, reason: "awaiting_subjects" };
-  const [scale] = await db.select().from(gradingScales).where(eq(gradingScales.institutionId, exam.institutionId)).limit(1);
-  if (!scale) return { promoted: false, reason: "missing_grading_scale" };
-  const conditions = [eq(students.classId, exam.classId), eq(students.isActive, true), eq(students.academicStatus, "ACTIVE" as const)];
-  if (exam.sectionId) conditions.push(eq(students.sectionId, exam.sectionId));
-  const sourceStudents = await db.select().from(students).where(and(
-    eq(students.institutionId, exam.institutionId),
-    ...conditions,
-  ));
-  if (!sourceStudents.length) return { promoted: false, reason: "no_students" };
-  const subjectIds = subjectRows.map((subject) => subject.id);
-  const resultRows = await db.select({ studentId: batchExamResults.studentId, obtained: batchExamResults.marksObtained, total: batchExamSubjects.maxMarks }).from(batchExamResults).innerJoin(batchExamSubjects, eq(batchExamResults.batchExamSubjectId, batchExamSubjects.id)).where(inArray(batchExamResults.batchExamSubjectId, subjectIds));
-  const totals = new Map<number, { obtained: number; total: number; count: number }>();
-  for (const row of resultRows) { const current = totals.get(row.studentId) || { obtained: 0, total: 0, count: 0 }; current.obtained += Number(row.obtained); current.total += Number(row.total); current.count += 1; totals.set(row.studentId, current); }
-  if (sourceStudents.some((student) => totals.get(student.id)?.count !== subjectIds.length)) return { promoted: false, reason: "incomplete_results" };
-  const prior = await db.select({ id: studentPromotions.id }).from(studentPromotions).where(and(eq(studentPromotions.institutionId, exam.institutionId), eq(studentPromotions.fromClassId, exam.classId), inArray(studentPromotions.studentId, sourceStudents.map((student) => student.id)))).limit(1);
-  if (prior[0]) return { promoted: false, reason: "already_processed" };
-  const allClasses = await db.select().from(classes).where(eq(classes.institutionId, exam.institutionId));
+/** Applies one explicitly approved, published promotion roster in a single transaction. */
+export async function applyPublishedBatchPromotion(institutionId: number, batchExamId: number, expectedVersion: number) {
+  const outcome = await db.transaction(async tx => {
+  // Promotions share destination roll numbers and the graduation archive.
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(80427, ${institutionId})`);
+  const [exam] = await tx.select().from(batchExams).where(and(eq(batchExams.id, batchExamId), eq(batchExams.institutionId, institutionId))).for('update').limit(1);
+  if (!exam || exam.type !== "PROMOTION") return { promoted: false as const, reason: "not_promotion" };
+  if (exam.settings.promotionAppliedAt) return { promoted: false as const, reason: "already_processed" };
+  if (!exam.officialPublishedAt) return { promoted: false as const, reason: "publish_results_first" };
+  if ((exam.settings.reportVersion ?? 1) !== expectedVersion) return { promoted: false as const, reason: "report_changed_review_again" };
+  const report = await getBatchExamReport(institutionId, exam.id, tx);
+  if (!report.ready || report.students.some(student => student.result === 'PENDING')) return { promoted: false as const, reason: "incomplete_results" };
+  const rosterIds = report.students.map(student => student.id);
+  const sourceStudents = await tx.select().from(students).where(and(
+    eq(students.institutionId, institutionId), eq(students.classId, exam.classId),
+    eq(students.isActive, true), eq(students.academicStatus, 'ACTIVE'), sql`${students.deletedAt} IS NULL`,
+    inArray(students.id, rosterIds),
+  )).for('update');
+  if (!sourceStudents.length || sourceStudents.length !== rosterIds.length) return { promoted: false as const, reason: "roster_changed_review_required" };
+  const allClasses = await tx.select().from(classes).where(eq(classes.institutionId, exam.institutionId));
   const sourceClass = allClasses.find((classRow) => classRow.id === exam.classId);
   if (!sourceClass) throw new Error("Promotion class not found");
   const sourceRank = classRank(sourceClass);
   const graduating = sourceClass.isFinalClass;
   const targetClass = graduating ? null : allClasses.find((classRow) => !classRow.isGraduatedArchive && classRank(classRow) === sourceRank + 1 && !/\s\(old\)$/i.test(classRow.name));
-  if (!graduating && !targetClass) return { promoted: false, reason: "missing_next_class" };
-  const passing = sourceStudents.filter((student) => { const total = totals.get(student.id)!; return total.total > 0 && total.obtained / total.total * 100 >= Number(scale.passingPercentage); });
+  if (!graduating && !targetClass) return { promoted: false as const, reason: "missing_next_class" };
+  const passedIds = new Set(report.students.filter(student => student.result === 'PASS').map(student => student.id));
+  const passing = sourceStudents.filter(student => passedIds.has(student.id));
   const retained = sourceStudents.filter((student) => !passing.some((passed) => passed.id === student.id));
   const originalRolls = new Map(sourceStudents.map((student) => [student.id, student.classRollNumber]));
   const assignedRolls = new Map<number, string>();
-  await db.transaction(async (tx) => {
     const retainedIds = retained.map((student) => student.id);
     const passingIds = passing.map((student) => student.id);
 
@@ -65,8 +64,8 @@ export async function autoPromotePublishedBatch(batchExamId: number) {
     }
 
     if (targetClass) {
-      const destinationSections = await tx.select().from(sections).where(and(eq(sections.institutionId, exam.institutionId), eq(sections.classId, targetClass.id)));
-      if (!destinationSections.length) throw new Error("Destination class must have a section before promotion");
+      const destinationSections = await tx.select().from(sections).where(and(eq(sections.institutionId, exam.institutionId), eq(sections.classId, targetClass.id), isNull(sections.deletedAt)));
+      if (!destinationSections.length) throw new ActionInputError("Destination class must have an active section before promotion");
       const sourceSections = await tx.select().from(sections).where(and(
         eq(sections.classId, exam.classId),
         eq(sections.institutionId, exam.institutionId),
@@ -87,7 +86,7 @@ export async function autoPromotePublishedBatch(batchExamId: number) {
         await tx.update(students).set({ classId: targetClass.id, sectionId: destinationId, academicStatus: "ACTIVE" }).where(inArray(students.id, ids));
       }
 
-      const destinationRows = await tx.select({ roll: students.classRollNumber }).from(students).where(and(eq(students.institutionId, exam.institutionId), eq(students.classId, targetClass.id), eq(students.isActive, true)));
+      const destinationRows = await tx.select({ roll: students.classRollNumber }).from(students).where(and(eq(students.institutionId, exam.institutionId), eq(students.classId, targetClass.id)));
       let nextRoll = Math.max(0, ...destinationRows.filter((row) => !row.roll.startsWith("__promoted_")).map((row) => numericRoll(row.roll))) + 1;
       for (const student of passing.sort((a, b) => a.id - b.id)) {
         assignedRolls.set(student.id, String(nextRoll++));
@@ -133,7 +132,7 @@ export async function autoPromotePublishedBatch(batchExamId: number) {
       }
     }
 
-    const currentRows = await tx.select({ roll: students.classRollNumber }).from(students).where(and(eq(students.institutionId, exam.institutionId), eq(students.classId, exam.classId), eq(students.isActive, true)));
+    const currentRows = await tx.select({ roll: students.classRollNumber }).from(students).where(and(eq(students.institutionId, exam.institutionId), eq(students.classId, exam.classId)));
     let nextRetained = Math.max(0, ...currentRows.filter((row) => !row.roll.startsWith("__retained_")).map((row) => numericRoll(row.roll))) + 1;
     const retainedRolls = new Map<number, string>();
     for (const student of retained.sort((a, b) => a.id - b.id)) {
@@ -146,11 +145,13 @@ export async function autoPromotePublishedBatch(batchExamId: number) {
     }
 
     await tx.insert(studentPromotions).values([...passing.map((student) => ({ institutionId: exam.institutionId, studentId: student.id, fromClassId: exam.classId, toClassId: targetClass?.id || null, status: targetClass ? "PROMOTED" as const : "GRADUATED" as const, fromRollNumber: originalRolls.get(student.id), toRollNumber: assignedRolls.get(student.id) || null })), ...retained.map((student) => ({ institutionId: exam.institutionId, studentId: student.id, fromClassId: exam.classId, toClassId: exam.classId, status: "RETAINED" as const, fromRollNumber: originalRolls.get(student.id), toRollNumber: assignedRolls.get(student.id) || null }))]);
+    await tx.update(batchExams).set({ settings: { ...exam.settings, promotionAppliedAt: new Date().toISOString() } }).where(eq(batchExams.id, exam.id));
+    return { promoted: true as const, promotedCount: passing.length, retainedCount: retained.length, graduatedCount: targetClass ? 0 : passing.length, studentIds: sourceStudents.map(student => student.id) };
   });
-  // academicStatus just changed for these students, so the cached session
-  // enrichment (lib/auth.ts) must not keep answering with the old status — that
-  // is what gates graduated-student access.
-  await invalidateStudentEnrichCache(exam.institutionId, sourceStudents.map((student) => student.id));
-  await invalidateInstitutionRosterCaches(exam.institutionId);
-  return { promoted: true, promotedCount: passing.length, retainedCount: retained.length, graduatedCount: targetClass ? 0 : passing.length };
+
+  if (outcome.promoted) {
+    await invalidateStudentEnrichCache(institutionId, outcome.studentIds);
+    await invalidateInstitutionRosterCaches(institutionId);
+  }
+  return outcome;
 }

@@ -1,4 +1,5 @@
 import { DashboardAnnouncements } from "@/components/announcements/DashboardAnnouncements";
+import { InstitutionReports } from '@/components/institution/InstitutionReports';
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/db";
@@ -79,6 +80,7 @@ export default async function InstitutionDashboard() {
       </div>
 
       <DashboardChartsProvider>
+        <InstitutionReports compact actorKey={instId+':'+session.role+':'+session.userId} readOnly={session.campusReadOnly}/>
         <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
           <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             <AttendanceTrendsCard />

@@ -299,6 +299,10 @@ export async function invalidateTimetableReadCaches(institutionId: number, secti
     ]);
     // Student IDs are not stored in the assignment. Clear this campus's previews.
     await invalidateReadCachePatterns([
+      `cache:timetable:student:${institutionId}:${sectionId}:*`,
+      `cache:timetable:staff:v3:${institutionId}:*`,
+      `cache:staff:dashboard:v2:${institutionId}:*`,
+      `cache:staff:dashboard:web:${institutionId}:*`,
       `cache:student:dashboard:*:${institutionId}`,
       `cache:student:dashboard:web:*:${institutionId}:*`,
       `cache:announcements:visible:${institutionId}:STAFF:*`,

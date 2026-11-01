@@ -1,4 +1,5 @@
 import { inputErrorResponse } from '@/lib/input-error-response';
+import { withApiPolicy } from '@/lib/api-policy';
 import { unsafeOrigin } from '@/lib/request-security';
 import { validationError } from '@/lib/validation-errors';
 import { after, NextRequest, NextResponse } from 'next/server';
@@ -19,7 +20,7 @@ import { resolveCampusSession } from '@/lib/campus-workspaces';
 import { isMobileRole, mobileAppAccessAllowed, MOBILE_APPS_DISABLED } from '@/lib/mobile-app-access';
 
 /** Single pre-authentication failure response: never distinguishes "no such user" from "wrong password". */
-const INVALID_CREDENTIALS = { error: 'Invalid credentials' };
+const INVALID_CREDENTIALS = { error: 'Invalid credentials', code: 'INVALID_CREDENTIALS' };
 
 const MAX_FAILED_LOGINS = Number(process.env.AUTH_LOCKOUT_MAX_FAILED || 5);
 const LOCKOUT_WINDOW_MINUTES = Number(process.env.AUTH_LOCKOUT_WINDOW_MINUTES || 15);
@@ -210,7 +211,7 @@ async function runPostLoginSideEffects(params: {
   }
 }
 
-export async function POST(req: NextRequest) {
+export const POST = withApiPolicy(async (req: NextRequest) => {
   if (unsafeOrigin(req, { allowBearer: false })) return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
   try {
     const bodyResult = await readJsonBody(req, AUTH_MAX_BODY_BYTES);
@@ -618,7 +619,7 @@ export async function POST(req: NextRequest) {
     if (err instanceof Error && err.message.startsWith('Account temporarily locked')) {
       return NextResponse.json(INVALID_CREDENTIALS, { status: 401 });
     }
-    console.error('Login Error:', err);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error(JSON.stringify({ event: 'auth_login_error', requestId: req.headers.get('x-request-id') }));
+    return NextResponse.json({ error: 'Internal Server Error', code: 'INTERNAL_ERROR' }, { status: 500 });
   }
-}
+});

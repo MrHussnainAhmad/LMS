@@ -111,6 +111,33 @@ async function main() {
     const cases = [
       ['STUDENT', 1, '2s26-0001@ncs.nisaab360.app'], ['STAFF', 10, 'teacher@ncs.nisaab360.app'], ['PARENT', 20, 'parent@example.test'],
     ] as const;
+    for (const [role, id] of cases) {
+      const original = await auth.createTokens({ role, userId: id, institutionId: 1, clientType: 'MOBILE' });
+      const untouched = await auth.createTokens({ role, userId: id, institutionId: 1, clientType: 'MOBILE' });
+      const body = { refreshToken: original.refreshToken, accessToken: original.accessToken };
+      const first = await refresh.POST(req('/api/auth/refresh', body));
+      assert.equal(first.status, 200);
+      assert.match(first.headers.get('x-request-id')!, /^[a-f0-9-]{36}$/);
+      const firstTokens = await first.json();
+      const retry = await refresh.POST(req('/api/auth/refresh', body));
+      assert.equal(retry.status, 200, 'A lost response can be recovered by the same signed device');
+      assert.equal((await retry.json()).refreshToken, firstTokens.refreshToken);
+      await memory.query('UPDATE refresh_tokens SET expires_at=$2::timestamp WHERE token_hash=$1', [createHash('sha256').update(original.refreshToken).digest('hex'), new Date(Date.now() - 1000).toISOString()]);
+      assert.equal((await refresh.POST(req('/api/auth/refresh', body))).status, 200, 'Recovery uses the active replacement lifetime, not the retired token expiry');
+      assert.ok(await auth.verifyAccessToken(untouched.accessToken), 'Recovery never revokes another device');
+      const wrongProof = await refresh.POST(req('/api/auth/refresh', { ...body, accessToken: untouched.accessToken }));
+      assert.equal(wrongProof.status, 401);
+      assert.ok(await auth.verifyAccessToken(untouched.accessToken));
+      await auth.revokeRefreshToken(firstTokens.refreshToken);
+      assert.notEqual((await refresh.POST(req('/api/auth/refresh', body))).status, 200, 'Logout cannot be bypassed by recovery');
+      const delayed = await auth.createTokens({ role, userId: id, institutionId: 1, clientType: 'MOBILE' });
+      const delayedBody = { refreshToken: delayed.refreshToken, accessToken: delayed.accessToken };
+      assert.equal((await refresh.POST(req('/api/auth/refresh', delayedBody))).status, 200);
+      await memory.query('UPDATE refresh_tokens SET revoked_at=$2::timestamp WHERE token_hash=$1', [createHash('sha256').update(delayed.refreshToken).digest('hex'), new Date(Date.now() - 6 * 60_000).toISOString()]);
+      assert.equal((await refresh.POST(req('/api/auth/refresh', delayedBody))).status, 401, 'Recovery cannot outlive its five-minute window');
+      assert.ok(await auth.verifyAccessToken(untouched.accessToken), 'An expired recovery attempt cannot revoke another device');
+    }
+    pass('device-bound lost refresh response recovery preserves other sessions and cannot bypass logout or device identity');
     for (const [role, id, identifier] of cases) {
       const body = { emailOrUsername: identifier, password, roleHint: role, ...(role === 'PARENT' ? { institutionUsername: 'ncs' } : {}) };
       await memory.exec('UPDATE institutions SET apps_enabled=true WHERE id=1');

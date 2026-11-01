@@ -44,7 +44,7 @@ node --input-type=module -e "import {readLegacyFile} from './drizzle/legacy-hist
 - Update `src/db/schema.ts`, then generate a new migration with Drizzle Kit.
 - Keep `0000_baseline.sql`, its journal entry, the baseline catalog, and the
   historical archive immutable after deployment. New changes belong in new files.
-- `meta/0000_snapshot.json` is the current ORM-model snapshot for subsequent
+- The latest numbered file in `meta/` is the ORM-model snapshot for subsequent
   generation. `baseline-catalog.json` records the actual pre-baseline
   PostgreSQL definitions used when adopting an existing database. The latter
   includes custom rules that Drizzle's model does not represent.
@@ -67,3 +67,33 @@ including the complete schema catalog and initial plan records:
 ```sh
 node --import tsx --test --test-name-pattern "consolidated migration baseline" scripts/verify-central-backups.ts
 ```
+
+## Exam results workflow
+
+`0001_exam_result_workflow.sql` adds result details, subject policies and exam
+settings without removing marks or changing the deployed baseline. Apply it with
+the existing production migration runner before starting the updated app.
+
+Previously visible results remain published. Pending exams stay private, and
+deadlines no longer release results automatically. Teachers submit subject
+reviews; the institution explicitly approves publication. Promotion is a separate,
+confirmed action against the reviewed report version.
+
+Configure complete grade bands covering 0–100 in institution settings before
+publishing. Published corrections require a reason and preserve earlier report
+versions. Applying promotion locks that exam against further mark corrections.
+
+The existing mobile parity suite verifies the workflow, historical upgrades and
+installation of the complete baseline plus this migration in isolated PostgreSQL:
+
+```sh
+node --import tsx scripts/verify-mobile-parity.ts
+```
+
+## Institution operations
+
+`0002_institution_operations.sql` adds academic session snapshots, fee installment
+and collection plans, student support records, notice response policies and
+responses, and dated teaching cover. Its six JSONB columns default to empty objects
+so existing rows retain their behavior. Apply through the same migration runner
+before deploying the matching application code; do not modify the baseline.

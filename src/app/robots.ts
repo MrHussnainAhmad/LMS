@@ -11,6 +11,13 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   const baseDomain = await getPublicSiteBaseDomain();
   const parsedHostname = parseInstitutionHostname(requestHeaders.get('host') || '', baseDomain);
 
+  if (parsedHostname.hostname === 'blog.nisaab360.app' || parsedHostname.hostname === 'blog.localhost') {
+    return {
+      rules: { userAgent: '*', allow: ['/', '/api/version$'], disallow: '/api/' },
+      sitemap: 'https://blog.nisaab360.app/sitemap.xml',
+    };
+  }
+
   if (parsedHostname.kind === 'institution') {
     const resolution = await resolveInstitutionTenant(parsedHostname.slug);
     if (resolution.kind !== 'active') {

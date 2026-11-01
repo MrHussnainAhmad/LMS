@@ -23,7 +23,7 @@ async function main() {
   const mocks: Record<string, string> = {
     db: 'export const db=globalThis.__admissionFixture.db;',
     'next/server': 'export const NextRequest=globalThis.__admissionFixture.NextRequest;export const NextResponse=globalThis.__admissionFixture.NextResponse;export const after=()=>{};',
-    'next/navigation': 'export const redirect=url=>{throw new Error("REDIRECT:"+url)};',
+    'next/navigation': 'export const redirect=url=>{throw new Error("REDIRECT:"+url)};export const unstable_rethrow=error=>{if(error instanceof Error && error.message.startsWith("REDIRECT:"))throw error};',
     'next/link': 'import {createElement} from "react";export default function Link({children,...props}){return createElement("a",props,children)}',
     rbac: `export const requireRole=(_roles,fn)=>async(req,context={})=>fn(req,{...context,session:{role:'INSTITUTION',userId:globalThis.__admissionFixture.institutionId,institutionId:globalThis.__admissionFixture.institutionId}});export const getTenantContext=session=>session.institutionId;`,
     'argon2-pool': `export const hashPassword=async password=>'fixture:'+password;export const verifyPassword=async(hash,password)=>hash==='fixture:'+password;`,

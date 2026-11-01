@@ -1,5 +1,5 @@
 import { sessionRestriction } from './request-security';
-import { SignJWT } from 'jose';
+import { compactVerify, SignJWT } from 'jose';
 import { cookies, headers } from 'next/headers';
 import type { NextRequest } from 'next/server';
 import { cache } from 'react';
@@ -26,8 +26,8 @@ const WEB_SESSION_EXPIRY_DAYS = 5;
 const ACCESS_TOKEN_EXPIRY = `${WEB_SESSION_EXPIRY_DAYS}d`;
 const REFRESH_TOKEN_PATTERN = /^[a-f0-9]{80}$/i;
 
-function createRefreshTokenMaterial(clientType?: JWTPayload['clientType']) {
-  const refreshToken = crypto.randomBytes(40).toString('hex');
+function createRefreshTokenMaterial(clientType?: JWTPayload['clientType'], recoveryToken?: string) {
+  const refreshToken = recoveryToken ?? crypto.randomBytes(40).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + (clientType === 'MOBILE' ? 90 : REFRESH_TOKEN_EXPIRY_DAYS));
@@ -78,10 +78,10 @@ type RefreshRotationResult =
  * Atomically consumes one refresh token and creates its replacement.
  *
  * The row lock makes a token single-use even when two requests reach different
- * app replicas. If an already-replaced token appears again, every still-active
- * refresh token for that account is revoked: the old token may have been copied.
+ * app replicas. A device-bound mobile retry may recover its still-active
+ * replacement for five minutes. Other token reuse retains replay protection.
  */
-export async function rotateRefreshToken(presentedToken: string, nativeTransport = false): Promise<RefreshRotationResult> {
+export async function rotateRefreshToken(presentedToken: string, nativeTransport = false, accessProof?: string): Promise<RefreshRotationResult> {
   if (!REFRESH_TOKEN_PATTERN.test(presentedToken)) return { status: 'INVALID' };
   const presentedHash = crypto.createHash('sha256').update(presentedToken).digest('hex');
 
@@ -98,11 +98,40 @@ export async function rotateRefreshToken(presentedToken: string, nativeTransport
       .where(eq(refreshTokens.tokenHash, presentedHash))
       .limit(1);
     if (!record) return { status: 'INVALID' } as const;
-    const [deviceSession] = await tx.select().from(planDeviceSessions).where(eq(planDeviceSessions.refreshTokenHash, presentedHash)).limit(1);
+    let recoveryToken: string | undefined;
+    let proofDeviceId: string | undefined;
+    if (nativeTransport && accessProof !== undefined) {
+      try {
+        if (!isMobileRole(record.userRole) || accessProof.length > 8192) return { status: 'INVALID' } as const;
+        // Proof binds a retry to its device; it is never accepted as an access
+        // credential here. Its JWT may be expired; database expiry remains final.
+        const verified = await compactVerify(accessProof, getJwtSecret(), { algorithms: ['HS256'] });
+        const proof = JSON.parse(new TextDecoder().decode(verified.payload)) as JWTPayload;
+        if (proof.userId !== record.userId || proof.role !== record.userRole || !proof.planDeviceSessionId) return { status: 'INVALID' } as const;
+        proofDeviceId = proof.planDeviceSessionId;
+        recoveryToken = crypto.createHmac('sha512', getJwtSecret()).update(`mobile-refresh-recovery:${presentedToken}:${accessProof}`).digest('hex').slice(0, 80);
+      } catch { return { status: 'INVALID' } as const; }
+    }
+    const recoveryHash = recoveryToken ? crypto.createHash('sha256').update(recoveryToken).digest('hex') : undefined;
+    const [deviceSession] = await tx.select().from(planDeviceSessions).where(eq(planDeviceSessions.refreshTokenHash, record.revokedAt && recoveryHash === record.replacedByHash ? recoveryHash : presentedHash)).limit(1);
 
     const now = new Date();
     if (record.revokedAt) {
       if (!record.replacedByHash) return { status: 'INVALID' } as const;
+      if (recoveryToken && recoveryHash !== record.replacedByHash) return { status: 'INVALID' } as const;
+      if (recoveryToken && recoveryHash === record.replacedByHash && deviceSession?.id === proofDeviceId &&
+          !deviceSession.revokedAt && deviceSession.expiresAt > now &&
+          now.getTime() >= record.revokedAt.getTime() &&
+          now.getTime() - record.revokedAt.getTime() <= 5 * 60_000) {
+        const [replacement] = await tx.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, recoveryHash!)).limit(1);
+        const [qr] = record.qrSessionId ? await tx.select().from(qrLoginSessions).where(eq(qrLoginSessions.id, record.qrSessionId)).for('share').limit(1) : [];
+        if (!replacement || replacement.revokedAt || replacement.expiresAt <= now ||
+            (record.qrSessionId && (!qr || qr.revokedAt || qr.expiresAt <= now))) return { status: 'EXPIRED' } as const;
+        return { status: 'ROTATED', refreshToken: recoveryToken, clientType: replacement.clientType,
+          userRole: record.userRole, userId: record.userId, planDeviceSessionId: deviceSession.id,
+          qrSessionId: record.qrSessionId ?? undefined, qrSessionExpiresAt: qr ? Math.floor(qr.expiresAt.getTime() / 1000) : undefined } as const;
+      }
+      if (recoveryToken) return { status: 'EXPIRED' } as const;
       await tx
         .update(refreshTokens)
         .set({ reuseDetectedAt: record.reuseDetectedAt ?? now })
@@ -120,6 +149,7 @@ export async function rotateRefreshToken(presentedToken: string, nativeTransport
     }
 
     if (!deviceSession) return { status: 'INVALID' } as const;
+    if (proofDeviceId && deviceSession.id !== proofDeviceId) return { status: 'INVALID' } as const;
     if (deviceSession && (deviceSession.revokedAt || deviceSession.expiresAt <= now)) return { status: 'EXPIRED' } as const;
 
     if (record.expiresAt <= now) {
@@ -137,7 +167,7 @@ export async function rotateRefreshToken(presentedToken: string, nativeTransport
           qrSession.userRole !== record.userRole || qrSession.userId !== record.userId) return { status: 'EXPIRED' } as const;
     }
     const clientType = record.clientType === 'MOBILE' || (nativeTransport && isMobileRole(record.userRole)) ? 'MOBILE' : record.clientType;
-    const next = createRefreshTokenMaterial(clientType);
+    const next = createRefreshTokenMaterial(clientType, recoveryToken);
     if (qrSession) next.expiresAt = qrSession.expiresAt;
     await tx.insert(refreshTokens).values({
       userRole: record.userRole,

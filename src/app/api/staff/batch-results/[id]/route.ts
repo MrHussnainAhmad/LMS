@@ -1,172 +1,73 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { and, eq } from 'drizzle-orm';
+import { db } from '@/db';
+import { batchExamSubjects, batchExams } from '@/db/schema';
+import { getTenantContext, requireRole } from '@/lib/rbac';
+import { getBatchExamReport, saveBatchExamMarks } from '@/lib/batch-exams';
 import { readBoundedJson } from '@/lib/http';
-import { inputErrorResponse } from '@/lib/input-error-response';
-import { db } from "@/db";
-import { batchExamResults, batchExamSubjects, batchExams, students, subjects, classes, sections } from "@/db/schema";
-import { getSession } from "@/lib/auth";
-import { eq, and } from "drizzle-orm";
-import { NextRequest, NextResponse } from "next/server";
+import { ActionInputError } from '@/lib/action-input-error';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const session = await getSession();
-    if (!session || session.role !== "STAFF" || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const GET = requireRole(['STAFF'], async (_req: NextRequest, { session, params }) => {
+  const institutionId = getTenantContext(session);
+  const subjectId = Number((await params).id);
+  if (!Number.isSafeInteger(subjectId) || subjectId < 1) throw new ActionInputError('Invalid subject.');
+  const [subject] = await db.select({ examId: batchExamSubjects.batchExamId }).from(batchExamSubjects)
+    .innerJoin(batchExams, eq(batchExams.id, batchExamSubjects.batchExamId))
+    .where(and(eq(batchExamSubjects.id, subjectId), eq(batchExamSubjects.staffId, session.userId), eq(batchExams.institutionId, institutionId))).limit(1);
+  if (!subject) return NextResponse.json({ error: 'Subject not found' }, { status: 404 });
+  const report = await getBatchExamReport(institutionId, subject.examId);
+  const selected = report.subjects.find(row => row.id === subjectId)!;
+  // Never expose other teachers' subjects, correction records or student identities.
+  return NextResponse.json({
+    exam: { id: report.exam.id, title: report.exam.title, className: report.exam.className, settings: { phase: report.exam.settings.phase }, officialPublishedAt: report.exam.officialPublishedAt },
+    subjects: [selected],
+    students: report.students.map(student => ({ id: student.id, name: student.name, roll: student.roll,
+      results: student.results.filter(row => row.subjectId === subjectId).map(row => ({ ...row, history: [] })) })),
+    version: report.version,
+    subject: { id: subjectId, subjectName: selected.name, examTitle: report.exam.title, examType: report.exam.type,
+      className: report.exam.className, sectionName: report.exam.sectionName, maxMarks: selected.maxMarks, policy: selected.policy,
+      isPublished: selected.reviewed, isEffectivelyPublished: selected.reviewed,
+      reviewDeadline: selected.deadline, officialPublishedAt: report.exam.officialPublishedAt,
+      canEdit: !report.exam.officialPublishedAt && !selected.reviewed && report.exam.settings.phase !== 'DRAFT' && selected.deadline >= new Date() },
+    results: report.students.map(student => {
+      const row = student.results.find(result => result.subjectId === subjectId)!;
+      return { id: row.id, studentId: student.id, studentName: student.name, rollNumber: student.roll,
+        marksObtained: row.marks, status: row.status, revision: row.revision, components: row.components,
+        remark: row.remark, isEdited: row.revision > 0 };
+    }),
+  }, { headers: { 'Cache-Control': 'private, no-store' } });
+});
 
-    const { id } = await params;
-    const subjectId = Number(id);
+export const PATCH = requireRole(['STAFF'], async (req: NextRequest, { session, params }) => {
+  const institutionId = getTenantContext(session);
+  const subjectId = Number((await params).id);
+  const [subject] = await db.select({ examId: batchExamSubjects.batchExamId }).from(batchExamSubjects)
+    .innerJoin(batchExams, eq(batchExams.id, batchExamSubjects.batchExamId))
+    .where(and(eq(batchExamSubjects.id, subjectId), eq(batchExamSubjects.staffId, session.userId), eq(batchExams.institutionId, institutionId))).limit(1);
+  if (!subject) return NextResponse.json({ error: 'Subject not found' }, { status: 404 });
+  const body = await readBoundedJson(req);
+  if (!body || typeof body !== 'object') throw new ActionInputError('Provide result changes and their revisions.');
+  // Older released clients edit a row once. Revision zero permits that first edit,
+  // while still rejecting every stale retry after another writer has changed it.
+  const changes = body.changes ?? [{ resultId: body.resultId, revision: body.revision ?? 0, value: body.value ?? body.newMarks }];
+  // Ownership of every row and the deadline are checked again under the exam lock.
+  return NextResponse.json(await saveBatchExamMarks(session, subject.examId, changes));
+});
 
-    // Verify ownership and get subject details
-    const [subjectDetails] = await db.select({
-      id: batchExamSubjects.id,
-      isPublished: batchExamSubjects.isPublished,
-      reviewDeadline: batchExamSubjects.reviewDeadline,
-      maxMarks: batchExamSubjects.maxMarks,
-      subjectName: subjects.name,
-      examTitle: batchExams.title,
-      examType: batchExams.type,
-      className: classes.name,
-      sectionName: sections.name,
-    })
-    .from(batchExamSubjects)
-    .innerJoin(subjects, eq(batchExamSubjects.subjectId, subjects.id))
-    .innerJoin(batchExams, eq(batchExamSubjects.batchExamId, batchExams.id))
-    .innerJoin(classes, eq(batchExams.classId, classes.id))
-    .leftJoin(sections, eq(batchExams.sectionId, sections.id))
-    .where(
-      and(
-        eq(batchExamSubjects.id, subjectId),
-        eq(batchExamSubjects.staffId, session.userId)
-      )
-    );
-
-    if (!subjectDetails) {
-      return NextResponse.json({ error: "Not found or unauthorized" }, { status: 404 });
-    }
-
-    const now = new Date();
-    const isEffectivelyPublished = subjectDetails.isPublished || now > subjectDetails.reviewDeadline;
-
-    // Get student results
-    const results = await db.select({
-      id: batchExamResults.id,
-      studentId: batchExamResults.studentId,
-      marksObtained: batchExamResults.marksObtained,
-      isEdited: batchExamResults.isEdited,
-      studentName: students.name,
-      rollNumber: students.classRollNumber
-    })
-    .from(batchExamResults)
-    .innerJoin(students, eq(batchExamResults.studentId, students.id))
-    .where(eq(batchExamResults.batchExamSubjectId, subjectId));
-
-    return NextResponse.json({
-      subject: {
-        ...subjectDetails,
-        isEffectivelyPublished
-      },
-      results
-    });
-  } catch (error: any) {
-    const publicInputError = inputErrorResponse(error);
-    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
-
-    console.error("Fetch batch result details error:", error);
-    return NextResponse.json({ error: "Failed to fetch details" }, { status: 500 });
-  }
-}
-
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const session = await getSession();
-    if (!session || session.role !== "STAFF" || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { id } = await params;
-    const subjectId = Number(id);
-    const { resultId, newMarks } = await readBoundedJson(req);
-
-    if (!resultId || newMarks === undefined) {
-      return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
-    }
-
-    // Verify ownership & deadline
-    const [subject] = await db.select({
-      isPublished: batchExamSubjects.isPublished,
-      reviewDeadline: batchExamSubjects.reviewDeadline,
-    })
-    .from(batchExamSubjects)
-    .where(
-      and(
-        eq(batchExamSubjects.id, subjectId),
-        eq(batchExamSubjects.staffId, session.userId)
-      )
-    );
-
-    if (!subject) return NextResponse.json({ error: "Unauthorized" }, { status: 404 });
-    if (subject.isPublished || new Date() > subject.reviewDeadline) {
-      return NextResponse.json({ error: "Cannot edit. Deadline passed or already published." }, { status: 400 });
-    }
-
-    // Verify result hasn't been edited before
-    const [existingResult] = await db.select({ isEdited: batchExamResults.isEdited })
-    .from(batchExamResults)
-    .where(and(
-      eq(batchExamResults.id, resultId),
-      eq(batchExamResults.batchExamSubjectId, subjectId)
-    ));
-
-    if (!existingResult) return NextResponse.json({ error: "Result not found" }, { status: 404 });
-    if (existingResult.isEdited) return NextResponse.json({ error: "Result can only be edited once" }, { status: 400 });
-
-    // Update
-    await db.update(batchExamResults)
-      .set({ marksObtained: newMarks, isEdited: true })
-      .where(and(
-        eq(batchExamResults.id, resultId),
-        eq(batchExamResults.batchExamSubjectId, subjectId)
-      ));
-
-    return NextResponse.json({ success: true });
-  } catch (error: any) {
-    const publicInputError = inputErrorResponse(error);
-    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
-
-    console.error("Update batch result error:", error);
-    return NextResponse.json({ error: "Failed to update" }, { status: 500 });
-  }
-}
-
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  // Publish
-  try {
-    const session = await getSession();
-    if (!session || session.role !== "STAFF" || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { id } = await params;
-    const subjectId = Number(id);
-
-    const [subject] = await db.update(batchExamSubjects)
-      .set({ isPublished: true, publishedAt: new Date() })
-      .where(
-        and(
-          eq(batchExamSubjects.id, subjectId),
-          eq(batchExamSubjects.staffId, session.userId)
-        )
-      ).returning();
-
-    if (!subject) return NextResponse.json({ error: "Not found or unauthorized" }, { status: 404 });
-    await (await import('@/lib/notification-events')).notifyBatchResults(session.institutionId!,subjectId);
-
-    return NextResponse.json({ success: true });
-  } catch (error: any) {
-    const publicInputError = inputErrorResponse(error);
-    if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
-
-    console.error("Publish batch result error:", error);
-    return NextResponse.json({ error: "Failed to publish" }, { status: 500 });
-  }
-}
+export const POST = requireRole(['STAFF'], async (_req: NextRequest, { session, params }) => {
+  const institutionId = getTenantContext(session);
+  const subjectId = Number((await params).id);
+  return db.transaction(async tx => {
+    const [owned] = await tx.select({ examId: batchExamSubjects.batchExamId }).from(batchExamSubjects)
+      .innerJoin(batchExams, eq(batchExams.id, batchExamSubjects.batchExamId))
+      .where(and(eq(batchExamSubjects.id, subjectId), eq(batchExamSubjects.staffId, session.userId), eq(batchExams.institutionId, institutionId))).limit(1);
+    if (!owned) return NextResponse.json({ error: 'Subject not found' }, { status: 404 });
+    const [exam] = await tx.select().from(batchExams).where(eq(batchExams.id, owned.examId)).for('update').limit(1);
+    const report = await getBatchExamReport(institutionId, exam.id, tx);
+    const subject = report.subjects.find(row => row.id === subjectId)!;
+    if (exam.officialPublishedAt || exam.settings.phase === 'DRAFT' || subject.deadline < new Date()) throw new ActionInputError('Review is closed. Ask the institution to reopen it.');
+    if (subject.missing || !subject.expected) throw new ActionInputError('Enter marks or an explicit status for every student before submitting.');
+    await tx.update(batchExamSubjects).set({ isPublished: true, publishedAt: new Date() }).where(eq(batchExamSubjects.id, subjectId));
+    return NextResponse.json({ success: true, message: 'Review submitted for institution approval.' });
+  });
+});

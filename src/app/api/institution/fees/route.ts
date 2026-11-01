@@ -1,6 +1,6 @@
 import { readBoundedJson } from '@/lib/http';
 import { validationError } from '@/lib/validation-errors';
-import { FeeBillingError, issueMonthlyFees, issueOneTimeFees } from "@/lib/fee-billing";
+import { FeeBillingError, issueMonthlyFees, issueOneTimeFees, manageFeeSupport, effectiveFeeDueDate } from "@/lib/fee-billing";
 import { reviewStudentFeeProof } from '@/lib/manual-fee-submissions';
 import { NextRequest, NextResponse } from "next/server";
 import { and, asc, desc, eq, inArray, isNull, isNotNull, or, sql } from "drizzle-orm";
@@ -34,6 +34,7 @@ export const GET = requireRole(
     const query = (params.get("q") || "").trim().slice(0, 80);
     const includeMeta = params.get("meta") !== "0";
     const view = params.get("view") || "all";
+    const allOverdue = view === 'collections' && params.get('overdue') === '1';
     const requestedMonth = params.get("month");
     if (requestedMonth && !/^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)) {
       return NextResponse.json({ error: "Invalid billing month" }, { status: 400 });
@@ -51,8 +52,9 @@ export const GET = requireRole(
 
     const invoiceConditions = [eq(feeInvoices.institutionId, institutionId)];
     if (classId !== null) invoiceConditions.push(eq(feeInvoices.classIdAtIssue, classId));
-    if (view !== "paid" || requestedMonth)
+    if (!allOverdue && (view !== "paid" || requestedMonth))
       invoiceConditions.push(eq(feeInvoices.billingMonth, billingMonth));
+    if (allOverdue) invoiceConditions.push(sql`${effectiveFeeDueDate} < (clock_timestamp() AT TIME ZONE 'Asia/Karachi')::date`);
     if (view === "collections") invoiceConditions.push(inArray(feeInvoices.status, ["DUE", "PARTIAL"]));
     if (status && ["DUE", "PARTIAL", "PAID", "VOID"].includes(status)) {
       invoiceConditions.push(
@@ -120,9 +122,10 @@ export const GET = requireRole(
               className: sql<string>`coalesce(${feeInvoices.classNameAtIssue}, 'Not recorded')`,
               sectionName: sql<string>`coalesce(${feeInvoices.sectionNameAtIssue}, '')`,
               billingMonth: feeInvoices.billingMonth,
+              plan: feeInvoices.plan,
               billingKind: feeInvoices.billingKind,
               billingLabel: feeInvoices.billingLabel,
-              dueDate: feeInvoices.dueDate,
+              dueDate: sql<string>`${effectiveFeeDueDate}::text`,
               status: feeInvoices.status,
               totalAmount: feeInvoices.totalAmount,
               paidAmount: feeInvoices.paidAmount,
@@ -142,13 +145,13 @@ export const GET = requireRole(
               billed: sql<number>`coalesce(sum(${feeInvoices.totalAmount}), 0)`.mapWith(Number),
               collected: sql<number>`coalesce(sum(${feeInvoices.paidAmount}), 0)`.mapWith(Number),
               outstanding: sql<number>`coalesce(sum(${feeInvoices.totalAmount} - ${feeInvoices.paidAmount}) filter (where ${feeInvoices.status} <> 'VOID'), 0)`.mapWith(Number),
-              defaulters: sql<number>`count(*) filter (where ${feeInvoices.status} in ('DUE', 'PARTIAL') and ${feeInvoices.dueDate} < current_date)::int`,
+              defaulters: sql<number>`count(*) filter (where ${feeInvoices.status} in ('DUE', 'PARTIAL') and ${effectiveFeeDueDate} < (clock_timestamp() AT TIME ZONE 'Asia/Karachi')::date)::int`,
             })
             .from(feeInvoices)
             .where(
               and(
                 eq(feeInvoices.institutionId, institutionId),
-                eq(feeInvoices.billingMonth, billingMonth),
+                allOverdue ? and(inArray(feeInvoices.status,['DUE','PARTIAL']),sql`${effectiveFeeDueDate} < (clock_timestamp() AT TIME ZONE 'Asia/Karachi')::date`) : eq(feeInvoices.billingMonth, billingMonth),
               ),
             )
         : Promise.resolve(null),
@@ -237,6 +240,7 @@ export const POST = requireRole(
     const action = parsed.data;
 
     try {
+      if (action.action==='setInstallments'||action.action==='feeFollowUp'||action.action==='siblingDiscount') return NextResponse.json(await manageFeeSupport(session,action));
       if (action.action === "createHead") {
         const [head] = await db
           .insert(feeHeads)

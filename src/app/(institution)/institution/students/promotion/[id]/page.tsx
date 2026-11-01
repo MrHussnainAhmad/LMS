@@ -1,176 +1,41 @@
-import { notFound, redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { db } from "@/db";
-import { batchExamResults, batchExamSubjects, batchExams, classes, sections, students, subjects } from "@/db/schema";
-import { getSession } from "@/lib/auth";
-import { PromotionReviewActions, type PromotionReviewCsvRow } from "./PromotionReviewActions";
-import { formatClassSection } from "@/lib/class-section-label";
+import { notFound, redirect } from 'next/navigation';
+import { eq } from 'drizzle-orm';
+import { db } from '@/db';
+import { institutions } from '@/db/schema';
+import { getSession } from '@/lib/auth';
+import { getBatchExamReport } from '@/lib/batch-exams';
+import { ActionInputError } from '@/lib/action-input-error';
+import { BatchResultReport } from '@/components/institution/BatchResultReport';
+import { PromotionReviewActions } from './PromotionReviewActions';
 
-function fileSlug(value: string) {
-  return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "promotion-review";
-}
-
-export default async function PromotionReviewPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PromotionReviewPage({ params, searchParams }: {
+  params: Promise<{id: string}>; searchParams: Promise<{version?: string; student?: string; mode?: string}>;
+}) {
   const session = await getSession();
-  if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN") || !session.institutionId) {
-    redirect("/institution-login");
-  }
-
-  const { id } = await params;
-  const batchExamId = Number(id);
-  if (!Number.isInteger(batchExamId)) notFound();
-
-  const [batch] = await db.select({
-    id: batchExams.id,
-    title: batchExams.title,
-    officialPublishedAt: batchExams.officialPublishedAt,
-    className: classes.name,
-    sectionName: sections.name,
-  })
-    .from(batchExams)
-    .innerJoin(classes, eq(batchExams.classId, classes.id))
-    .leftJoin(sections, eq(batchExams.sectionId, sections.id))
-    .where(and(
-      eq(batchExams.id, batchExamId),
-      eq(batchExams.institutionId, session.institutionId),
-      eq(batchExams.type, "PROMOTION")
-    ))
-    .limit(1);
-
-  if (!batch) notFound();
-
-  const rawRows = await db.select({
-    studentId: students.id,
-    student: students.name,
-    roll: students.classRollNumber,
-    subject: subjects.name,
-    marks: batchExamResults.marksObtained,
-    maxMarks: batchExamSubjects.maxMarks,
-    isPublished: batchExamSubjects.isPublished,
-  })
-    .from(batchExamResults)
-    .innerJoin(batchExamSubjects, eq(batchExamResults.batchExamSubjectId, batchExamSubjects.id))
-    .innerJoin(subjects, eq(batchExamSubjects.subjectId, subjects.id))
-    .innerJoin(students, eq(batchExamResults.studentId, students.id))
-    .where(eq(batchExamSubjects.batchExamId, batch.id))
-    .orderBy(students.classRollNumber, students.name, subjects.name);
-
-  const subjectNames = Array.from(new Set(rawRows.map((row) => row.subject)));
-  const allSubjectsPublished = rawRows.length > 0 && rawRows.every((row) => row.isPublished);
-  const rowsByStudent = new Map<number, PromotionReviewCsvRow & { maxTotal: number }>();
-
-  for (const row of rawRows) {
-    const existing = rowsByStudent.get(row.studentId) || {
-      roll: row.roll,
-      student: row.student,
-      total: 0,
-      maxTotal: 0,
-      percentage: 0,
-      status: "",
-      subjects: {},
-    };
-    existing.subjects[row.subject] = `${row.marks}/${row.maxMarks}`;
-    existing.total += row.marks;
-    existing.maxTotal += row.maxMarks;
-    rowsByStudent.set(row.studentId, existing);
-  }
-
-  const reviewRows = Array.from(rowsByStudent.values()).map((row) => ({
-    ...row,
-    percentage: row.maxTotal > 0 ? (row.total / row.maxTotal) * 100 : 0,
-    status: allSubjectsPublished ? "Ready for institution publish" : "Awaiting teachers",
-  }));
-
-  const csvRows = reviewRows.map((row) => ({
-    roll: row.roll,
-    student: row.student,
-    total: row.total,
-    percentage: row.percentage,
-    status: row.status,
-    subjects: row.subjects,
-  }));
-
-  return (
-    <div className="print-document mx-auto max-w-7xl space-y-6 p-6 print:p-0">
-      <div className="flex flex-col gap-4 border-b pb-5 print:border-b-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-sm uppercase tracking-wide text-stone-500">Promotion Review Sheet</p>
-          <h1 className="mt-1 font-display text-3xl font-bold text-brand-950">{batch.title}</h1>
-          <p className="mt-2 text-sm text-stone-500">
-            Class {formatClassSection(batch.className, batch.sectionName, ", ")}
-          </p>
-        </div>
-        <PromotionReviewActions fileName={fileSlug(batch.title)} subjects={subjectNames} rows={csvRows} />
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-3 print:grid-cols-3">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-stone-500">Students</p>
-            <p className="text-2xl font-semibold">{reviewRows.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-stone-500">Subjects</p>
-            <p className="text-2xl font-semibold">{subjectNames.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-stone-500">Status</p>
-            <Badge className={batch.officialPublishedAt ? "mt-2 bg-indigo-100 text-indigo-700" : allSubjectsPublished ? "mt-2 bg-emerald-100 text-emerald-700" : "mt-2 bg-amber-100 text-amber-700"}>
-              {batch.officialPublishedAt ? "Official" : allSubjectsPublished ? "Ready" : "Awaiting teachers"}
-            </Badge>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Roll</TableHead>
-                <TableHead>Student</TableHead>
-                {subjectNames.map((subject) => <TableHead key={subject}>{subject}</TableHead>)}
-                <TableHead>Total</TableHead>
-                <TableHead>Percentage</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reviewRows.map((row) => (
-                <TableRow key={row.roll}>
-                  <TableCell>{row.roll}</TableCell>
-                  <TableCell className="font-medium">{row.student}</TableCell>
-                  {subjectNames.map((subject) => <TableCell key={subject}>{row.subjects[subject] || "-"}</TableCell>)}
-                  <TableCell>{row.total}/{row.maxTotal}</TableCell>
-                  <TableCell>{row.percentage.toFixed(2)}%</TableCell>
-                  <TableCell>{row.status}</TableCell>
-                </TableRow>
-              ))}
-              {reviewRows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={subjectNames.length + 5} className="p-6 text-center text-stone-500">
-                    No marks found for this Promotion result.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+  if (!session || !['INSTITUTION','INSTITUTION_ADMIN'].includes(session.role) || !session.institutionId) redirect('/institution-login');
+  const id = Number((await params).id), query = await searchParams;
+  if (!Number.isSafeInteger(id) || id < 1) notFound();
+  let report;
+  try { report = await getBatchExamReport(session.institutionId, id, db, query.version ? Number(query.version) : undefined); }
+  catch (err) { if (err instanceof ActionInputError) notFound(); throw err; }
+  const [institution] = await db.select({ name: institutions.name, logoKey: institutions.logoKey, signatureKey: institutions.signatureKey }).from(institutions).where(eq(institutions.id, session.institutionId)).limit(1);
+  if (!institution) notFound();
+  const selected = query.student ? report.students.filter(student => student.id === Number(query.student)) : report.students;
+  if (!selected.length) notFound();
+  const subjectNames = report.subjects.map(subject => subject.name);
+  const csvRows = selected.map(student => ({ roll: student.roll, student: student.name, total: student.totalObtained, percentage: student.overallPercentage, status: student.result,
+    subjects: Object.fromEntries(student.results.map(row => [row.subjectName, row.status === 'MARKED' ? `${row.marks}/${row.maxMarks}` : row.status])) }));
+  const cards = query.mode === 'cards' || Boolean(query.student);
+  return <div className="print-document mx-auto max-w-7xl space-y-5 pb-10">
+    <div className="flex flex-wrap items-start justify-between gap-4 print:hidden"><div><h1 className="font-display text-2xl font-bold text-brand-950">{report.exam.title}</h1><p className="text-sm text-stone-500">{report.exam.className} / {report.exam.officialPublishedAt ? 'Published' : 'Private draft'} / Version {report.version}</p></div><PromotionReviewActions fileName={`exam-${id}-v${report.version}`} subjects={subjectNames} rows={csvRows} /></div>
+    <div className="flex flex-wrap gap-4 text-sm print:hidden"><a className="text-brand-700 underline" href={`?version=${report.version}`}>Class review sheet</a><a className="text-brand-700 underline" href={`?mode=cards&version=${report.version}`}>Batch report cards</a>
+      {Array.from({length: report.exam.settings.reportVersion ?? 1}, (_, index) => index + 1).map(version => <a key={version} href={`?version=${version}`} className="text-brand-700 underline">Version {version}</a>)}
     </div>
-  );
+    {cards ? selected.map(student => <BatchResultReport key={student.id} student={student} title={report.exam.title} institution={institution} version={report.version} published={Boolean(report.exam.officialPublishedAt)} grading={report.grading} />) : <>
+      <div className="rounded-lg border border-border bg-white p-4 text-sm"><strong>{institution.name}</strong><p>{report.statistics.students} students / {report.statistics.passed} passed / {report.statistics.failed} failed / {report.statistics.pending} pending / Class average {report.statistics.average}%</p></div>
+      <div className="overflow-auto rounded-lg border border-border bg-white"><table className="w-full text-left text-sm"><thead className="border-b bg-stone-50"><tr><th className="p-3">Student</th>{subjectNames.map(name => <th key={name} className="p-3">{name}</th>)}<th className="p-3">Total / Overall</th><th className="p-3">Grade / Result</th><th className="p-3 print:hidden">Report</th></tr></thead><tbody className="divide-y divide-border">
+        {selected.map(student => <tr key={student.id}><td className="p-3">{student.roll} / {student.name}</td>{student.results.map(row => <td key={row.subjectId} className="p-3">{row.status === 'MARKED' ? `${row.marks}/${row.maxMarks}` : row.status.replaceAll('_',' ')}</td>)}<td className="p-3">{student.totalObtained}/{student.totalMax} / {student.overallPercentage}%</td><td className="p-3">{student.grade} / {student.result}</td><td className="p-3 print:hidden"><a className="text-brand-700 underline" href={`?student=${student.id}&version=${report.version}`}>Print card</a></td></tr>)}
+      </tbody></table></div>
+    </>}
+  </div>;
 }

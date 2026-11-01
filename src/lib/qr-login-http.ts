@@ -5,7 +5,7 @@ import { inputErrorResponse } from './input-error-response';
 
 export const QR_LOGIN_HEADERS = { 'Cache-Control': 'no-store, private', Pragma: 'no-cache', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
 export function qrJson(body: unknown, status = 200) {
-  return NextResponse.json(body, { status, headers: QR_LOGIN_HEADERS });
+  return NextResponse.json(body, { status, headers: { ...QR_LOGIN_HEADERS, 'X-Request-ID': crypto.randomUUID() } });
 }
 
 /** Exact origin, including port: a sibling subdomain sharing auth cookies is not trusted. */
@@ -27,7 +27,7 @@ export async function qrOwner(req: NextRequest): Promise<QrOwner> {
 export async function qrLimit(req: NextRequest, operation: 'create' | 'redeem' | 'status' | 'revoke', owner?: QrOwner) {
   const result = await withQrLoginRateLimit(req, operation, owner ? `${owner.payload.role}:${owner.payload.userId}` : undefined);
   if (result.success) return null;
-  const response = qrJson({ error: result.unavailable ? 'QR login is temporarily unavailable. Try again shortly.' : 'Too many QR login requests. Try again in one minute.' }, result.unavailable ? 503 : 429);
+  const response = qrJson({ error: result.unavailable ? 'QR login is temporarily unavailable. Try again shortly.' : 'Too many QR login requests. Try again in one minute.', code: result.unavailable ? 'SERVICE_UNAVAILABLE' : 'RATE_LIMITED' }, result.unavailable ? 503 : 429);
   response.headers.set('Retry-After', String(result.retryAfterSeconds));
   return response;
 }
@@ -35,11 +35,12 @@ export async function qrLimit(req: NextRequest, operation: 'create' | 'redeem' |
 export async function qrHandler(work: () => Promise<Response>) {
   try { return await work(); }
   catch (error) {
-    if (error instanceof QrLoginError) return qrJson({ error: error.message }, error.status);
+    if (error instanceof QrLoginError) return qrJson({ error: error.message, code: error.code }, error.status);
     const inputError = inputErrorResponse(error);
     if (inputError) return qrJson(inputError.body, inputError.status);
     // Database errors can contain SQL parameters. Never log the exception or QR.
-    console.error('[qr-login] Request failed; authentication was not completed.');
-    return qrJson({ error: 'QR login is temporarily unavailable. Try again shortly.' }, 503);
+    const response = qrJson({ error: 'QR login is temporarily unavailable. Try again shortly.', code: 'SERVICE_UNAVAILABLE' }, 503);
+    console.error(JSON.stringify({ event: 'qr_login_failed', requestId: response.headers.get('x-request-id'), status: 503 }));
+    return response;
   }
 }

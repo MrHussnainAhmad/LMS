@@ -3,15 +3,17 @@ import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { staffAssignments, staff, sections, classes, subjects } from "@/db/schema";
-import { eq, and, lt, gt, isNull } from "drizzle-orm";
+import { sql, eq, and, isNull } from "drizzle-orm";
 import { requireRole, getTenantContext } from "@/lib/rbac";
 
 import { invalidateTimetableReadCaches } from "@/lib/redis";
 import { invalidateInstitutionAcademicsCache } from "@/lib/institution-academics-data";
+import { getStaffWorkload, saveTeachingCoverage, createTimetableAssignment } from '@/lib/timetable-coverage';
 
 export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
   const url = new URL(req.url);
+  if(url.searchParams.get('view')==='workload')return NextResponse.json(await getStaffWorkload(institutionId,url.searchParams.get('date')??undefined),{headers:{'Cache-Control':'private, no-store'}});
 
   if (url.searchParams.get("metadata") === "true") {
     const [allStaff, allSections, allClasses, allSubjects] = await Promise.all([
@@ -47,6 +49,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
   
   try {
     const body = await readBoundedJson(req);
+    if(body?.action==='teachingCover')return NextResponse.json(await saveTeachingCoverage(session,body));
     
     // Support assigning Incharge
     if (body.action === "updateIncharge") {
@@ -89,84 +92,8 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
       return NextResponse.json({ success: true });
     }
 
-    const { sectionId, dayOfWeek, startTime, endTime, isBreak, staffId, subjectId } = body;
-
-    if (!Number.isInteger(sectionId)) return NextResponse.json({ error: "Invalid section ID" }, { status: 400 });
-
-    const day = Number(dayOfWeek);
-    const resolvedStaffId = staffId ? Number(staffId) : null;
-    const resolvedSubjectId = subjectId ? Number(subjectId) : null;
-    const validTime = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
-    if (!Number.isInteger(day) || day < 1 || day > 6 || typeof startTime !== "string" || typeof endTime !== "string" || !validTime.test(startTime) || !validTime.test(endTime) || startTime >= endTime) {
-      return NextResponse.json({ error: "Provide a valid Monday to Saturday time slot" }, { status: 400 });
-    }
-    if (!isBreak && (!Number.isInteger(resolvedStaffId) || !Number.isInteger(resolvedSubjectId))) {
-      return NextResponse.json({ error: "Teacher and subject are required for class periods" }, { status: 400 });
-    }
-
-    const [section] = await db.select({ id: sections.id }).from(sections)
-      .where(and(eq(sections.id, sectionId), eq(sections.institutionId, institutionId), isNull(sections.deletedAt)))
-      .limit(1);
-    if (!section) return NextResponse.json({ error: "Section not found" }, { status: 404 });
-
-    if (resolvedStaffId) {
-      const [teacher] = await db.select({ id: staff.id }).from(staff)
-        .where(and(eq(staff.id, resolvedStaffId), eq(staff.institutionId, institutionId), isNull(staff.deletedAt)))
-        .limit(1);
-      if (!teacher) return NextResponse.json({ error: "Staff member not found" }, { status: 404 });
-    }
-    if (resolvedSubjectId) {
-      const [subject] = await db.select({ id: subjects.id }).from(subjects)
-        .where(and(eq(subjects.id, resolvedSubjectId), eq(subjects.institutionId, institutionId), isNull(subjects.deletedAt)))
-        .limit(1);
-      if (!subject) return NextResponse.json({ error: "Subject not found" }, { status: 404 });
-    }
-
-    const sectionConflicts = await db.select({ id: staffAssignments.id })
-      .from(staffAssignments)
-      .where(and(
-        eq(staffAssignments.institutionId, institutionId),
-        eq(staffAssignments.sectionId, sectionId),
-        eq(staffAssignments.dayOfWeek, day),
-        lt(staffAssignments.startTime, endTime),
-        gt(staffAssignments.endTime, startTime),
-      ))
-      .limit(1);
-    if (sectionConflicts.length > 0) {
-      return NextResponse.json({ error: "This section already has a timetable entry in that time range" }, { status: 409 });
-    }
-
-    if (resolvedStaffId) {
-      const staffConflicts = await db.select({ id: staffAssignments.id })
-        .from(staffAssignments)
-        .where(and(
-          eq(staffAssignments.institutionId, institutionId),
-          eq(staffAssignments.staffId, resolvedStaffId),
-          eq(staffAssignments.dayOfWeek, day),
-          lt(staffAssignments.startTime, endTime),
-          gt(staffAssignments.endTime, startTime),
-        ))
-        .limit(1);
-      if (staffConflicts.length > 0) {
-        return NextResponse.json({ error: "This staff member is already booked in that time range" }, { status: 409 });
-      }
-    }
-
-    const [inserted] = await db.insert(staffAssignments).values({
-      institutionId,
-      sectionId,
-      dayOfWeek: day,
-      startTime,
-      endTime,
-      isBreak: Boolean(isBreak),
-      staffId: resolvedStaffId,
-      subjectId: resolvedSubjectId,
-    }).returning({ id: staffAssignments.id });
-
-    await invalidateTimetableReadCaches(institutionId, sectionId, resolvedStaffId);
-    await (await import('@/lib/notification-events')).notifyTimetable(institutionId,sectionId,resolvedStaffId,`create:${inserted.id}`);
-
-    return NextResponse.json({ id: inserted.id });
+    const created=await createTimetableAssignment(session,body);
+    return NextResponse.json({id:created.id});
   } catch (error: any) {
     const publicInputError = inputErrorResponse(error);
     if (publicInputError) return NextResponse.json(publicInputError.body, { status: publicInputError.status });
@@ -182,12 +109,14 @@ export const DELETE = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (r
 
   if (!Number.isInteger(id)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
 
-  const [assignment] = await db.select().from(staffAssignments)
-    .where(and(eq(staffAssignments.id, id), eq(staffAssignments.institutionId, institutionId)))
-    .limit(1);
+  const assignment=await db.transaction(async tx=>{
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(80429,${institutionId})`);
+    const [row]=await tx.select().from(staffAssignments).where(and(eq(staffAssignments.id,id),eq(staffAssignments.institutionId,institutionId))).for('update').limit(1);
+    if(row)await tx.delete(staffAssignments).where(eq(staffAssignments.id,id));
+    return row;
+  });
 
   if (assignment) {
-    await db.delete(staffAssignments).where(eq(staffAssignments.id, id));
     await invalidateTimetableReadCaches(institutionId, assignment.sectionId, assignment.staffId);
     await (await import('@/lib/notification-events')).notifyTimetable(institutionId,assignment.sectionId,assignment.staffId,`delete:${assignment.id}`);
   }

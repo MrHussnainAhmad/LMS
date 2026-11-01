@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { NextRequest } from 'next/server';
+import { redirect } from 'next/navigation';
 import { dashboardResponse, timetableResponse } from '../src/lib/dashboard-response';
+import { withApiPolicy } from '../src/lib/api-policy';
 
 const source = readFileSync('scripts/standalone-server.cjs', 'utf8');
 const adapter = source.slice(source.indexOf('async function handleLane('), source.indexOf('async function loadLane('));
@@ -25,6 +27,22 @@ async function send(response: Response) {
 }
 
 async function main() {
+  await assert.rejects(withApiPolicy(async () => redirect('/fixture'))(new NextRequest('http://localhost/api/fixture')),
+    error => error instanceof Error && 'digest' in error && String(error.digest).startsWith('NEXT_REDIRECT'));
+  const captured: string[] = [];
+  const originalError = console.error;
+  console.error = (message: unknown) => { captured.push(String(message)); };
+  try {
+    const handler = withApiPolicy(async () => { throw new Error('sensitive-fixture-password-and-sql'); });
+    const failed = await handler(new NextRequest('http://localhost/api/student/profile?password=sensitive-query'));
+    assert.equal(failed.status, 500);
+    const body = await failed.json();
+    assert.equal(body.code, 'INTERNAL_ERROR');
+    assert.equal(body.requestId, failed.headers.get('x-request-id'));
+    assert.match(body.requestId, /^[a-f0-9-]{36}$/);
+    assert.ok(captured.some(line => line.includes(body.requestId)));
+    assert.ok(!captured.join('').includes('sensitive'));
+  } finally { console.error = originalError; }
   const payload = { firstName: 'علی 🎓', timetable: [] };
   const optimized = dashboardResponse(payload, true);
   optimized.headers.append('set-cookie', 'one=1; HttpOnly');

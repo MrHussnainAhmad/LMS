@@ -2,14 +2,17 @@ import { readBoundedJson } from '@/lib/http';
 import { inputErrorResponse } from '@/lib/input-error-response';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { announcements, notifications } from "@/db/schema";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { announcements } from "@/db/schema";
+import { eq, desc } from "drizzle-orm";
 import { requireRole, getTenantContext } from "@/lib/rbac";
 
-import { invalidateAnnouncementReadCaches } from "@/lib/redis";
+
+import { announcementResponsePolicySchema, getAnnouncementReceipts, deleteInstitutionAnnouncement } from '@/lib/announcements';
 
 export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req: NextRequest, { session }) => {
   const institutionId = getTenantContext(session);
+  const id=Number(req.nextUrl.searchParams.get('id'));
+  if(id>0&&Number.isSafeInteger(id))return NextResponse.json(await getAnnouncementReceipts(session,id),{headers:{'Cache-Control':'private, no-store'}});
 
   const rows = await db.select().from(announcements)
     .where(eq(announcements.institutionId, institutionId))
@@ -24,8 +27,11 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
   try {
     const body = await readBoundedJson(req);
     const { title, content, targetType, targetCampusId, targetClassId, targetSectionId, targetUserRole } = body;
+    const responsePolicy=announcementResponsePolicySchema.parse(body.responsePolicy??{});
 
     if (!title || !content) return NextResponse.json({ error: "Title and content are required" }, { status: 400 });
+
+    if(responsePolicy.mode==='CONSENT'&&targetUserRole==='STAFF') return NextResponse.json({error:'Consent notices must target students and parents.'},{status:400});
 
     const [inserted] = await db.insert(announcements).values({
       institutionId,
@@ -33,6 +39,7 @@ export const POST = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (req
       senderId: institutionId,
       title,
       content,
+      responsePolicy,
       targetType: targetType || "ALL",
       targetCampusId: targetCampusId ? Number(targetCampusId) : null,
       targetClassId: targetClassId ? Number(targetClassId) : null,
@@ -64,16 +71,6 @@ export const DELETE = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (r
 
   if (!Number.isInteger(id)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
 
-  await db.delete(notifications)
-    .where(and(
-      eq(notifications.institutionId, institutionId),
-      eq(notifications.referenceId, id),
-      inArray(notifications.type, ["ANNOUNCEMENT", "EXAM_TIMETABLE"])
-    ));
-
-  await db.delete(announcements)
-    .where(and(eq(announcements.id, id), eq(announcements.institutionId, institutionId)));
-
-  await invalidateAnnouncementReadCaches(institutionId);
+  await deleteInstitutionAnnouncement({...session,institutionId},id);
   return NextResponse.json({ success: true });
 });

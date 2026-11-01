@@ -13,6 +13,9 @@ export default function GradingSettingsPage() {
     { letter: "A+", min: 90, max: 100 },
     { letter: "A", min: 80, max: 89 },
     { letter: "B", min: 70, max: 79 },
+    { letter: "C", min: 60, max: 69 },
+    { letter: "D", min: 40, max: 59 },
+    { letter: "F", min: 0, max: 39 },
   ]);
   const [message, setMessage] = useState("");
 
@@ -51,7 +54,7 @@ export default function GradingSettingsPage() {
       <div className="space-y-6 rounded-xl border border-border bg-white p-6 pt-7">
         <label className="block text-sm font-medium text-stone-700">Passing percentage<input className="mt-2 block w-full rounded-md border border-border px-3 py-2 sm:w-40" type="number" min="0" max="100" value={passingPercentage} onChange={(event) => setPassingPercentage(Number(event.target.value))} /></label>
         <div className="space-y-3">
-          <div><p className="text-sm font-medium text-stone-700">Grade ranges</p><p className="mt-1 text-xs leading-5 text-stone-500">Enter the grade label and its minimum and maximum percentages.</p></div>
+          <div><p className="text-sm font-medium text-stone-700">Grade ranges</p><p className="mt-1 text-xs leading-5 text-stone-500">Cover 0?100 using whole-number ranges without gaps or overlaps. Grade bands use the rounded percentage; pass decisions use the exact percentage.</p></div>
           {grades.map((grade, index) => (
             <div key={index} className="grid gap-3 rounded-md border border-border p-3 sm:grid-cols-[minmax(0,1fr)_110px_110px_auto] sm:items-end">
               <label className="text-xs font-medium text-stone-600">Grade<input className="mt-1 block w-full rounded-md border border-border px-3 py-2 text-sm" value={grade.letter} onChange={(event) => setGrades(grades.map((item, itemIndex) => itemIndex === index ? { ...item, letter: event.target.value } : item))} /></label>

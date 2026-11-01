@@ -32,7 +32,8 @@ export async function GET(req: NextRequest) {
     }
     const studentList = await db.select({
       name: students.name,
-      rollNumber: students.classRollNumber
+      rollNumber: students.classRollNumber,
+      loginId: students.loginRollNumber
     })
     .from(students)
     .where(and(...conditions))

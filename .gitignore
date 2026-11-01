@@ -314,3 +314,8 @@ recovery-secrets.json
 
 !/scripts/verify-database-backup-ui.cjs
 !/deployment/compose.local-test.yml
+
+# Additional local editor/cache and Windows-generated files
+Desktop.ini
+/.turbo/
+.eslintcache

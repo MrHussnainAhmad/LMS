@@ -1,9 +1,62 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { classes, sections, students, feeHeads, classFeeItems, studentFeeAdjustments, feeInvoices, feeInvoiceItems, feeBillingBatches } from "@/db/schema";
+import { classes, sections, students, feeHeads, classFeeItems, studentFeeAdjustments, feeInvoices, feeInvoiceItems, feeBillingBatches, parentStudents, auditLogs } from "@/db/schema";
+import { pakistanDateKey } from './parent-period';
+import { feeActionSchema } from './validators/fees';
+import type { JWTPayload } from './auth-types';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+// This expression is used in fee-invoice queries; column names bind to the outer invoice row.
+export const effectiveFeeDueDate = sql<string>`COALESCE((SELECT min(schedule.due_day) FROM (
+  SELECT (item->>'dueDate')::date AS due_day, sum((item->>'amount')::integer) OVER (ORDER BY item->>'dueDate') AS cumulative
+  FROM jsonb_array_elements(COALESCE(plan->'installments','[]'::jsonb)) item
+) schedule WHERE schedule.cumulative > GREATEST(paid_amount-COALESCE((plan->>'paidAtSetup')::integer,0),0)),due_date)`;
+export const effectiveFeeOverdueAmount = sql<number>`CASE WHEN jsonb_array_length(COALESCE(plan->'installments','[]'::jsonb))>0
+  THEN GREATEST(COALESCE((SELECT sum((item->>'amount')::integer) FROM jsonb_array_elements(plan->'installments') item
+    WHERE (item->>'dueDate')::date < (clock_timestamp() AT TIME ZONE 'Asia/Karachi')::date),0)-GREATEST(paid_amount-COALESCE((plan->>'paidAtSetup')::integer,0),0),0)
+  ELSE CASE WHEN due_date < (clock_timestamp() AT TIME ZONE 'Asia/Karachi')::date THEN GREATEST(total_amount-paid_amount,0) ELSE 0 END END`;
+export async function manageFeeSupport(session: JWTPayload, input: unknown) {
+  const action = feeActionSchema.parse(input);
+  const institutionId = session.institutionId;
+  if (!institutionId || !['INSTITUTION','INSTITUTION_ADMIN'].includes(session.role) || session.campusReadOnly || session.mustChangePassword) throw new FeeBillingError('Forbidden',403);
+  return db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(36074, ${institutionId})`);
+    if (action.action === 'siblingDiscount') {
+      if (action.endMonth && action.endMonth < action.startMonth) throw new FeeBillingError('The end month must follow the start month.');
+      const family = await tx.selectDistinct({id:students.id,name:students.name,loginId:students.loginRollNumber}).from(students)
+        .innerJoin(parentStudents,and(eq(parentStudents.studentId,students.id),eq(parentStudents.institutionId,institutionId)))
+        .where(and(eq(students.institutionId,institutionId),eq(students.isActive,true),eq(students.academicStatus,'ACTIVE'),isNull(students.deletedAt),
+          sql`${parentStudents.parentId} IN (SELECT parent_id FROM parent_students WHERE student_id=${action.studentId} AND institution_id=${institutionId})`)).orderBy(students.id);
+      if (family.length < 2 || !family.some(row=>row.id===action.studentId)) throw new FeeBillingError('Select an active student with at least one active sibling linked to the same parent account.');
+      const previewHash=createHash('sha256').update(JSON.stringify({family,amount:action.amount,startMonth:action.startMonth,endMonth:action.endMonth})).digest('hex');
+      if (!action.confirm) return {family,previewHash};
+      if (previewHash!==action.expectedPreviewHash) throw new FeeBillingError('The family changed. Preview the sibling discount again.',409);
+      const existing=await tx.select({id:studentFeeAdjustments.id}).from(studentFeeAdjustments).where(and(eq(studentFeeAdjustments.institutionId,institutionId),inArray(studentFeeAdjustments.studentId,family.map(row=>row.id)),eq(studentFeeAdjustments.label,'Sibling discount'),eq(studentFeeAdjustments.isActive,true))).limit(1);
+      if (existing.length) throw new FeeBillingError('A family member already has an active sibling discount. Review their existing adjustment before adding another.',409);
+      await tx.insert(studentFeeAdjustments).values(family.map(row=>({institutionId,studentId:row.id,label:'Sibling discount',type:'DISCOUNT' as const,frequency:'RECURRING' as const,amount:action.amount,startMonth:action.startMonth,endMonth:action.endMonth})));
+      await tx.insert(auditLogs).values({institutionId,actorId:session.userId,actorRole:session.role,action:'SIBLING_DISCOUNT_CREATED',target:`SiblingGroup:${action.studentId}:${family.length}`,ip:'server'});
+      return {created:family.length,family};
+    }
+    if (action.action!=='setInstallments' && action.action!=='feeFollowUp') throw new FeeBillingError('Unsupported fee support action.');
+    const [invoice]=await tx.select().from(feeInvoices).where(and(eq(feeInvoices.id,action.invoiceId),eq(feeInvoices.institutionId,institutionId))).for('update').limit(1);
+    if (!invoice || invoice.status==='VOID') throw new FeeBillingError('Invoice not found or void.',404);
+    const plan={...invoice.plan};
+    if (action.action==='setInstallments') {
+      if (!['DUE','PARTIAL'].includes(invoice.status)) throw new FeeBillingError('Only outstanding invoices can have an installment plan.');
+      if ((plan.revision??0)!==action.revision || invoice.paidAmount!==action.expectedPaidAmount) throw new FeeBillingError('Payments or the plan changed. Reload the invoice before saving.',409);
+      if (action.installments.some((row,index)=>row.dueDate<pakistanDateKey() || (index>0 && row.dueDate<=action.installments[index-1].dueDate))) throw new FeeBillingError('Installment dates must be today or later and strictly increasing.');
+      if (action.installments.reduce((sum,row)=>sum+row.amount,0)!==invoice.totalAmount-invoice.paidAmount) throw new FeeBillingError('Installments must total the current outstanding balance exactly.');
+      plan.installments=action.installments;plan.paidAtSetup=invoice.paidAmount;plan.revision=(plan.revision??0)+1;plan.reason=action.reason;plan.updatedBy=session.userId;plan.updatedAt=new Date().toISOString();
+    } else {
+      if (action.nextDate && action.nextDate<pakistanDateKey()) throw new FeeBillingError('Choose today or a future follow-up date.');
+      plan.followUps=[...(plan.followUps??[]),{note:action.note,nextDate:action.nextDate,actorId:session.userId,at:new Date().toISOString()}];
+    }
+    await tx.update(feeInvoices).set({plan,updatedAt:new Date()}).where(eq(feeInvoices.id,invoice.id));
+    await tx.insert(auditLogs).values({institutionId,actorId:session.userId,actorRole:session.role,action:action.action==='setInstallments'?'FEE_INSTALLMENTS_SAVED':'FEE_FOLLOW_UP_RECORDED',target:`FeeInvoice:${invoice.id}`,ip:'server'});
+    return {success:true,plan};
+  });
+}
 export class FeeBillingError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }

@@ -3,9 +3,6 @@ import { db } from "@/db";
 import {
   assignments,
   attendances,
-  batchExamResults,
-  batchExams,
-  batchExamSubjects,
   feeInvoices,
   feePayments,
   feePaymentSubmissions,
@@ -17,6 +14,8 @@ import {
 import { requireRole, getTenantContext } from "@/lib/rbac";
 import { singleMonthRange } from "@/lib/month-window";
 import { and, desc, eq, gte, lte } from "drizzle-orm";
+
+import { getStudentBatchReports } from '@/lib/batch-exams';
 
 type HistorySection = "attendance" | "marks" | "submissions" | "batchExams" | "fees" | "analytics";
 
@@ -98,67 +97,12 @@ async function loadSubmissions(studentId: number, institutionId: number, from: s
 }
 
 async function loadBatchExams(studentId: number, institutionId: number, from: string, to: string) {
-  const rawBatchResults = await db
-    .select({
-      examId: batchExams.id,
-      examTitle: batchExams.title,
-      examCreatedAt: batchExams.createdAt,
-      isPublished: batchExamSubjects.isPublished,
-      reviewDeadline: batchExamSubjects.reviewDeadline,
-      maxMarks: batchExamSubjects.maxMarks,
-      marksObtained: batchExamResults.marksObtained,
-    })
-    .from(batchExamResults)
-    .innerJoin(batchExamSubjects, eq(batchExamResults.batchExamSubjectId, batchExamSubjects.id))
-    .innerJoin(batchExams, eq(batchExamSubjects.batchExamId, batchExams.id))
-    .where(and(
-      eq(batchExamResults.studentId, studentId),
-      eq(batchExams.institutionId, institutionId),
-      gte(batchExams.createdAt, new Date(`${from}T00:00:00`)),
-      lte(batchExams.createdAt, new Date(`${to}T23:59:59.999`))
-    ));
-
-  const examMap = new Map<
-    number,
-    {
-      id: number;
-      title: string;
-      createdAt: string;
-      totalMax: number;
-      totalObtained: number;
-      percentage: number;
-      isEffectivelyPublished: boolean;
-    }
-  >();
-  const now = new Date();
-
-  for (const row of rawBatchResults) {
-    if (!examMap.has(row.examId)) {
-      examMap.set(row.examId, {
-        id: row.examId,
-        title: row.examTitle,
-        createdAt: row.examCreatedAt.toISOString(),
-        totalMax: 0,
-        totalObtained: 0,
-        percentage: 0,
-        isEffectivelyPublished: true,
-      });
-    }
-
-    const exam = examMap.get(row.examId)!;
-    const isEffectivelyPublished = row.isPublished || now > row.reviewDeadline;
-    if (!isEffectivelyPublished) exam.isEffectivelyPublished = false;
-    exam.totalMax += row.maxMarks;
-    exam.totalObtained += row.marksObtained;
-  }
-
-  return Array.from(examMap.values())
-    .filter((exam) => exam.isEffectivelyPublished)
-    .map((exam) => ({
-      ...exam,
-      percentage: exam.totalMax > 0 ? Math.round((exam.totalObtained / exam.totalMax) * 100) : 0,
-    }))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const reports = await getStudentBatchReports(institutionId, studentId);
+  return reports.filter(report => {
+    const day = report.createdAt.toISOString().slice(0, 10);
+    return day >= from && day <= to;
+  }).map(report => ({ id: report.id, title: report.title, createdAt: report.createdAt.toISOString(),
+    totalMax: report.totalMax, totalObtained: report.totalObtained, percentage: report.percentage, isEffectivelyPublished: true }));
 }
 
 async function loadFees(studentId: number, institutionId: number, billingMonth: string) {

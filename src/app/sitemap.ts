@@ -54,6 +54,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseDomain = await getPublicSiteBaseDomain();
   const parsedHostname = parseInstitutionHostname(requestHeaders.get('host') || '', baseDomain);
 
+  if (parsedHostname.hostname === 'blog.nisaab360.app' || parsedHostname.hostname === 'blog.localhost') {
+    const publishedBlogs = await db.select({ slug: blogs.slug, updatedAt: blogs.updatedAt })
+      .from(blogs).where(eq(blogs.status, 'PUBLISHED'));
+    return [
+      { url: 'https://blog.nisaab360.app/', changeFrequency: 'daily', priority: 1 },
+      ...publishedBlogs.filter((blog) => isValidContentSlug(blog.slug)).map((blog) => ({
+        url: `https://blog.nisaab360.app/${blog.slug}`,
+        lastModified: blog.updatedAt,
+        changeFrequency: 'weekly' as const,
+        priority: 0.7,
+      })),
+    ];
+  }
+
   if (parsedHostname.kind === 'institution') {
     const resolution = await resolveInstitutionTenant(parsedHostname.slug);
     if (resolution.kind !== 'active') return [];
@@ -73,24 +87,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return routes;
   }
 
-  const [pages, allBlogs] = await Promise.all([
-    db.select({ slug: platformPages.slug, updatedAt: platformPages.updatedAt }).from(platformPages),
-    db.select({ slug: blogs.slug, updatedAt: blogs.updatedAt })
-      .from(blogs).where(eq(blogs.status, 'PUBLISHED')),
-  ]);
+  const pages = await db.select({ slug: platformPages.slug, updatedAt: platformPages.updatedAt }).from(platformPages);
   
-  const dynamicRoutes = pages.filter((page) => isPublicRouteSlug(page.slug)).map((page) => ({
+  const dynamicRoutes = pages.filter((page) => page.slug.toLowerCase() !== 'blog' && isPublicRouteSlug(page.slug)).map((page) => ({
     url: `https://nisaab360.app/${page.slug}`,
     lastModified: page.updatedAt,
     changeFrequency: 'weekly' as const,
     priority: 0.8,
-  }));
-
-  const blogRoutes = allBlogs.filter((blog) => isValidContentSlug(blog.slug)).map((blog) => ({
-    url: `https://nisaab360.app/blog/${blog.slug}`,
-    lastModified: blog.updatedAt,
-    changeFrequency: 'weekly' as const,
-    priority: 0.7,
   }));
 
   const routes: MetadataRoute.Sitemap = [
@@ -98,11 +101,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: 'https://nisaab360.app',
       changeFrequency: 'daily',
       priority: 1,
-    },
-    {
-      url: 'https://nisaab360.app/blog',
-      changeFrequency: 'daily',
-      priority: 0.9,
     },
     {
       url: 'https://nisaab360.app/register',
@@ -141,7 +139,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     })),
     ...dynamicRoutes,
-    ...blogRoutes,
   ];
 
   // A managed page may share a slug with a built-in public page.

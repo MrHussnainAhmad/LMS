@@ -3,13 +3,15 @@ import { inputErrorResponse } from '@/lib/input-error-response';
 import { validationError } from '@/lib/validation-errors';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { campuses, classes, institutions, sections, studentPromotions, students } from "@/db/schema";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { campuses, classes, institutions, sections, studentPromotions, students, staff, auditLogs } from "@/db/schema";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { requireRole, getTenantContext } from "@/lib/rbac";
 import { invalidateInstitutionRosterCaches } from "@/lib/redis";
 import { getClientIp } from "@/lib/client-ip";
 import { prepareParentActivation, syncStudentGuardian } from "@/lib/parent-identity";
-import { ZodError } from "zod";
+import { ZodError, z } from "zod";
+import { ActionInputError } from '@/lib/action-input-error';
+import { pakistanDateKey } from '@/lib/parent-period';
 import { enqueueEmail } from "@/lib/email-outbox";
 import { ParentAccountActivationEmail, ParentStudentLinkedEmail } from "@/lib/email";
 import { revokeAllSessions } from "@/lib/auth";
@@ -26,6 +28,7 @@ export const GET = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (_req
   const [student] = await db.select({
     id: students.id,
     name: students.name,
+    supportRecord: students.supportRecord,
     fatherName: students.fatherName,
     gender: students.gender,
     loginRollNumber: students.loginRollNumber,
@@ -99,6 +102,20 @@ export const PATCH = requireRole(["INSTITUTION", "INSTITUTION_ADMIN"], async (re
   }
 
   const body = await readBoundedJson(req);
+  if(body?.action==='supportFollowUp'){
+    const input=z.object({revision:z.number().int().min(0),status:z.enum(['OPEN','MONITORING','RESOLVED']),assignedTo:z.number().int().positive().nullable(),nextDate:z.string().date().nullable(),note:z.string().trim().min(5).max(1000)}).parse(body);
+    if(input.nextDate&&input.nextDate<pakistanDateKey())throw new ActionInputError('Choose today or a future follow-up date.');
+    return db.transaction(async tx=>{
+      const [student]=await tx.select({record:students.supportRecord}).from(students).where(and(eq(students.id,studentId),eq(students.institutionId,tenantId),isNull(students.deletedAt))).for('update').limit(1);
+      if(!student)throw new ActionInputError('Student not found.');
+      if((student.record.revision??0)!==input.revision)throw Object.assign(new ActionInputError('This follow-up changed. Reload before saving.'),{status:409});
+      if(input.assignedTo){const [owner]=await tx.select({id:staff.id}).from(staff).where(and(eq(staff.id,input.assignedTo),eq(staff.institutionId,tenantId),eq(staff.isActive,true),isNull(staff.deletedAt))).limit(1);if(!owner)throw new ActionInputError('Choose an active staff member from your institution.');}
+      const now=new Date().toISOString(),record={...input,revision:input.revision+1,updatedAt:now,history:[...(student.record.history??[]),{status:input.status,note:input.note,actorId:session.userId,at:now}]};
+      await tx.update(students).set({supportRecord:record}).where(eq(students.id,studentId));
+      await tx.insert(auditLogs).values({institutionId:tenantId,actorId:session.userId,actorRole:session.role,action:'STUDENT_SUPPORT_FOLLOW_UP',target:`Student:${studentId}`,ip:'server'});
+      return NextResponse.json({success:true,supportRecord:record});
+    });
+  }
 
   try {
     const classId = parseInt(body.classId);

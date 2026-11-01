@@ -8,9 +8,9 @@ These are ready-to-host copies for `https://nisaab360.app`:
 | `robots.txt` | `https://nisaab360.app/robots.txt` |
 | `llms.txt` | `https://nisaab360.app/llms.txt` |
 
-The XML snapshot contains 14 public URLs: the eight built-in public pages plus About Us, Contact, Privacy Policy, Terms of Service, Security, and GDPR. At the user's request, all six named managed pages are included in the application generator and export ahead of content publication. Their inclusion does not depend on database records already existing. Actual database update dates override the default entries when records exist, without duplicating URLs. All 14 public pages are linked from llms.txt and permitted by the main-domain robots rules.
+The apex-domain XML snapshot contains 13 public URLs: the seven built-in public pages plus About Us, Contact, Privacy Policy, Terms of Service, Security, and GDPR. At the user's request, all six named managed pages are included in the application generator and export ahead of content publication. Their inclusion does not depend on database records already existing. Actual database update dates override the default entries when records exist, without duplicating URLs. All 13 public pages are linked from llms.txt and permitted by the main-domain robots rules.
 
-All login pages, including employee, institution/admin and super-admin logins, and private portal pages remain excluded from the sitemap. The dynamic generator also includes other eligible managed pages and published blog posts; the standalone snapshot includes the blog index and no individual posts. No Search Console submission was performed; the available connector supports read-only inspection, not sitemap submission.
+All login pages, including employee, institution/admin and super-admin logins, and private portal pages remain excluded from the sitemap. The apex generator also includes other eligible managed pages. Blogs have a separate, automatically updated sitemap at `https://blog.nisaab360.app/sitemap.xml`, containing the blog homepage and published article URLs on that same host. With no published posts, it contains only the blog homepage. The blog's robots.txt points to this blog sitemap. No Search Console submission was performed.
 
 After deploying sitemap changes or publishing managed pages/posts, refresh this downloadable snapshot from the running generator instead of exporting with empty database placeholders:
 
@@ -32,7 +32,9 @@ Do not copy this directory's `sitemap.xml` or `robots.txt` into `public/` while 
 
 1. Deploy the updated application, or publish the standalone files with your web server.
 2. Open all three public URLs and confirm the new content appears. The updated sitemap contains `/faq`, `/download-app`, and `/download-software`, and does not contain `/login`. If a CDN cache override still returns old content after deployment, purge these exact URLs.
-3. In Google Search Console, select the `nisaab360.app` property, open **Sitemaps**, and submit `https://nisaab360.app/sitemap.xml` (or `sitemap.xml` if the field already supplies the domain).
+3. In Google Search Console, select the verified `nisaab360.app` Domain property, open **Sitemaps**, and submit both `https://nisaab360.app/sitemap.xml` and `https://blog.nisaab360.app/sitemap.xml`. If you use URL-prefix properties instead, verify the blog's HTTPS URL-prefix property separately and submit its sitemap there.
+
+The blog sitemap and canonical URLs use `https://blog.nisaab360.app/` and `https://blog.nisaab360.app/article-slug`. The apex sitemap does not advertise the older `/blog` copies. Deploy the blog pages alongside the sitemap/robots changes; this also corrects article links, the back-to-blog link, paginated canonical URLs, and article sharing metadata. Publishing new posts requires no sitemap export when using the application's dynamic blog sitemap.
 
 Search Console receives the hosted sitemap URL, not a local file upload. Keep `robots.txt` at the domain root; Google fetches it automatically. `llms.txt` is descriptive information for tools that support it, not a sitemap to submit to Google. It is not required for Google's AI search features.
 

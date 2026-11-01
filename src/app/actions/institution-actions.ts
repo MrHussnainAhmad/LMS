@@ -1,20 +1,21 @@
 "use server";
+import { createTimetableAssignment } from "@/lib/timetable-coverage";
 
 import { ActionInputError } from "@/lib/action-input-error";
 import { z } from 'zod';
+import { announcementResponsePolicySchema, deleteInstitutionAnnouncement } from '@/lib/announcements';
 
 import { db } from "@/db";
-import { campuses, staff, classes, sections, subjects, announcements, notifications, institutions } from "@/db/schema";
+import { campuses, staff, classes, sections, subjects, announcements, institutions } from "@/db/schema";
 import { assertSecurityPermission } from "@/lib/security-permissions";
 import { getSession } from "@/lib/auth";
 import { getTenantContext } from "@/lib/rbac";
 import { revalidatePath } from "next/cache";
-import { staffAssignments } from "@/db/schema";
-import { eq, and, gt, lt, inArray, count, sql } from "drizzle-orm";
+import { eq, and, count, sql } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 import { createStaffAccount } from "@/lib/user";
 import { getOrCreateWholeClassSection } from "@/lib/student-login-institution";
-import { invalidateStudentEnrichCache, invalidateTimetableReadCaches, invalidateAnnouncementReadCaches, invalidateStaffReadCaches } from "@/lib/redis";
+import { invalidateStudentEnrichCache, invalidateStaffReadCaches } from "@/lib/redis";
 import { assertCampusEmailAvailable, createCampusWorkspace } from "@/lib/campus-workspaces";
 import { assertCampusWritable } from "@/lib/campus-view";
 
@@ -100,6 +101,8 @@ export async function createAnnouncementAction(formData: FormData) {
   const title = formData.get("title") as string;
   const content = formData.get("content") as string;
   const targetTypeRaw = formData.get("targetType") as string;
+  const responsePolicy=announcementResponsePolicySchema.parse({mode:formData.get('responseMode')||'NONE',dueDate:formData.get('responseDeadline')||undefined});
+  if(responsePolicy.mode==='CONSENT'&&targetTypeRaw==='STAFF')throw new ActionInputError('Consent notices must include students and their parents.');
   const targetCampusId = parseOptionalId(formData.get("targetCampusId"));
   const targetClassId = parseOptionalId(formData.get("targetClassId"));
   const targetSectionId = parseOptionalId(formData.get("targetSectionId"));
@@ -161,6 +164,7 @@ export async function createAnnouncementAction(formData: FormData) {
     targetClassId: resolvedClassId,
     targetSectionId: resolvedSectionId,
     targetUserRole,
+    responsePolicy,
   }).returning({ id: announcements.id });
 
   const { processAnnouncementNotification } = await import("@/lib/notifications");
@@ -185,23 +189,7 @@ export async function deleteAnnouncementAction(formData: FormData) {
   const announcementId = parseOptionalId(formData.get("announcementId"));
   if (!announcementId) throw new ActionInputError("Invalid announcement ID");
 
-  const [announcement] = await db.select({ id: announcements.id })
-    .from(announcements)
-    .where(and(eq(announcements.id, announcementId), eq(announcements.institutionId, institutionId)))
-    .limit(1);
-  if (!announcement) throw new ActionInputError("Announcement not found");
-
-  await db.delete(notifications)
-    .where(and(
-      eq(notifications.institutionId, institutionId),
-      eq(notifications.referenceId, announcementId),
-      inArray(notifications.type, ["ANNOUNCEMENT", "EXAM_TIMETABLE"])
-    ));
-
-  await db.delete(announcements)
-    .where(and(eq(announcements.id, announcementId), eq(announcements.institutionId, institutionId)));
-
-  await invalidateAnnouncementReadCaches(institutionId);
+  await deleteInstitutionAnnouncement({...session,institutionId},announcementId);
   revalidatePath("/institution/announcements");
   revalidatePath("/staff/announcements");
   revalidatePath("/student/announcements");
@@ -337,102 +325,11 @@ export async function createTimetableAssignmentAction(formData: FormData) {
   assertCampusWritable(session);
   if (!session || (session.role !== "INSTITUTION" && session.role !== "INSTITUTION_ADMIN")) throw new ActionInputError("Unauthorized");
 
-  const institutionId = session.institutionId || session.userId;
-  const sectionIdRaw = formData.get("sectionId") as string;
-  const classIdRaw = formData.get("classId") as string;
-  let sectionId = sectionIdRaw ? parseInt(sectionIdRaw, 10) : null;
-  const classId = classIdRaw ? parseInt(classIdRaw, 10) : null;
-  const dayOfWeek = parseInt(formData.get("dayOfWeek") as string, 10);
-  const startTime = formData.get("startTime") as string;
-  const endTime = formData.get("endTime") as string;
-  
-  const isBreakRaw = formData.get("isBreak");
-  const isBreak = isBreakRaw === "on" || isBreakRaw === "true";
-  
-  const staffIdRaw = formData.get("staffId");
-  const subjectIdRaw = formData.get("subjectId");
-  const staffId = staffIdRaw && !isBreak ? parseInt(staffIdRaw as string, 10) : null;
-  const subjectId = subjectIdRaw && !isBreak ? parseInt(subjectIdRaw as string, 10) : null;
-
-  if (sectionIdRaw && !Number.isInteger(sectionId)) throw new ActionInputError("Invalid section ID");
-  if (!sectionId && (!classId || !Number.isInteger(classId))) throw new ActionInputError("Valid section or class is required");
-  const validTime = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
-  if (
-    !Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 6 ||
-    !validTime.test(startTime) || !validTime.test(endTime) || startTime >= endTime
-  ) {
-    throw new ActionInputError("Valid section, day, start time, and end time are required");
-  }
-  if (!isBreak && (!staffId || !subjectId || !Number.isInteger(staffId) || !Number.isInteger(subjectId))) {
-    throw new ActionInputError("Subject and teacher are required for class periods");
-  }
-
-  if (!sectionId && classId) {
-    sectionId = (await getOrCreateWholeClassSection(institutionId, classId)).id;
-  }
-
-  const [sectionRow] = await db.select()
-    .from(sections)
-    .where(and(eq(sections.id, sectionId!), eq(sections.institutionId, institutionId)))
-    .limit(1);
-  if (!sectionRow) throw new ActionInputError("Section not found");
-
-  if (subjectId) {
-    const [subjectRow] = await db.select({ id: subjects.id })
-      .from(subjects)
-      .where(and(eq(subjects.id, subjectId), eq(subjects.institutionId, institutionId)))
-      .limit(1);
-    if (!subjectRow) throw new ActionInputError("Subject not found");
-  }
-
-  if (staffId) {
-    const [staffRow] = await db.select({ id: staff.id })
-      .from(staff)
-      .where(and(eq(staff.id, staffId), eq(staff.institutionId, institutionId)))
-      .limit(1);
-    if (!staffRow) throw new ActionInputError("Selected staff member was not found in this institution");
-  }
-
-  const sectionConflicts = await db.select({ id: staffAssignments.id })
-    .from(staffAssignments)
-    .where(and(
-      eq(staffAssignments.institutionId, institutionId),
-      eq(staffAssignments.sectionId, sectionId!),
-      eq(staffAssignments.dayOfWeek, dayOfWeek),
-      lt(staffAssignments.startTime, endTime),
-      gt(staffAssignments.endTime, startTime),
-    ))
-    .limit(1);
-  if (sectionConflicts.length > 0) throw new ActionInputError("This section already has a timetable entry in that time range");
-
-  if (staffId) {
-    const staffConflicts = await db.select({ id: staffAssignments.id })
-      .from(staffAssignments)
-      .where(and(
-        eq(staffAssignments.institutionId, institutionId),
-        eq(staffAssignments.staffId, staffId),
-        eq(staffAssignments.dayOfWeek, dayOfWeek),
-        lt(staffAssignments.startTime, endTime),
-        gt(staffAssignments.endTime, startTime),
-      ))
-      .limit(1);
-    if (staffConflicts.length > 0) throw new ActionInputError("This staff member is already booked in that time range");
-  }
-
-  await db.insert(staffAssignments).values({
-    institutionId,
-    staffId,
-    sectionId: sectionId!,
-    subjectId,
-    isBreak,
-    dayOfWeek,
-    startTime,
-    endTime,
+  await createTimetableAssignment(session,{
+    sectionId:formData.get('sectionId')||undefined,classId:formData.get('classId')||undefined,
+    dayOfWeek:formData.get('dayOfWeek'),startTime:formData.get('startTime'),endTime:formData.get('endTime'),
+    isBreak:['on','true'].includes(String(formData.get('isBreak'))),staffId:formData.get('staffId')||undefined,subjectId:formData.get('subjectId')||undefined,
   });
-
-  await invalidateTimetableReadCaches(institutionId, sectionId!, staffId);
-  await (await import('@/lib/notification-events')).notifyTimetable(institutionId,sectionId!,staffId);
-
   revalidatePath("/institution/timetable");
   revalidatePath("/institution/timetable/overview");
   return { success: true };

@@ -1,3 +1,5 @@
+import { effectiveTeachingStaffId } from '@/lib/timetable-coverage';
+import { pakistanDateKey } from '@/lib/parent-period';
 import { Card, CardContent } from "@/components/ui/card";
 import { CheckSquare, ChevronRight, FileEdit, Zap } from "lucide-react";
 import Link from "next/link";
@@ -34,7 +36,7 @@ export default async function StaffDashboard() {
   const staffId = session.userId;
   if (!session.institutionId) redirect("/login");
   const institutionId = session.institutionId;
-  const currentDay = new Date().getDay();
+  const currentDay = new Date(pakistanDateKey()+'T12:00:00Z').getUTCDay();
 
   const [payload, recentAnnouncements] = await Promise.all([
     getCachedOrFetch(`cache:staff:dashboard:web:${institutionId}:${staffId}:${currentDay}`, 45, async () => {
@@ -59,7 +61,7 @@ export default async function StaffDashboard() {
           .innerJoin(classes, eq(sections.classId, classes.id))
           .where(
             and(
-              eq(staffAssignments.staffId, staffId),
+              eq(effectiveTeachingStaffId(pakistanDateKey()), staffId),
               eq(staffAssignments.institutionId, institutionId),
               eq(staffAssignments.dayOfWeek, currentDay)
             )

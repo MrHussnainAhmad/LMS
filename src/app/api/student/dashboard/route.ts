@@ -1,3 +1,5 @@
+import { effectiveTeachingStaffId } from '@/lib/timetable-coverage';
+import { pakistanDateKey } from '@/lib/parent-period';
 import type { JWTPayload } from '@/lib/auth-types';
 import { NextRequest } from "next/server";
 import { db } from "@/db";
@@ -64,7 +66,7 @@ async function fetchDashboardPayload(session: JWTPayload): Promise<DashboardPayl
   }
 
   const sectionId = student.sectionId;
-  const todayDayOfWeek = new Date().getDay();
+  const todayDayOfWeek = new Date(pakistanDateKey()+'T12:00:00Z').getUTCDay();
   const timetableCacheKey = `cache:timetable:${tenantId}:${sectionId}:${todayDayOfWeek}`;
 
   const [timetableRows, visibleAnnouncements] = await Promise.all([
@@ -78,7 +80,7 @@ async function fetchDashboardPayload(session: JWTPayload): Promise<DashboardPayl
       })
         .from(staffAssignments)
         .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-        .leftJoin(staff, eq(staffAssignments.staffId, staff.id))
+        .leftJoin(staff, eq(effectiveTeachingStaffId(pakistanDateKey()), staff.id))
         .where(and(
           eq(staffAssignments.sectionId, sectionId),
           eq(staffAssignments.institutionId, tenantId),

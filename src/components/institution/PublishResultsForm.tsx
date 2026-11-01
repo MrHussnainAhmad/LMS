@@ -1,357 +1,143 @@
 "use client";
 
-import { showError } from "@/lib/show-error";
+import { useState } from 'react';
+import Papa from 'papaparse';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import Papa from "papaparse";
-import { UploadCloud, CheckCircle2, AlertTriangle, AlertCircle, Download } from "lucide-react";
+type Subject = { id: number; name: string; code: string | null };
+type Policy = { subjectId: number; maxMarks: number; policy: { passingPercentage?: number; components?: Array<{name: string; maxMarks: number}> } };
+type Batch = { id: number; title: string; classId: number; officialPublishedAt: string | null };
+const input = 'w-full rounded-md border border-border bg-white px-3 py-2 text-sm';
 
-type ClassType = { id: number; name: string; level: number };
-type SectionType = { id: number; classId: number; name: string };
-type SubjectType = { id: number; name: string; code: string | null };
-
-export function PublishResultsForm({
-  classes,
-  sections,
-  subjects
-}: {
-  classes: ClassType[];
-  sections: SectionType[];
-  subjects: SubjectType[];
+export function PublishResultsForm({ classes, sections, subjects, batches = [], onCreated }: {
+  classes: Array<{id: number; name: string; level: number}>;
+  sections: Array<{id: number; classId: number; name: string}>;
+  subjects: Subject[]; batches?: Batch[]; onCreated?: (id: number) => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [type, setType] = useState("FINAL");
-  const [classId, setClassId] = useState("");
-  const [sectionId, setSectionId] = useState("");
-  const [maxMarks, setMaxMarks] = useState("100");
+  const [title, setTitle] = useState(''), [type, setType] = useState('FINAL');
+  const [classId, setClassId] = useState(''), [sectionId, setSectionId] = useState('');
+  const [selected, setSelected] = useState<Policy[]>([]);
+  const [reviewHours, setReviewHours] = useState(24), [requireSubjectPass, setRequireSubjectPass] = useState(true);
+  const [periodStart, setPeriodStart] = useState(''), [periodEnd, setPeriodEnd] = useState('');
+  const [supplementaryOf, setSupplementaryOf] = useState('');
+  const [weights, setWeights] = useState<Record<number, string>>({});
   const [file, setFile] = useState<File | null>(null);
-
-  const [parsedData, setParsedData] = useState<any[]>([]);
-  const [detectedSubjects, setDetectedSubjects] = useState<{name: string, subjectId: number}[]>([]);
-  
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
-
-  const availableSections = classId ? sections.filter(s => s.classId === Number(classId)) : [];
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
-      setError("");
-      setParsedData([]);
-      setDetectedSubjects([]);
-    }
-  };
-
-  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const earlier = batches.filter(batch => batch.classId === Number(classId) && batch.officialPublishedAt);
+  const selectedSubjects = selected.map(policy => ({ ...subjects.find(subject => subject.id === policy.subjectId)!, ...policy }));
 
   const downloadTemplate = async () => {
-    if (!classId) return;
-    setIsDownloadingTemplate(true);
+    setError('');
     try {
-      let url = `/api/institution/batch-exams/template?classId=${classId}`;
-      if (sectionId) url += `&sectionId=${sectionId}`;
-      const res = await fetch(url);
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error || "Failed to fetch template");
-      
-      const studentList = resData.students;
-      const templateSubjects = resData.subjects;
-
-      const csvData = studentList.map((s: any) => {
-        const row: any = {
-          "Student Name": s.name,
-          "Roll Number": s.rollNumber,
-        };
-        templateSubjects.forEach((sub: string) => {
-          row[sub] = "";
-        });
-        return row;
-      });
-
-      if (csvData.length === 0) {
-        const row: any = {
-          "Student Name": "",
-          "Roll Number": "",
-        };
-        templateSubjects.forEach((sub: string) => {
-          row[sub] = "";
-        });
-        csvData.push(row);
-      }
-
-      const csv = Papa.unparse(csvData, { escapeFormulae: /^[\s\u0000-\u001f]*[=+@-]/ });
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      const className = classes.find(c => c.id === Number(classId))?.name || "Class";
-      link.setAttribute("download", `${className}_Result_Template.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err: any) {
-      showError(err.message);
-    } finally {
-      setIsDownloadingTemplate(false);
-    }
+      const response = await fetch(`/api/institution/batch-exams/template?classId=${classId}&sectionId=${sectionId}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      const rows = data.students.map((student: {name: string; loginId: string}) => Object.fromEntries([
+        ['Student ID', student.loginId], ['Student Name', student.name],
+        ...selectedSubjects.flatMap(subject => [[subject.name, ''], ...(subject.policy.components ?? []).map(component => [`${subject.name}::${component.name}`, ''])]),
+      ]));
+      const url = URL.createObjectURL(new Blob([Papa.unparse(rows, { escapeFormulae: true })], { type: 'text/csv' }));
+      const link = document.createElement('a'); link.href = url; link.download = 'exam-marks.csv'; link.click(); URL.revokeObjectURL(url);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not download the template.'); }
   };
 
-  const processCSV = () => {
-    if (!file) return;
-    
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        const data = results.data as any[];
-        if (data.length === 0) {
-          setError("CSV is empty.");
-          return;
-        }
-
-        // Detect columns. Assume 'Roll Number' exists.
-        const keys = Object.keys(data[0]);
-        const rollCol = keys.find(k => k.toLowerCase().includes("roll") || k.toLowerCase() === "rollnumber");
-        
-        if (!rollCol) {
-          setError("Could not find a column containing 'Roll' or 'Roll Number'. Please check your CSV format.");
-          return;
-        }
-
-        // Map remaining columns to subjects
-        const subjectCols = keys.filter(k => k !== rollCol);
-        const matchedSubjects: {name: string, subjectId: number}[] = [];
-        const unmatchedCols: string[] = [];
-
-        subjectCols.forEach(col => {
-          const matched = subjects.find(s => s.name.toLowerCase() === col.toLowerCase() || s.code?.toLowerCase() === col.toLowerCase());
-          if (matched) {
-            matchedSubjects.push({ name: col, subjectId: matched.id });
-          } else {
-            unmatchedCols.push(col);
+  const create = async () => {
+    setBusy(true); setError('');
+    try {
+      let studentMarks: Array<{rollNumber: string; marks: Record<number, unknown>}> = [];
+      if (file) {
+        const parsed = Papa.parse<Record<string, string>>(await file.text(), { header: true, skipEmptyLines: 'greedy', transformHeader: header => header.trim() });
+        if (parsed.errors.length) throw new Error('The CSV has invalid or duplicate columns. Download a fresh template.');
+        const headers = parsed.meta.fields ?? [];
+        const idColumn = headers.find(header => /^(student id|login id|roll number|rollnumber)$/i.test(header));
+        if (!idColumn) throw new Error('CSV needs a Student ID or Roll Number column.');
+        const matched = selectedSubjects.map(subject => ({ ...subject, column: headers.find(header => [subject.name.toLowerCase(), subject.code?.toLowerCase()].includes(header.toLowerCase())) }));
+        if (matched.some(subject => !subject.column)) throw new Error('CSV must include every selected subject. Leave missing marks blank.');
+        const recognized = new Set([idColumn, 'Student Name', ...matched.flatMap(subject => [subject.column!, ...(subject.policy.components ?? []).map(component => `${subject.column}::${component.name}`)])]);
+        if (headers.some(header => !recognized.has(header))) throw new Error('CSV contains unknown columns. Use the downloaded template.');
+        studentMarks = parsed.data.map((row, index) => {
+          const identifier = row[idColumn]?.trim();
+          if (!identifier) throw new Error(`Row ${index + 2}: student ID is missing.`);
+          const marks: Record<number, unknown> = {};
+          for (const subject of matched) {
+            const raw = row[subject.column!]?.trim() ?? '';
+            const aliases: Record<string, string> = { AB: 'ABSENT', EX: 'EXEMPT', WH: 'WITHHELD' };
+            const status = aliases[raw.toUpperCase()] ?? raw.toUpperCase();
+            if (!raw || ['ABSENT','EXEMPT','WITHHELD','NOT_ENTERED'].includes(status)) {
+              marks[subject.id] = { status: status || 'NOT_ENTERED' }; continue;
+            }
+            if (!/^\d+(\.\d{1,2})?$/.test(raw) || Number(raw) > subject.maxMarks) throw new Error(`Row ${index + 2}: invalid ${subject.name} marks.`);
+            const components = Object.fromEntries((subject.policy.components ?? []).map(component => [component.name, row[`${subject.column}::${component.name}`]]));
+            marks[subject.id] = { status: 'MARKED', marks: raw, components };
           }
+          return { rollNumber: identifier, marks };
         });
-
-        if (matchedSubjects.length === 0) {
-          setError(`No valid subjects found. Unmatched columns: ${unmatchedCols.join(", ")}`);
-          return;
-        }
-
-        // Clean data mapping
-        const cleanData = data.map(row => {
-          const marks: Record<number, number> = {};
-          matchedSubjects.forEach(sub => {
-            const val = parseFloat(row[sub.name]);
-            if (!isNaN(val)) marks[sub.subjectId] = val;
-          });
-          return {
-            rollNumber: row[rollCol],
-            marks
-          };
-        }).filter(r => r.rollNumber && Object.keys(r.marks).length > 0);
-
-        setParsedData(cleanData);
-        setDetectedSubjects(matchedSubjects);
-        if (unmatchedCols.length > 0) {
-          setError(`Warning: some columns were ignored: ${unmatchedCols.join(", ")}`);
-        } else {
-          setError("");
-        }
-      },
-      error: (err) => {
-        setError(`Failed to parse CSV: ${err.message}`);
       }
-    });
-  };
-
-  const submitResults = async () => {
-    if (!title || !classId || parsedData.length === 0) {
-      setError("Please fill all required fields and process the CSV.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError("");
-
-    try {
-      const payload = {
-        title,
-        type,
-        classId: Number(classId),
-        sectionId: sectionId ? Number(sectionId) : undefined,
-        subjects: detectedSubjects.map(s => ({
-          subjectId: s.subjectId,
-          name: s.name,
-          maxMarks: Number(maxMarks)
-        })),
-        studentMarks: parsedData
-      };
-
-      const res = await fetch("/api/institution/batch-exams", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+      const termWeights = Object.entries(weights).filter(([,value]) => Number(value) > 0).map(([examId, weight]) => ({ examId: Number(examId), weight: Number(weight) }));
+      const response = await fetch('/api/institution/batch-exams', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, type, classId: Number(classId), sectionId: sectionId ? Number(sectionId) : undefined,
+          subjects: selected, studentMarks, reviewHours, requireSubjectPass,
+          periodStart: periodStart || undefined, periodEnd: periodEnd || undefined,
+          supplementaryOf: supplementaryOf ? Number(supplementaryOf) : undefined,
+          termWeights, ownWeight: 100 - termWeights.reduce((sum, source) => sum + source.weight, 0) }),
       });
-
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error || "Failed to publish");
-
-      setSuccess(true);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Could not create exam.');
+      onCreated?.(body.id);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not create exam.'); }
+    finally { setBusy(false); }
   };
 
-  if (success) {
-    return (
-      <Card className="border-green-200 bg-green-50/50">
-        <CardContent className="pt-6 flex flex-col items-center justify-center text-center space-y-3">
-          <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
-            <CheckCircle2 className="h-6 w-6 text-green-600" />
-          </div>
-          <h2 className="text-xl font-bold text-green-900">Results Uploaded Successfully</h2>
-          <p className="text-green-700 max-w-md">
-            The batch results have been created. Subject teachers now have 6 hours to review, edit, and publish their subject marks.
-          </p>
-          <Button onClick={() => window.location.reload()} variant="outline" className="mt-4">Upload Another</Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Exam Details</CardTitle>
-        <CardDescription>Enter exam details and upload the CSV sheet containing the marks.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-stone-700">Exam Title *</label>
-            <input 
-              type="text" 
-              className="w-full rounded-md border border-border px-3 py-2 text-sm bg-transparent" 
-              placeholder="e.g. Mid Term Exam 2026" 
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-stone-700">Max Marks (Per Subject) *</label>
-            <input 
-              type="number" 
-              className="w-full rounded-md border border-border px-3 py-2 text-sm bg-transparent" 
-              value={maxMarks}
-              onChange={e => setMaxMarks(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-stone-700">Result Type *</label>
-            <select className="w-full rounded-md border border-border px-3 py-2 text-sm bg-transparent" value={type} onChange={e => setType(e.target.value)}>
-              <option value="MONTHLY">Monthly</option><option value="MID">Mid Term</option><option value="FINAL">Final Term</option><option value="PROMOTION">Promotion</option>
-            </select>
-            {type === "PROMOTION" && <p className="text-xs text-brand-700">Students will be auto-promoted after every subject teacher publishes their results.</p>}
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-stone-700">Class *</label>
-            <select 
-              className="w-full rounded-md border border-border px-3 py-2 text-sm bg-transparent"
-              value={classId}
-              onChange={e => { setClassId(e.target.value); setSectionId(""); }}
-            >
-              <option value="">Select a class...</option>
-              {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-stone-700">Section</label>
-            <select 
-              className="w-full rounded-md border border-border px-3 py-2 text-sm bg-transparent"
-              value={sectionId}
-              onChange={e => setSectionId(e.target.value)}
-              disabled={!classId || availableSections.length === 0}
-            >
-              <option value="">{availableSections.length > 0 ? "Select a section..." : "No sections available"}</option>
-              {availableSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
+  return <Card>
+    <CardHeader><CardTitle>Create exam draft</CardTitle><CardDescription>Start with an empty marks sheet or import a CSV. You approve publication after subject reviews.</CardDescription></CardHeader>
+    <CardContent className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="space-y-1 text-sm">Exam title<input className={input} maxLength={255} value={title} onChange={event => setTitle(event.target.value)} /></label>
+        <label className="space-y-1 text-sm">Exam type<select className={input} value={type} onChange={event => setType(event.target.value)}>
+          <option value="MONTHLY">Monthly</option><option value="MID">Mid term</option><option value="FINAL">Final term</option><option value="PROMOTION">Promotion</option>
+        </select></label>
+        <label className="space-y-1 text-sm">Class<select className={input} value={classId} onChange={event => { setClassId(event.target.value); setSectionId(''); setWeights({}); setSupplementaryOf(''); setFile(null); }}>
+          <option value="">Select class</option>{classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select></label>
+        <label className="space-y-1 text-sm">Section<select className={input} value={sectionId} onChange={event => { setSectionId(event.target.value); setFile(null); }}>
+          <option value="">All sections (institution review)</option>{sections.filter(item => item.classId === Number(classId)).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select></label>
+        <label className="space-y-1 text-sm">Teacher review hours<input type="number" min={1} max={168} className={input} value={reviewHours} onChange={event => setReviewHours(Number(event.target.value))} /></label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={requireSubjectPass} onChange={event => setRequireSubjectPass(event.target.checked)} />Require a pass in each subject</label>
+      </div>
+      <fieldset className="space-y-3"><legend className="mb-2 font-medium">Subjects and passing rules</legend>
+        {subjects.map(subject => {
+          const value = selected.find(item => item.subjectId === subject.id);
+          return <div key={subject.id} className="rounded-md border border-border p-3">
+            <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={Boolean(value)} onChange={event => setSelected(previous => event.target.checked ? [...previous, { subjectId: subject.id, maxMarks: 100, policy: {} }] : previous.filter(item => item.subjectId !== subject.id))} />{subject.name}</label>
+            {value && <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <label className="text-xs">Maximum marks<input aria-label={`${subject.name} maximum marks`} type="number" min={1} className={input} value={value.maxMarks} onChange={event => setSelected(previous => previous.map(item => item.subjectId === subject.id ? { ...item, maxMarks: Number(event.target.value) } : item))} /></label>
+              <label className="text-xs">Pass % (blank: school setting)<input aria-label={`${subject.name} pass percentage`} type="number" min={0} max={100} className={input} value={value.policy.passingPercentage ?? ''} onChange={event => setSelected(previous => previous.map(item => item.subjectId === subject.id ? { ...item, policy: { ...item.policy, passingPercentage: event.target.value === '' ? undefined : Number(event.target.value) } } : item))} /></label>
+              <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={Boolean(value.policy.components)} onChange={event => setSelected(previous => previous.map(item => item.subjectId === subject.id ? { ...item, policy: { ...item.policy, components: event.target.checked ? [{ name: 'Theory', maxMarks: Math.round(item.maxMarks * 0.8) }, { name: 'Practical', maxMarks: item.maxMarks - Math.round(item.maxMarks * 0.8) }] : undefined } } : item))} />Theory / practical</label>
+              {value.policy.components?.map((component, index) => <label key={component.name} className="text-xs">{component.name} maximum<input type="number" min={1} className={input} value={component.maxMarks} onChange={event => setSelected(previous => previous.map(item => item.subjectId === subject.id ? { ...item, policy: { ...item.policy, components: item.policy.components?.map((part, position) => position === index ? { ...part, maxMarks: Number(event.target.value) } : part) } } : item))} /></label>)}
+            </div>}
+          </div>;
+        })}
+      </fieldset>
+      <details className="rounded-md border border-border p-3"><summary className="cursor-pointer text-sm font-medium">Attendance, earlier term weights and supplementary exam</summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="text-sm">Attendance from<input type="date" className={input} value={periodStart} onChange={event => setPeriodStart(event.target.value)} /></label>
+          <label className="text-sm">Attendance through<input type="date" className={input} value={periodEnd} onChange={event => setPeriodEnd(event.target.value)} /></label>
+          <label className="text-sm">Supplementary for<select className={input} value={supplementaryOf} onChange={event => setSupplementaryOf(event.target.value)}><option value="">Regular exam</option>{earlier.map(batch => <option key={batch.id} value={batch.id}>{batch.title}</option>)}</select></label>
+          <p className="self-center text-xs text-stone-500">Supplementary drafts include failed students who are still in this class. Promotion remains a separate reviewed action.</p>
+          {earlier.map(batch => <label key={batch.id} className="text-sm">{batch.title} weight (%)<input type="number" min={0} max={100} className={input} value={weights[batch.id] ?? ''} onChange={event => setWeights(previous => ({ ...previous, [batch.id]: event.target.value }))} /></label>)}
+          <p className="text-sm">This exam: {100 - Object.values(weights).reduce((sum, value) => sum + Number(value), 0)}%</p>
         </div>
-
-        <div className="border-t border-border pt-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-stone-700">CSV Upload</h3>
-            {classId && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={downloadTemplate} 
-                disabled={isDownloadingTemplate}
-              >
-                <Download className="mr-2 h-4 w-4" /> 
-                {isDownloadingTemplate ? "Preparing..." : "Download CSV Template"}
-              </Button>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <input 
-              type="file" 
-              accept=".csv"
-              onChange={handleFileChange}
-              className="block w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
-            />
-            <Button type="button" variant="outline" onClick={processCSV} disabled={!file}>
-              <UploadCloud className="mr-2 h-4 w-4" />
-              Process
-            </Button>
-          </div>
-          
-          <p className="text-xs text-stone-500 mt-2">
-	            CSV must contain a column named &quot;Roll Number&quot;. Other columns should exactly match subject names or codes.
-          </p>
-        </div>
-
-        {error && (
-          <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-900 border border-amber-200 flex items-start gap-2">
-            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
-            <span className="mt-0.5">{error}</span>
-          </div>
-        )}
-
-        {parsedData.length > 0 && (
-          <div className="space-y-3 border border-border rounded-md p-4 bg-stone-50">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-semibold text-stone-800">CSV Processed Successfully</h4>
-                <p className="text-sm text-stone-600">
-                  Found {parsedData.length} students across {detectedSubjects.length} subjects.
-                </p>
-              </div>
-              <Button type="button" onClick={submitResults} disabled={isSubmitting}>
-                {isSubmitting ? "Uploading..." : "Publish to Teachers"}
-              </Button>
-            </div>
-            
-            <div className="flex flex-wrap gap-2 mt-2">
-              {detectedSubjects.map((s, i) => (
-                <span key={i} className="inline-flex items-center rounded-md bg-brand-100 px-2 py-1 text-xs font-medium text-brand-700">
-                  {s.name}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-      </CardContent>
-    </Card>
-  );
+      </details>
+      <div className="space-y-3 border-t border-border pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-3"><label className="text-sm font-medium" htmlFor="exam-csv">Optional marks CSV</label><Button variant="outline" size="sm" disabled={!classId || !selected.length || busy} onClick={downloadTemplate}>Download template</Button></div>
+        <input id="exam-csv" type="file" accept=".csv" onChange={event => setFile(event.target.files?.[0] ?? null)} className="block w-full text-sm" />
+        <p className="text-xs text-stone-500">Use Student ID to avoid duplicate class rolls. Blank = not entered; AB = absent; EX = exempt; WH = withheld. Zero is a valid mark. For components, complete the extra template columns.</p>
+      </div>
+      {error && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      <Button onClick={create} disabled={busy || !title.trim() || !classId || !selected.length}>{busy ? 'Creating...' : 'Create draft'}</Button>
+    </CardContent>
+  </Card>;
 }

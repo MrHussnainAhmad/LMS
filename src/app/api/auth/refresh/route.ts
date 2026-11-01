@@ -1,4 +1,5 @@
 import { unsafeOrigin } from '@/lib/request-security';
+import { withApiPolicy } from '@/lib/api-policy';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { employees, institutionAdmins, institutions, parentAccounts, staff, students, superAdmins } from '@/db/schema';
@@ -130,19 +131,19 @@ async function getCurrentPayload(role: UserRole, userId: number): Promise<JWTPay
   }
 }
 
-export async function POST(req: NextRequest) {
+export const POST = withApiPolicy(async (req: NextRequest) => {
   // This handler can use ambient refresh cookies even when Authorization is set.
   if (unsafeOrigin(req, { allowBearer: false })) return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
   const rateLimit = await withRateLimit(req, 'refresh');
   if (!rateLimit.success) {
-    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    return NextResponse.json({ error: 'Too many requests', code: 'RATE_LIMITED' }, { status: 429, headers: { 'Retry-After': '60' } });
   }
 
   const cookieStore = await cookies();
   // Web clients send no body and read the token from the cookie; native clients
   // post `{ refreshToken }`. Either way nothing legitimate is large, and this is
   // an unauthenticated endpoint, so the body is capped rather than buffered whole.
-  const parsedBody = await readJsonBody<{ refreshToken?: unknown }>(req, AUTH_MAX_BODY_BYTES);
+  const parsedBody = await readJsonBody<{ refreshToken?: unknown; accessToken?: unknown }>(req, AUTH_MAX_BODY_BYTES);
   if (!parsedBody.ok && parsedBody.status === 413) return bodyTooLargeResponse();
   const bodyRefreshToken = parsedBody.ok && typeof parsedBody.data?.refreshToken === 'string'
     ? parsedBody.data.refreshToken
@@ -150,13 +151,14 @@ export async function POST(req: NextRequest) {
   const refreshToken = bodyRefreshToken ?? cookieStore.get('refresh_token')?.value;
 
   if (!refreshToken) {
-    return NextResponse.json({ error: 'No refresh token' }, { status: 401 });
+    return NextResponse.json({ error: 'No refresh token', code: 'SESSION_EXPIRED' }, { status: 401 });
   }
 
-  const rotation = await rotateRefreshToken(refreshToken, Boolean(bodyRefreshToken));
+  const accessProof = parsedBody.ok && typeof parsedBody.data?.accessToken === 'string' ? parsedBody.data.accessToken : undefined;
+  const rotation = await rotateRefreshToken(refreshToken, Boolean(bodyRefreshToken), accessProof);
   if (rotation.status !== 'ROTATED') {
     await clearAuthCookies();
-    return NextResponse.json({ error: 'Invalid or expired refresh token' }, { status: 401 });
+    return NextResponse.json({ error: 'Invalid or expired refresh token', code: 'SESSION_EXPIRED' }, { status: 401 });
   }
 
   const current = await getCurrentPayload(rotation.userRole, rotation.userId);
@@ -165,7 +167,7 @@ export async function POST(req: NextRequest) {
     await revokeRefreshToken(rotation.refreshToken);
     await revokeAllSessions(rotation.userRole, rotation.userId);
     await clearAuthCookies();
-    return NextResponse.json({ error: 'Account is unavailable' }, { status: 401 });
+    return NextResponse.json({ error: 'Account is unavailable', code: 'ACCOUNT_UNAVAILABLE' }, { status: 401 });
   }
 
   payload.clientType = rotation.clientType;
@@ -195,4 +197,4 @@ export async function POST(req: NextRequest) {
     // This body can carry bearer tokens: never let an intermediary store it.
     { headers: { 'Cache-Control': 'no-store' } },
   );
-}
+});

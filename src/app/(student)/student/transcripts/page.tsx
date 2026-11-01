@@ -1,9 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { db } from "@/db";
-import { batchExamResults, batchExamSubjects, batchExams } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { eq } from "drizzle-orm";
+import { getStudentBatchReports } from '@/lib/batch-exams';
 import { FileText, ArrowRight } from "lucide-react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -12,50 +10,7 @@ export default async function TranscriptsPage() {
   const session = await getSession();
   if (!session || session.role !== "STUDENT" || !session.userId) redirect("/login");
 
-  // Fetch all batch exams the student has results for
-  const rawResults = await db.select({
-    examId: batchExams.id,
-    examTitle: batchExams.title,
-    examType: batchExams.type,
-    officialPublishedAt: batchExams.officialPublishedAt,
-    examCreatedAt: batchExams.createdAt,
-    subjectId: batchExamSubjects.id,
-    isPublished: batchExamSubjects.isPublished,
-    reviewDeadline: batchExamSubjects.reviewDeadline,
-  })
-  .from(batchExamResults)
-  .innerJoin(batchExamSubjects, eq(batchExamResults.batchExamSubjectId, batchExamSubjects.id))
-  .innerJoin(batchExams, eq(batchExamSubjects.batchExamId, batchExams.id))
-  .where(eq(batchExamResults.studentId, session.userId));
-
-  // Group by Exam
-  const examMap = new Map<number, { id: number, title: string, type: string, officialPublishedAt: Date | null, createdAt: Date, subjects: any[] }>();
-
-  const now = new Date();
-
-  for (const r of rawResults) {
-    if (!examMap.has(r.examId)) {
-      examMap.set(r.examId, {
-        id: r.examId,
-        title: r.examTitle,
-        type: r.examType,
-        officialPublishedAt: r.officialPublishedAt,
-        createdAt: r.examCreatedAt,
-        subjects: []
-      });
-    }
-
-    const isEffectivelyPublished = r.isPublished || now > r.reviewDeadline;
-    examMap.get(r.examId)?.subjects.push({
-      ...r,
-      isEffectivelyPublished
-    });
-  }
-
-  // A batch exam is published if ALL its subjects are effectively published
-  const publishedExams = Array.from(examMap.values()).filter(exam => 
-    exam.subjects.every(s => s.isEffectivelyPublished) && (exam.type !== "PROMOTION" || Boolean(exam.officialPublishedAt))
-  ).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const publishedExams = await getStudentBatchReports(session.institutionId!, session.userId);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -86,7 +41,7 @@ export default async function TranscriptsPage() {
             <CardContent className="flex flex-col items-center justify-center h-48 text-stone-500">
               <FileText className="h-10 w-10 mb-3 text-stone-400" />
               <p>No transcripts are available at this time.</p>
-              <p className="text-sm mt-1">Transcripts will appear here once all subject teachers have published their results.</p>
+              <p className="text-sm mt-1">Transcripts will appear here once your institution approves and publishes them.</p>
             </CardContent>
           </Card>
         )}

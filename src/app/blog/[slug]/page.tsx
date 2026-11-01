@@ -4,6 +4,7 @@ import { blogs } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import ReactMarkdown from "react-markdown";
 import { PublicPageHeader } from "@/components/layout/PublicPageHeader";
+import type { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -13,12 +14,12 @@ async function getBlog(slug: string) {
   return blog ?? null;
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const resolvedParams = await params;
   const blog = await getBlog(resolvedParams.slug);
   
   if (!blog) {
-    return { title: "Blog Not Found | Nisaab360" };
+    return { title: { absolute: 'Blog Not Found | Nisaab360' }, robots: { index: false, follow: false } };
   }
 
   // Use explicit meta tags, fallback to excerpt, fallback to content
@@ -26,7 +27,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const title = blog.metaTitle || blog.title;
 
   return {
-    title: `${title} | Nisaab360 Blog`,
+    title: { absolute: `${title} | Nisaab360 Blog` },
     description: desc,
     alternates: {
       canonical: `https://blog.nisaab360.app/${resolvedParams.slug}`,
@@ -37,7 +38,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       url: `https://blog.nisaab360.app/${resolvedParams.slug}`,
       type: "article",
       publishedTime: new Date(blog.publishedAt || blog.createdAt).toISOString(),
-    }
+      modifiedTime: blog.updatedAt.toISOString(),
+    },
+    twitter: { card: 'summary', title: `${title} | Nisaab360 Blog`, description: desc },
   };
 }
 
@@ -51,7 +54,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   return (
     <div className="public-document flex min-h-screen flex-col selection:bg-brand-300 selection:text-brand-950">
-      <PublicPageHeader backHref="/blog" backLabel="Back to blog" />
+      <PublicPageHeader backHref="https://blog.nisaab360.app/" backLabel="Back to blog" />
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-12 sm:px-6 md:py-20">
         <article className="prose prose-stone max-w-none md:prose-lg prose-headings:font-display prose-headings:font-semibold prose-a:text-brand-700 hover:prose-a:text-brand-900 prose-img:rounded-md">

@@ -12,6 +12,7 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { AddSectionForm } from "./AddSectionForm";
 import { displaySectionName } from "@/lib/class-section-label";
 import { DeleteAcademicButton } from "./DeleteAcademicButton";
+import { AcademicSessionPanel } from '@/components/institution/AcademicSessionPanel';
 
 export default async function InstitutionAcademicsPage() {
   const session = await getSession();
@@ -66,6 +67,7 @@ export default async function InstitutionAcademicsPage() {
 
   return (
     <div className="space-y-8 animate-fade-in">
+      {!session.campusReadOnly && <AcademicSessionPanel />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Subjects List */}

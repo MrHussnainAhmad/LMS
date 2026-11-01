@@ -1,3 +1,4 @@
+import { effectiveTeachingStaffId } from '@/lib/timetable-coverage';
 import { and, asc, eq, gte, lte, or, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { CalendarDays } from "lucide-react";
@@ -31,7 +32,7 @@ export default async function ParentTimetablePage({ searchParams }: { searchPara
       teacher: staff.name,
     }).from(staffAssignments)
       .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
-      .leftJoin(staff, eq(staffAssignments.staffId, staff.id))
+      .leftJoin(staff, eq(effectiveTeachingStaffId(range.anchor), staff.id))
       .where(and(eq(staffAssignments.institutionId, context.institutionId), eq(staffAssignments.sectionId, child.sectionId)))
       .orderBy(asc(staffAssignments.dayOfWeek), asc(staffAssignments.startTime)),
     db.select({ id: tests.id, title: tests.title, type: tests.type, date: tests.date, subject: subjects.name })

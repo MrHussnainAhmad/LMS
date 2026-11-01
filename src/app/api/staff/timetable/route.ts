@@ -1,3 +1,6 @@
+import { effectiveTeachingStaffId } from '@/lib/timetable-coverage';
+import { pakistanDateKey } from '@/lib/parent-period';
+import { z } from 'zod';
 import { NextRequest } from 'next/server';
 export { corsPreflight as OPTIONS } from '@/lib/cors';
 import { db } from '@/db';
@@ -9,9 +12,10 @@ import { decodeDashboardPayload, timetableResponse } from '@/lib/dashboard-respo
 
 export const GET = requireRole(['STAFF'], async (req: NextRequest, { session }) => {
   const tenantId = getTenantContext(session);
+  const date=z.string().date().parse(req.nextUrl.searchParams.get('date')??pakistanDateKey());
 
   const timetable = await getCachedOrFetch(
-    `cache:timetable:staff:v2:${tenantId}:${session.userId}`,
+    `cache:timetable:staff:v3:${tenantId}:${session.userId}:${date}`,
     600,
     () => db.select({
       dayOfWeek: staffAssignments.dayOfWeek,
@@ -25,7 +29,7 @@ export const GET = requireRole(['STAFF'], async (req: NextRequest, { session }) 
       .leftJoin(subjects, eq(staffAssignments.subjectId, subjects.id))
       .leftJoin(sections, eq(staffAssignments.sectionId, sections.id))
       .leftJoin(classes, eq(sections.classId, classes.id))
-      .where(and(eq(staffAssignments.staffId, session.userId), eq(staffAssignments.institutionId, tenantId))),
+      .where(and(eq(effectiveTeachingStaffId(date), session.userId), eq(staffAssignments.institutionId, tenantId))),
     decodeDashboardPayload,
   );
 
