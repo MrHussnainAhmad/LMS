@@ -208,7 +208,6 @@ export function ModelScene({ model, preset, label, eager = false, preloadNext }:
       if (!modelReady || gameActive() || drag || !event.isPrimary || event.button !== 0) return;
       drag = { id: event.pointerId, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, touch: event.pointerType === "touch", moving: false };
       canvas.setPointerCapture(event.pointerId);
-      if (event.pointerType !== "touch") canvas.focus({ preventScroll: true });
     };
     const onDragMove = (event: PointerEvent) => {
       if (!drag || drag.id !== event.pointerId || gameActive()) return;

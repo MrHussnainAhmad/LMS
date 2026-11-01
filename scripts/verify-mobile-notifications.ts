@@ -78,6 +78,14 @@ async function main(){
  assert.ok(sends.flat().every(message=>message.data.institutionId===1));assert.ok(sends.flat().some(message=>message.data.userRole==='PARENT'&&message.data.studentId===1));
  assert.equal((await delivery.createBulkNotifications([event])).length,0);await dispatch();assert.equal(sends.flat().length,3);
  pass('events immediately dispatch after commit to all devices and linked parents, isolate projects and deduplicate repeated events');
+ sends.length=0;
+ const feeIssued={...event,type:'FEE_VOUCHER' as const,title:'Fee voucher created',message:'A new fee voucher is available.',eventKey:'fee-voucher:fixture'};
+ await state.db.transaction(async tx=>{await delivery.createBulkNotifications([feeIssued],tx as unknown as Parameters<typeof delivery.createBulkNotifications>[1]);});
+ assert.equal(sends.length,0,'Fee creation sends only after the transaction commits');await dispatch();
+ assert.equal(sends.flat().length,3,'Both student phones and the linked parent receive the fee alert');
+ assert.ok(sends.flat().every(message=>message.data.screen==='fees'));
+ assert.equal((await delivery.createBulkNotifications([feeIssued])).length,0);await dispatch();assert.equal(sends.flat().length,3);
+ pass('New fee vouchers notify every connected student device and linked parent once, after commit, with fee navigation');
  state.session={role:'PARENT',userId:100,institutionId:1};let response=await inbox.GET(new NextRequest('http://localhost:3000/api/me/notifications'));let data=await response.json();assert.ok(data.notifications.every((row:{userRole?:string;studentId:number|null})=>row.studentId===null||row.studentId===1));
  await query('DELETE FROM parent_students WHERE parent_id=100 AND student_id=1');response=await inbox.GET(new NextRequest('http://localhost:3000/api/me/notifications'));data=await response.json();assert.ok(!data.notifications.some((row:{studentId:number})=>row.studentId===1));
  sends.length=0;await delivery.deliverNotificationIds(created.map(row=>row.id));assert.equal(sends.flat().filter(message=>message.data.userRole==='PARENT').length,0);
@@ -151,6 +159,29 @@ async function main(){
  await memory.exec("UPDATE fee_invoices SET paid_amount=50 WHERE id=90");
  assert.equal((await reminders.sendDueNotificationReminders()).events,0,'Settled first installment leaves only a future due date');
  pass('Installment reminders follow the earliest unpaid due date and suppress premature overdue messages');
+ await memory.exec(`INSERT INTO fee_invoices(id,institution_id,student_id,due_date,status,total_amount,paid_amount)
+ SELECT id,1,1,(clock_timestamp() AT TIME ZONE 'Asia/Karachi')::date+days,status,100,paid
+ FROM (VALUES (100,2,'DUE',0),(101,1,'PARTIAL',20),(102,0,'DUE',0),(103,0,'PAID',100),(104,0,'VOID',0),(105,0,'DUE',100),(106,3,'DUE',0)) AS cases(id,days,status,paid);
+ INSERT INTO fee_invoices(id,institution_id,student_id,due_date,status,total_amount,paid_amount,plan)
+ VALUES(110,1,1,current_date-20,'PARTIAL',100,20,jsonb_build_object('paidAtSetup',20,'installments',jsonb_build_array(
+ jsonb_build_object('dueDate',(clock_timestamp() AT TIME ZONE 'Asia/Karachi')::date+1,'amount',40),
+ jsonb_build_object('dueDate',(clock_timestamp() AT TIME ZONE 'Asia/Karachi')::date+9,'amount',40))));`);
+ state.session={role:'STUDENT',userId:1,institutionId:1};assert.equal((await registration.POST(request({token:'ExpoPushToken[student-one]',projectId:project,refreshToken:tokenA}))).status,200);
+ state.session={role:'PARENT',userId:100,institutionId:1};assert.equal((await registration.POST(request({token:'ExpoPushToken[parent]',projectId:parentProject,refreshToken:tokenP}))).status,200);
+ sends.length=0;assert.equal((await reminders.sendDueNotificationReminders()).events,4);
+ const dueAlerts=await query<{reference_id:number;title:string;user_role:string;event_key:string}>("SELECT reference_id,title,user_role,event_key FROM notifications WHERE event_key LIKE 'fee-due:%' ORDER BY reference_id,user_role");
+ assert.equal(dueAlerts.rows.length,8,'Four qualifying invoices produce student and linked-parent records');
+ for(const [id,title] of [[100,'Fee due in 2 days'],[101,'Fee due tomorrow'],[102,'Fee due today'],[110,'Fee due tomorrow']] as const){
+   const student=dueAlerts.rows.find(row=>row.reference_id===id&&row.user_role==='STUDENT');assert.equal(student?.title,title);
+   assert.ok(dueAlerts.rows.some(row=>row.reference_id===id&&row.user_role==='PARENT'));
+ }
+ assert.equal(sends.flat().length,8);assert.ok(sends.flat().every(message=>message.data.screen==='fees'&&message.data.userRole!=='STAFF'));
+ const sent=sends.flat().length;assert.equal((await reminders.sendDueNotificationReminders()).events,0);assert.equal(sends.flat().length,sent);
+ pass('Unpaid fees alert at two days, one day and due day using Pakistan dates; partial payments remain eligible, paid/void/future invoices are skipped and clock checks never duplicate alerts');
+ await query("UPDATE fee_invoices SET paid_amount=100,status='PAID',due_date=(clock_timestamp() AT TIME ZONE 'Asia/Karachi')::date WHERE id=100");
+ await query("UPDATE fee_invoices SET paid_amount=60 WHERE id=110");
+ assert.equal((await reminders.sendDueNotificationReminders()).events,0,'Full payment stops later stages; settling an installment advances to its future date');
+ pass('Payment before the next stage stops alerts and installment reminders follow the next unpaid date');
  pass('result reminder recovery requires institution publication, keeps overdue drafts and withheld children private, and sends only once');
  pass('deadline/overdue clock checks send directly once, exclude submitted work and paid invoices, and are repeatable');
  assert.ok(!readFileSync('src/lib/notifications.ts','utf8').includes('pendingPushJobs'));

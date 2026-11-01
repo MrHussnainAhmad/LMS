@@ -40,7 +40,7 @@ export function AppShell({
 
   return (
     <div className="app-shell flex min-h-dvh text-foreground">
-      <TermsUpdateNotice key={`${userRole}:${userId ?? ''}`} />
+      {['INSTITUTION', 'INSTITUTION_ADMIN', 'STAFF', 'STUDENT', 'PARENT'].includes(userRole) ? <TermsUpdateNotice key={`${userRole}:${userId ?? ''}`} /> : null}
       {['INSTITUTION','INSTITUTION_ADMIN'].includes(userRole) ? <PricingPlanUpdateNotice key={`pricing:${userRole}:${userId ?? ''}`} /> : null}
       {isSidebarOpen && (
         <div

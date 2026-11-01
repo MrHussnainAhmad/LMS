@@ -16,6 +16,24 @@ export async function sendDueNotificationReminders() {
  AND s.is_active AND s.deleted_at IS NULL AND i.status='APPROVED' AND i.deleted_at IS NULL
  AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.institution_id=f.institution_id AND n.user_role='STUDENT' AND n.user_id=f.student_id AND n.event_key='fee-overdue:'||f.id||':'||${effectiveFeeDueDate})
  ORDER BY f.due_date,f.id LIMIT 500`);
+ const dueFees=await db.execute(sql`
+ WITH pending AS (
+   SELECT f.institution_id,f.student_id,f.id,f.total_amount-f.paid_amount AS balance,
+     ${effectiveFeeDueDate} AS deadline,(clock_timestamp() AT TIME ZONE 'Asia/Karachi')::date AS today
+   FROM fee_invoices f JOIN students s ON s.id=f.student_id AND s.institution_id=f.institution_id
+   JOIN institutions i ON i.id=f.institution_id
+   WHERE f.status IN ('DUE','PARTIAL') AND f.total_amount>f.paid_amount
+   AND s.is_active AND s.deleted_at IS NULL AND i.status='APPROVED' AND i.deleted_at IS NULL
+ )
+ SELECT p.institution_id AS "institutionId",p.student_id AS "userId",p.id AS "referenceId",
+ 'FEE_VOUCHER' AS type,
+ CASE p.deadline-p.today WHEN 0 THEN 'Fee due today' WHEN 1 THEN 'Fee due tomorrow' ELSE 'Fee due in 2 days' END AS title,
+ 'Your fee voucher has an unpaid balance of PKR '||p.balance||'. Next due date: '||p.deadline||'. Please pay the amount due.' AS message,
+ 'fee-due:'||p.id||':'||p.deadline||':'||(p.deadline-p.today) AS "eventKey"
+ FROM pending p WHERE p.deadline BETWEEN p.today AND p.today+2
+ AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.institution_id=p.institution_id AND n.user_role='STUDENT'
+   AND n.user_id=p.student_id AND n.event_key='fee-due:'||p.id||':'||p.deadline||':'||(p.deadline-p.today))
+ ORDER BY p.deadline,p.id LIMIT 500`);
  const assignments=await db.execute(sql`
  SELECT a.institution_id AS "institutionId", s.id AS "userId", a.id AS "referenceId",
  'ASSIGNMENT_REMINDER' AS type, 'Assignment deadline approaching' AS title,
@@ -43,7 +61,7 @@ export async function sendDueNotificationReminders() {
  AND s.is_active AND s.deleted_at IS NULL AND i.status='APPROVED' AND i.deleted_at IS NULL
  AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.institution_id=e.institution_id AND n.user_role='STUDENT' AND n.user_id=r.student_id AND n.event_key='batch-result:'||e.id)
  ORDER BY "referenceId","userId" LIMIT 500`);
- const payloads=[...rows.rows,...assignments.rows,...batch.rows].map(row=>({...row,userRole:'STUDENT',...(row.type==='MARKS'?{data:{screen:'transcripts'}}:{})})) as NotificationPayload[];
+ const payloads=[...rows.rows,...dueFees.rows,...assignments.rows,...batch.rows].map(row=>({...row,userRole:'STUDENT',...(row.type==='MARKS'?{data:{screen:'transcripts'}}:{})})) as NotificationPayload[];
  const inserted=await createBulkNotificationsImmediately(payloads);
  return {events:payloads.length,notifications:inserted.length};
 }

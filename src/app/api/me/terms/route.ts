@@ -10,6 +10,9 @@ export const GET = withApiPolicy(async (req: NextRequest) => {
   const session = await getSessionFromRequest(req);
   const headers = { 'Cache-Control': 'private, no-store' };
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers });
+  if (!['INSTITUTION', 'INSTITUTION_ADMIN', 'STAFF', 'STUDENT', 'PARENT'].includes(session.role)) {
+    return NextResponse.json({ terms: null, account: `${session.role}:${session.userId}` }, { headers });
+  }
 
   const terms = await getCachedOrFetch('cache:platform:terms-notice', 30, async () => {
     const [page] = await db.select({ id: platformPages.id, updatedAt: platformPages.updatedAt })
