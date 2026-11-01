@@ -525,8 +525,8 @@ async function main() {
     const disabledOwner = await owner();
     const disabledChallenge = await service.createQrLogin(disabledOwner.owner);
     await memory.query('UPDATE institutions SET apps_enabled=false WHERE id=1');
-    await assert.rejects(service.createQrLogin(disabledOwner.owner), /Mobile apps are not enabled/);
-    await assert.rejects(service.redeemQrLogin(disabledChallenge.qr), /Mobile apps are not enabled/);
+    await assert.rejects(service.createQrLogin(disabledOwner.owner), { message: 'Mobile app access is disabled for your institution. You can still use the website.', status: 403 });
+    await assert.rejects(service.redeemQrLogin(disabledChallenge.qr), { message: 'Mobile app access is disabled for your institution. You can still use the website.', status: 403 });
     assert.equal((await service.inspectQrLogin(disabledOwner.owner, disabledChallenge.challengeId)).status, 'PENDING');
     await memory.query('UPDATE institutions SET apps_enabled=true WHERE id=1');
     const enabledAgain = await service.redeemQrLogin(disabledChallenge.qr);

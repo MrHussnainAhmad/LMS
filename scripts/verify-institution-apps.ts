@@ -155,15 +155,22 @@ async function main() {
       VALUES(1,'fixture','Owner','school@example.test',$1::jsonb)`, [JSON.stringify({ plan: { definition: { platforms: ['Student App'] } } })]);
     for (const [index, [role, , identifier]] of cases.entries()) {
       const body = { emailOrUsername: identifier, password, roleHint: role, ...(role === 'PARENT' ? { institutionUsername: 'ncs' } : {}) };
-      const webDenied = await login.POST(req('/api/auth/login', body));
-      assert.equal(webDenied.status, 403, `${role} app-only plan does not grant website access`);
-      assert.equal((await webDenied.json()).code, 'WEB_ACCESS_DISABLED', 'Browser denial must never claim mobile access was revoked');
+      const browser = await login.POST(req('/api/auth/login', body));
+      assert.equal(browser.status, 200, `${role} website access is free even when plan labels mention only an app`);
+      assert.equal((await auth.verifyAccessToken(state.cookies.get('access_token')!))?.clientType, 'WEB');
       state.cookies.set('refresh_token', webSessions[index].refreshToken);
-      const webRefreshDenied = await refresh.POST(req('/api/auth/refresh', {}));
-      assert.equal(webRefreshDenied.status, 403);
-      assert.equal((await webRefreshDenied.json()).code, 'WEB_ACCESS_DISABLED');
+      assert.equal((await refresh.POST(req('/api/auth/refresh', {}))).status, 200, 'Existing website sessions survive plan platform labels');
       const native = await login.POST(req('/api/auth/login', { ...body, returnTokens: true }));
-      assert.equal(native.status, role === 'STUDENT' ? 200 : 403, 'Only the app included in the plan is enabled');
+      assert.equal(native.status, 200, `${role} mobile toggle enables every app, regardless of plan labels`);
+    }
+    for (const platforms of [[], ['Unknown platform']]) {
+      await memory.query('UPDATE institution_agreement_acceptances SET snapshot=$1::jsonb WHERE institution_id=1', [JSON.stringify({ plan: { definition: { platforms } } })]);
+      for (const [role, , identifier] of cases) {
+        const body = { emailOrUsername: identifier, password, roleHint: role, ...(role === 'PARENT' ? { institutionUsername: 'ncs' } : {}) };
+        assert.equal((await login.POST(req('/api/auth/login', body))).status, 200, `${role} browser access ignores empty/unrecognized plan labels`);
+        assert.equal((await login.POST(req('/api/auth/login', { ...body, returnTokens: true }))).status, 200, `${role} enabled app access ignores plan labels`);
+        assert.equal(await gate.mobileAppAccessAllowed({ role, institutionId: 1, clientType: 'WEB' }, false, { execute: () => { throw Error('Website mobile gate must not query the database'); } }), true);
+      }
     }
     await memory.query('UPDATE institution_agreement_acceptances SET snapshot=$1::jsonb WHERE institution_id=1', [JSON.stringify({ plan: { definition: { platforms: ['Nisaab360 Web'] } } })]);
     await memory.exec('UPDATE institutions SET apps_enabled=false WHERE id=1');
@@ -181,7 +188,7 @@ async function main() {
     const owner = await login.POST(req('/api/auth/login', { emailOrUsername: 'school@example.test', password, roleHint: 'INSTITUTION' }));
     assert.equal(owner.status, 200, 'Institution-owner website access is not controlled by student/staff/parent mobile access');
     assert.equal((await owner.json()).role, 'INSTITUTION');
-    pass('actual website login and refresh use WEB sessions, distinguish plan denial from mobile revocation, survive a disabled app toggle, and preserve institution-owner access');
+    pass('website login, cookies and refresh are free on every plan; mobile access depends only on the institution toggle, with existing-session and campus revocation preserved');
     for (const file of ['src/app/(superadmin)/sa/institutions/[id]/page.tsx','src/app/(employee)/employee/institutions/[id]/page.tsx']) assert.match(readFileSync(file, 'utf8'), /<InstitutionAppsControl/);
     console.log(`Institution Apps: ${groups} SQL/HTTP regression groups passed. No mobile projects changed.`);
   } finally { await memory.close(); delete (globalThis as typeof globalThis & { __apps?: unknown }).__apps; }
