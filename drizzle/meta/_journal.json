@@ -36,6 +36,13 @@
       "when": 1793536612303,
       "tag": "0004_blog_views",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793537827444,
+      "tag": "0005_unique_blog_visitors",
+      "breakpoints": true
     }
   ]
 }

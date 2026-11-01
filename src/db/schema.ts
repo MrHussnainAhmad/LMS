@@ -2701,6 +2701,12 @@ export const blogs = pgTable("blogs", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Anonymous browser identifiers make repeat article visits idempotent.
+export const blogVisits = pgTable('blog_visits', {
+  blogId: integer('blog_id').notNull().references(() => blogs.id, { onDelete: 'cascade' }),
+  visitorId: varchar('visitor_id', { length: 36 }).notNull(),
+}, (table) => [primaryKey({ columns: [table.blogId, table.visitorId] })]);
+
 // --- DIARIES ---
 export const diaries = pgTable(
   "diaries",

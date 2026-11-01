@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "@/db";
-import { blogs } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { blogs, blogVisits } from "@/db/schema";
+import { eq, and, getTableColumns, sql } from "drizzle-orm";
 import ReactMarkdown from "react-markdown";
 import { PublicPageHeader } from "@/components/layout/PublicPageHeader";
 import type { Metadata } from 'next';
@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 async function getBlog(slug: string) {
-  const [blog] = await db.select().from(blogs).where(and(eq(blogs.slug, slug), eq(blogs.status, 'PUBLISHED'))).limit(1);
+  const [blog] = await db.select({ ...getTableColumns(blogs), viewCount: sql<number>`(SELECT count(*)::int FROM ${blogVisits} WHERE ${blogVisits.blogId} = ${blogs.id})` })
+    .from(blogs).where(and(eq(blogs.slug, slug), eq(blogs.status, 'PUBLISHED'))).limit(1);
   return blog ?? null;
 }
 
