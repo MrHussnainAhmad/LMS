@@ -2692,6 +2692,7 @@ export const blogs = pgTable("blogs", {
   metaDescription: text("meta_description"),
   excerpt: text("excerpt"),
   tags: jsonb('tags').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+  viewCount: integer('view_count').default(0).notNull(),
   status: blogStatusEnum("status").default("DRAFT").notNull(),
   publishedAt: timestamp("published_at"),
   authorRole: roleEnum("author_role").notNull(),

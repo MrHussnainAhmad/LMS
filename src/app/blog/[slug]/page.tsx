@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import ReactMarkdown from "react-markdown";
 import { PublicPageHeader } from "@/components/layout/PublicPageHeader";
 import type { Metadata } from 'next';
+import BlogViews from '@/app/components/blogs/BlogViews';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -63,9 +64,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-12 sm:px-6 md:py-20">
         <article className="prose prose-stone max-w-none md:prose-lg prose-headings:font-display prose-headings:font-semibold prose-a:text-brand-700 hover:prose-a:text-brand-900 prose-img:rounded-md">
           <h1 className="mb-6">{blog.title}</h1>
-          <div className="flex items-center gap-4 text-sm text-stone-500 mb-12 font-medium border-b border-stone-200 pb-8">
+          <div className="not-prose flex flex-wrap items-center gap-4 text-sm text-stone-500 mb-12 font-medium border-b border-stone-200 pb-8">
             <span className="px-3 py-1 bg-stone-100 rounded-full">Nisaab360</span>
             <time>Published on {new Date(blog.publishedAt || blog.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</time>
+            <BlogViews key={blog.id} slug={blog.slug} initialViews={blog.viewCount} />
           </div>
           {blog.tags.length > 0 && <div aria-label="Article tags" className="not-prose mb-8 flex flex-wrap gap-2">{blog.tags.map(tag => <span key={tag} className="rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-800">{tag}</span>)}</div>}
           <ReactMarkdown
