@@ -13,7 +13,6 @@ import { Star } from "lucide-react";
 import Link from "next/link";
 import { getCachedOrFetch } from "@/lib/redis";
 import { listInstitutionCampuses } from "@/lib/campus-workspaces";
-import { CampusSwitcher } from "@/components/institution/CampusSwitcher";
 import {
   DashboardChartsProvider,
   AttendanceTrendsCard,
@@ -28,7 +27,6 @@ export default async function InstitutionDashboard() {
   const instId = session.institutionId || session.userId;
   const campusList = await listInstitutionCampuses(session);
   const availableCampuses = campusList.filter((campus) => campus.name === campus.workspaceName);
-  const homeCampus = availableCampuses.find((campus) => campus.workspaceId === session.homeInstitutionId);
   const todayStr = new Date().toISOString().split('T')[0];
 
   const [studentCountRows, staffCountRows, recentAnnouncements, reviewRows, todayAttendance] = await Promise.all([
@@ -63,11 +61,6 @@ export default async function InstitutionDashboard() {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col justify-end gap-4 sm:flex-row sm:items-start">
-
-        {session.role === 'INSTITUTION' && homeCampus && session.campusId && <CampusSwitcher campuses={availableCampuses} currentCampusId={session.campusId} homeCampusId={homeCampus.id} />}
-      </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <StatCard title="Total Students" value={studentCount.value.toString()} icon={Users} />
         <StatCard title="Teaching Staff" value={staffCount.value.toString()} icon={UserSquare2} />

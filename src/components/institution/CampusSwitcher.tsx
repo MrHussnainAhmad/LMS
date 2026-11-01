@@ -20,13 +20,13 @@ export function CampusSwitcher({ campuses, currentCampusId, homeCampusId }: {
       setBusy(false);
     }
   }
-  return <div className="min-w-52 space-y-1">
-    <label htmlFor="campus-switcher" className="block text-sm font-medium text-stone-700">View campus</label>
-    <select id="campus-switcher" aria-label="View campus" value={currentCampusId} disabled={busy}
+  return <div className="min-w-0 space-y-1">
+    <label htmlFor="campus-switcher" className="block text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-stone-500">View campus</label>
+    <select id="campus-switcher" aria-describedby="campus-switcher-status" value={currentCampusId} disabled={busy}
       onChange={(event) => void switchCampus(Number(event.target.value))}
-      className="h-10 w-full rounded-sm border border-stone-300 bg-white px-3 text-sm">
+      className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-stone-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-wait disabled:opacity-60">
       {campuses.map((campus) => <option key={campus.id} value={campus.id}>{campus.name}{campus.id === homeCampusId ? ' (your campus)' : ' (read-only)'}</option>)}
     </select>
-    <p className="text-xs text-stone-500">{busy ? 'Switching campus…' : currentCampusId === homeCampusId ? 'Manage your campus.' : 'Viewing only. Changes are disabled.'}</p>
+    <p id="campus-switcher-status" role="status" className="sr-only">{busy ? 'Switching campus…' : currentCampusId === homeCampusId ? 'Manage your campus.' : 'Viewing only. Changes are disabled.'}</p>
   </div>;
 }

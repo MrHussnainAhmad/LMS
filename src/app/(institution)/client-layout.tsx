@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { usePathname } from "next/navigation";
 import type { ShellBrand } from "@/components/layout/BrandMark";
 import { LayoutDashboard, Users, UserSquare2, BookOpen, Calendar, Settings, MapPin, Megaphone, ClipboardList, CheckSquare, ShieldCheck, Ticket, IdCard, ArrowUpRight, UserPlus, WalletCards, CalendarDays } from "lucide-react";
 
@@ -34,18 +35,22 @@ export default function InstitutionLayout({
   role,
   userId,
   initialBrand,
+  dashboardActions,
 }: {
   children: React.ReactNode;
   role: "INSTITUTION" | "INSTITUTION_ADMIN";
   userId?: number;
   initialBrand?: ShellBrand;
+  dashboardActions?: React.ReactNode;
 }) {
+  const pathname = usePathname();
   return (
     <AppShell
       sidebarItems={SIDEBAR_ITEMS}
       userRole={role}
       userId={userId}
       initialBrand={initialBrand}
+      headerActions={pathname === '/institution/dashboard' ? dashboardActions : undefined}
     >
       {children}
     </AppShell>

@@ -8,6 +8,8 @@ import { getShellBrandForSession } from "@/lib/shell-brand";
 import ClientLayout from "./client-layout";
 import { OwnerOnboardingForm } from "@/components/institution/OwnerOnboardingForm";
 import { CampusReadOnlyBoundary } from "@/components/institution/CampusReadOnlyBoundary";
+import { CampusSwitcher } from "@/components/institution/CampusSwitcher";
+import { listInstitutionCampuses } from "@/lib/campus-workspaces";
 
 export default async function InstitutionLayoutServer({
   children,
@@ -41,13 +43,19 @@ export default async function InstitutionLayoutServer({
     }
   }
 
-  const brand = await getShellBrandForSession(session);
+  const [brand, campusList] = await Promise.all([
+    getShellBrandForSession(session),
+    session.role === 'INSTITUTION' ? listInstitutionCampuses(session) : Promise.resolve([]),
+  ]);
+  const availableCampuses = campusList.filter((campus) => campus.name === campus.workspaceName);
+  const homeCampus = availableCampuses.find((campus) => campus.workspaceId === session.homeInstitutionId);
 
   return (
     <ClientLayout
       role={session.role as "INSTITUTION" | "INSTITUTION_ADMIN"}
       userId={session.userId}
       initialBrand={brand}
+      dashboardActions={session.role === 'INSTITUTION' && homeCampus && session.campusId ? <CampusSwitcher campuses={availableCampuses} currentCampusId={session.campusId} homeCampusId={homeCampus.id} /> : undefined}
     >
       <CampusReadOnlyBoundary readOnly={Boolean(session.campusReadOnly)} campusName={session.campusName ?? ''} homeCampusName={session.homeCampusName ?? ''}>
         {children}

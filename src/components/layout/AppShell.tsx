@@ -16,6 +16,7 @@ interface AppShellProps {
   userId?: number;
   /** When provided by an RSC layout, skip the /api/me/brand client round-trip. */
   initialBrand?: ShellBrand;
+  headerActions?: React.ReactNode;
 }
 
 const DEFAULT_BRAND: ShellBrand = {
@@ -31,6 +32,7 @@ export function AppShell({
   userRole,
   userId,
   initialBrand,
+  headerActions,
 }: AppShellProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -71,6 +73,7 @@ export function AppShell({
           onMenuClick={() => setIsSidebarOpen(true)}
           role={userRole}
           brand={brand}
+          headerActions={headerActions}
         />
 
         <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-9">

@@ -20,9 +20,10 @@ interface TopbarProps {
   onMenuClick: () => void;
   role: string;
   brand: ShellBrand;
+  headerActions?: React.ReactNode;
 }
 
-export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
+export function Topbar({ onMenuClick, role, brand, headerActions }: TopbarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const pathParts = pathname.split("/").filter(Boolean);
@@ -63,8 +64,8 @@ export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-[68px] shrink-0 items-center justify-between border-b border-border bg-[#f2efe7]/95 px-4 backdrop-blur-md sm:px-6">
-      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+    <header className={`sticky top-0 z-30 flex shrink-0 items-center justify-between gap-x-3 border-b border-border bg-[#f2efe7]/95 px-4 backdrop-blur-md sm:px-6 ${headerActions ? 'min-h-[68px] flex-wrap gap-y-3 py-2' : 'h-[68px]'}`}>
+      <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
         <Button variant="ghost" size="icon" className="-ml-2 text-stone-700 lg:hidden" onClick={onMenuClick}>
           <Menu className="h-5 w-5" />
         </Button>
@@ -76,7 +77,9 @@ export function Topbar({ onMenuClick, role, brand }: TopbarProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
+      {headerActions ? <div className="order-last w-full min-w-0 sm:order-none sm:w-56">{headerActions}</div> : null}
+
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         <span className="hidden border-r border-border pr-3 text-[10px] font-bold uppercase tracking-[0.12em] text-stone-500 md:block">
           {role.replace(/_/g, " ")}
         </span>
