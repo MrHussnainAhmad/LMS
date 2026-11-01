@@ -50,7 +50,7 @@ type StaffLogin = { id: number; email?: string; passwordHash: string; isActive: 
 type StudentLogin = { id: number; loginRollNumber?: string; passwordHash: string; isActive: boolean; institutionId: number; mustChangePassword: boolean; academicStatus: 'ACTIVE' | 'GRADUATED'; graduatedAccessAllowed: boolean };
 type ParentLogin = { id: number; email: string; passwordHash: string | null; institutionId: number; mustChangePassword: boolean; status: 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED'; institutionStatus: string };
 
-async function findUnhintedLoginCandidate(loginIdentifier: string): Promise<LoginCandidate | null> {
+async function findUnhintedLoginCandidate(loginIdentifier: string, studentLoginIdentifier: string): Promise<LoginCandidate | null> {
   const result = await db.execute(sql`
     WITH login_input AS (
       SELECT ${loginIdentifier}::text AS identifier
@@ -65,7 +65,7 @@ async function findUnhintedLoginCandidate(loginIdentifier: string): Promise<Logi
       FROM students AS s
       INNER JOIN institutions AS i3 ON i3.id = s.institution_id
       CROSS JOIN login_input AS i
-      WHERE lower(s.login_roll_number) = i.identifier
+      WHERE lower(s.login_roll_number) = ${studentLoginIdentifier}
 
       UNION ALL
 
@@ -224,6 +224,8 @@ export async function POST(req: NextRequest) {
 
     const { emailOrUsername, password, roleHint, securityAnswer, returnTokens, institutionUsername } = parsed.data;
     const loginIdentifier = emailOrUsername.trim().toLowerCase();
+    // Student IDs keep their stored separator; accept the compact spelling too.
+    const studentLoginIdentifier = loginIdentifier.replace(/^([a-z]\d{2})(\d{8})@/, '$1-$2@');
     const normalizedInstitutionUsername = institutionUsername?.trim().toLowerCase();
     const ip = getClientIp(req);
     const lookupRoles = getLoginLookupRoles(roleHint);
@@ -278,7 +280,7 @@ export async function POST(req: NextRequest) {
     let parent: ParentLogin | undefined;
     
     if (!roleHint && !hasUsableCachedRole) {
-      const candidate = await findUnhintedLoginCandidate(loginIdentifier);
+      const candidate = await findUnhintedLoginCandidate(loginIdentifier, studentLoginIdentifier);
 
       if (candidate?.role === 'SUPER_ADMIN') {
         admin = {
@@ -402,7 +404,7 @@ export async function POST(req: NextRequest) {
         })
           .from(students)
           .innerJoin(institutions, eq(students.institutionId, institutions.id))
-          .where(sql`lower(${students.loginRollNumber}) = ${loginIdentifier}`)
+          .where(sql`lower(${students.loginRollNumber}) = ${studentLoginIdentifier}`)
           .limit(1);
         if (rows.length > 0) {
           stu = rows[0];

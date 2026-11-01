@@ -53,7 +53,7 @@ The existing `POST /api/auth/login` request/response contract is retained:
 
   ```json
   {
-    "error": "Mobile apps are not enabled for your institution. You can still use the website.",
+    "error": "Mobile app access is disabled for your institution. You can still use the website.",
     "code": "MOBILE_APPS_DISABLED"
   }
   ```
@@ -63,6 +63,20 @@ the same type, and rotation preserves it. Mobile password changes preserve a
 mobile session type. Posting a refresh token from an older app upgrades the
 legacy refresh session to mobile. Existing unmarked Bearer sessions are checked
 as mobile requests too, so disabling access does not wait for old JWTs to expire.
+
+Password-based mobile sessions have a 90-day refresh window, renewed on each
+successful refresh. Existing sessions receive the longer window when refreshed;
+already expired sessions still require login. Access tokens keep their existing
+five-day lifetime and refresh silently. QR sessions retain their absolute 30-day
+expiry. Website session lifetimes are unchanged. Plan platform labels do not
+restrict login: website access is free on every plan, and the institution's
+Mobile apps setting alone controls mobile product access.
+
+Both mobile API clients retain saved tokens on network failures, rate limiting,
+server errors and unreadable refresh responses. A definitive authentication
+rejection or disabled mobile access still clears the session. Delayed requests
+reuse a token already refreshed by another request, and rotated refresh tokens
+are saved before access tokens so interrupted saves remain recoverable.
 
 Ordinary fresh session guards, including light/unread endpoints and server
 actions, reject disabled mobile sessions. A mobile-marked token cannot bypass

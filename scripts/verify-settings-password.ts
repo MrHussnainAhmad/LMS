@@ -175,7 +175,11 @@ async function main() {
     assert.notEqual(otherParent.parentId, firstParent.parentId, 'The same email in a different institution is a separate parent account');
     console.log('PASS: shared parent provisioning uses initial credentials once, preserves changed passwords when linking siblings and isolates institutions.');
 
-    fixtures['@/lib/auth'].createTokens = async () => ({ accessToken: 'fixture-access', refreshToken: 'fixture-refresh' });
+    let signedInUserId: number | undefined;
+    fixtures['@/lib/auth'].createTokens = async (payload: { userId: number }) => {
+      signedInUserId = payload.userId;
+      return { accessToken: 'fixture-access', refreshToken: 'fixture-refresh' };
+    };
     fixtures['@/lib/auth'].setAuthCookies = async () => {};
     const registration = { exports: {} as typeof import('../src/app/api/institution/register/route') };
     const login = { exports: {} as typeof import('../src/app/api/auth/login/route') };
@@ -214,6 +218,26 @@ async function main() {
     await fixtureDb.update(institutions).set({ adminPasswordHash: await hash('ChosenPassword!456') }).where(eq(institutions.id, newInstitution.id));
     assert.equal((await login.exports.POST(request('/api/auth/login', institutionLogin))).status, 401, 'A changed password rejects the old value');
     console.log('PASS: actual registration accepts and hashes the chosen password; actual login verifies stored hashes for hinted/general institution login, requires approval, rejects wrong/unknown/replaced credentials and preserves portal first-login flags.');
+    await fixtureDb.update(students).set({ loginRollNumber: 'S26-00000002@arqam.nisaab360.app' }).where(eq(students.id, 51));
+    for (const roleHint of [undefined, 'STUDENT']) {
+      for (const returnTokens of [false, true]) {
+        for (const emailOrUsername of ['S26-00000002@arqam.nisaab360.app', 'S2600000002@arqam.nisaab360.app', ' s2600000002@arqam.nisaab360.app ']) {
+          const response = await login.exports.POST(request('/api/auth/login', { emailOrUsername, password: '1234567890', roleHint, returnTokens }));
+          assert.equal(response.status, 200, await response.clone().text());
+          const result = await response.json();
+          assert.equal(result.role, 'STUDENT');
+          assert.equal(result.mustChangePassword, true);
+          assert.equal(signedInUserId, 51, 'Both spellings authenticate the same stored student');
+        }
+      }
+    }
+    for (const body of [
+      { emailOrUsername: 'S2600000002@other.nisaab360.app', password: '1234567890' },
+      { emailOrUsername: 'S2600000002@arqam.nisaab360.app', password: 'wrong-password' },
+      { emailOrUsername: 'S2600000002@arqam.nisaab360.app', password: '1234567890', roleHint: 'STAFF' },
+      { emailOrUsername: 'S260000002@arqam.nisaab360.app', password: '1234567890', roleHint: 'STUDENT' },
+    ]) assert.equal((await login.exports.POST(request('/api/auth/login', body))).status, 401);
+    console.log('PASS: hyphenated and compact student IDs authenticate the same account through general/student and web/mobile login; password checks, role scope, tenant suffix and first-login flags remain enforced.');
   } finally {
     delete globalFixture.__settingsPasswordFixtures;
     await memory.close();

@@ -6,7 +6,7 @@ import { getPlanEntitlements } from './plan-entitlements';
 
 type Executor = Pick<typeof db, 'execute'>;
 export function deviceSessionExpiry(expiresAt: Date, clientType?: 'WEB' | 'MOBILE') {
-  return new Date(Math.min(expiresAt.getTime(), Date.now() + (clientType === 'MOBILE' ? 30 : 5) * 86400_000));
+  return new Date(Math.min(expiresAt.getTime(), Date.now() + (clientType === 'MOBILE' ? 90 : 5) * 86400_000));
 }
 
 export async function reservePlanDeviceSession(store: Executor, payload: JWTPayload, tokenHash: string, expiresAt: Date, replaceHash?: string) {

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { build } from 'esbuild';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
@@ -116,9 +117,28 @@ async function main() {
       const response = await login.POST(req('/api/auth/login', { ...body, returnTokens: true }));
       assert.equal(response.status, 200, `${role} mobile login`);
       const tokens = await response.json(); assert.equal((await auth.verifyAccessToken(tokens.accessToken))?.clientType, 'MOBILE');
+      const mobileExpiry = await memory.query<{ expires_at: number; device_expires_at: number }>(`SELECT EXTRACT(EPOCH FROM r.expires_at)*1000 AS expires_at,EXTRACT(EPOCH FROM d.expires_at)*1000 AS device_expires_at
+        FROM refresh_tokens r JOIN plan_device_sessions d ON d.refresh_token_hash=r.token_hash WHERE r.token_hash=$1`, [createHash('sha256').update(tokens.refreshToken).digest('hex')]);
+      for (const expiry of [mobileExpiry.rows[0].expires_at, mobileExpiry.rows[0].device_expires_at]) {
+        assert.ok(Number(expiry) > Date.now() + 89.99 * 86400_000, 'Password-based mobile sessions survive up to 90 days between renewals');
+        assert.ok(Number(expiry) <= Date.now() + 90 * 86400_000);
+      }
+      const renewed = await auth.rotateRefreshToken(tokens.refreshToken);
+      assert.equal(renewed.status, 'ROTATED');
+      assert.ok(await auth.verifyAccessToken(tokens.accessToken), 'Rotation keeps the existing access token usable');
+      if (renewed.status === 'ROTATED') {
+        tokens.refreshToken = renewed.refreshToken;
+        const renewedExpiry = await memory.query<{ expires_at: number; device_expires_at: number }>(`SELECT EXTRACT(EPOCH FROM r.expires_at)*1000 AS expires_at,EXTRACT(EPOCH FROM d.expires_at)*1000 AS device_expires_at
+          FROM refresh_tokens r JOIN plan_device_sessions d ON d.refresh_token_hash=r.token_hash WHERE r.token_hash=$1`, [createHash('sha256').update(renewed.refreshToken).digest('hex')]);
+        for (const expiry of [renewedExpiry.rows[0].expires_at, renewedExpiry.rows[0].device_expires_at]) assert.ok(Number(expiry) > Date.now() + 89.99 * 86400_000, 'Refresh renews the mobile window');
+      }
       const bearer = new NextRequest('http://localhost:3000/api/me', { headers: { authorization: `Bearer ${tokens.accessToken}` } });
       assert.ok(await auth.getSessionFromRequest(bearer));
       const existingWeb = await auth.createTokens({ role, userId: id, institutionId: 1 });
+      const webExpiry = await memory.query<{ expires_at: number; device_expires_at: number }>(`SELECT EXTRACT(EPOCH FROM r.expires_at)*1000 AS expires_at,EXTRACT(EPOCH FROM d.expires_at)*1000 AS device_expires_at
+        FROM refresh_tokens r JOIN plan_device_sessions d ON d.refresh_token_hash=r.token_hash WHERE r.token_hash=$1`, [createHash('sha256').update(existingWeb.refreshToken).digest('hex')]);
+      assert.ok(Number(webExpiry.rows[0].expires_at) <= Date.now() + 30 * 86400_000, 'Website refresh lifetime stays unchanged');
+      assert.ok(Number(webExpiry.rows[0].device_expires_at) <= Date.now() + 5 * 86400_000, 'Website device session stays at five days');
       await memory.exec('UPDATE institutions SET apps_enabled=false WHERE id=1');
       const denied = await login.POST(req('/api/auth/login', { ...body, returnTokens: true }));
       assert.equal(denied.status, 403); assert.equal((await denied.json()).code, 'MOBILE_APPS_DISABLED');
@@ -145,6 +165,9 @@ async function main() {
     const legacy = await auth.createTokens({ role: 'STAFF', userId: 10, institutionId: 1 });
     const upgraded = await refresh.POST(req('/api/auth/refresh', { refreshToken: legacy.refreshToken })); assert.equal(upgraded.status, 200);
     const upgradedTokens = await upgraded.json(); assert.equal((await auth.verifyAccessToken(upgradedTokens.accessToken))?.clientType, 'MOBILE');
+    const legacyExpiry = await memory.query<{ expires_at: number; device_expires_at: number }>(`SELECT EXTRACT(EPOCH FROM r.expires_at)*1000 AS expires_at,EXTRACT(EPOCH FROM d.expires_at)*1000 AS device_expires_at
+      FROM refresh_tokens r JOIN plan_device_sessions d ON d.refresh_token_hash=r.token_hash WHERE r.token_hash=$1`, [createHash('sha256').update(upgradedTokens.refreshToken).digest('hex')]);
+    for (const expiry of [legacyExpiry.rows[0].expires_at, legacyExpiry.rows[0].device_expires_at]) assert.ok(Number(expiry) > Date.now() + 89.99 * 86400_000, 'Legacy native sessions upgrade the refresh and device expiry together');
     assert.equal((await auth.rotateRefreshToken(upgradedTokens.refreshToken)).status, 'ROTATED');
     const types = await memory.query<{ client_type: string }>("SELECT client_type FROM refresh_tokens WHERE user_role='STAFF' AND revoked_at IS NULL");
     assert.ok(types.rows.some(row => row.client_type === 'MOBILE'));

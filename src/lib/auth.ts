@@ -15,7 +15,7 @@ import { getFreshStudent, verifyUserExistsFresh } from './user';
 import { enrichFreshStudentSession } from './auth-student';
 import { CAMPUS_VIEW_COOKIE, CAMPUS_READ_ONLY_ERROR } from './campus-view';
 import { resolveCampusSession } from './campus-workspaces';
-import { mobileAppAccessAllowed } from './mobile-app-access';
+import { isMobileRole, mobileAppAccessAllowed } from './mobile-app-access';
 import { reservePlanDeviceSession, deviceSessionExpiry } from './plan-device-sessions';
 
 export { verifyAccessToken };
@@ -26,11 +26,11 @@ const WEB_SESSION_EXPIRY_DAYS = 5;
 const ACCESS_TOKEN_EXPIRY = `${WEB_SESSION_EXPIRY_DAYS}d`;
 const REFRESH_TOKEN_PATTERN = /^[a-f0-9]{80}$/i;
 
-function createRefreshTokenMaterial() {
+function createRefreshTokenMaterial(clientType?: JWTPayload['clientType']) {
   const refreshToken = crypto.randomBytes(40).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
   const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
+  expiresAt.setDate(expiresAt.getDate() + (clientType === 'MOBILE' ? 90 : REFRESH_TOKEN_EXPIRY_DAYS));
   return { refreshToken, tokenHash, expiresAt };
 }
 
@@ -52,7 +52,7 @@ export async function createAccessToken(payload: JWTPayload) {
 
 export async function createTokens(payload: JWTPayload, tokenStore: Pick<typeof db, 'insert' | 'execute'> = db, replaceRefreshToken?: string): Promise<{ accessToken: string; refreshToken: string }> {
   if (tokenStore === db) return db.transaction(tx => createTokens(payload, tx, replaceRefreshToken));
-  const { refreshToken, tokenHash, expiresAt: defaultExpiry } = createRefreshTokenMaterial();
+  const { refreshToken, tokenHash, expiresAt: defaultExpiry } = createRefreshTokenMaterial(payload.clientType);
   const expiresAt = payload.qrSessionExpiresAt ? new Date(payload.qrSessionExpiresAt * 1000) : defaultExpiry;
   const replaceHash = replaceRefreshToken && REFRESH_TOKEN_PATTERN.test(replaceRefreshToken) ? crypto.createHash('sha256').update(replaceRefreshToken).digest('hex') : undefined;
   const planDeviceSessionId = await reservePlanDeviceSession(tokenStore, payload, tokenHash, expiresAt, replaceHash);
@@ -81,7 +81,7 @@ type RefreshRotationResult =
  * app replicas. If an already-replaced token appears again, every still-active
  * refresh token for that account is revoked: the old token may have been copied.
  */
-export async function rotateRefreshToken(presentedToken: string): Promise<RefreshRotationResult> {
+export async function rotateRefreshToken(presentedToken: string, nativeTransport = false): Promise<RefreshRotationResult> {
   if (!REFRESH_TOKEN_PATTERN.test(presentedToken)) return { status: 'INVALID' };
   const presentedHash = crypto.createHash('sha256').update(presentedToken).digest('hex');
 
@@ -136,18 +136,19 @@ export async function rotateRefreshToken(presentedToken: string): Promise<Refres
       if (!qrSession || qrSession.revokedAt || qrSession.expiresAt <= now ||
           qrSession.userRole !== record.userRole || qrSession.userId !== record.userId) return { status: 'EXPIRED' } as const;
     }
-    const next = createRefreshTokenMaterial();
+    const clientType = record.clientType === 'MOBILE' || (nativeTransport && isMobileRole(record.userRole)) ? 'MOBILE' : record.clientType;
+    const next = createRefreshTokenMaterial(clientType);
     if (qrSession) next.expiresAt = qrSession.expiresAt;
     await tx.insert(refreshTokens).values({
       userRole: record.userRole,
       userId: record.userId,
       tokenHash: next.tokenHash,
-      clientType: record.clientType,
+      clientType,
       qrSessionId: record.qrSessionId,
       expiresAt: next.expiresAt,
     });
     await tx.update(pushDevices).set({sessionTokenHash:next.tokenHash,updatedAt:now}).where(eq(pushDevices.sessionTokenHash,presentedHash));
-    if (deviceSession) await tx.update(planDeviceSessions).set({ refreshTokenHash: next.tokenHash, expiresAt: deviceSessionExpiry(next.expiresAt, record.clientType) }).where(eq(planDeviceSessions.id, deviceSession.id));
+    if (deviceSession) await tx.update(planDeviceSessions).set({ refreshTokenHash: next.tokenHash, expiresAt: deviceSessionExpiry(next.expiresAt, clientType) }).where(eq(planDeviceSessions.id, deviceSession.id));
     await tx
       .update(refreshTokens)
       .set({ revokedAt: now, replacedByHash: next.tokenHash })
@@ -156,7 +157,7 @@ export async function rotateRefreshToken(presentedToken: string): Promise<Refres
     return {
       status: 'ROTATED',
       refreshToken: next.refreshToken,
-      clientType: record.clientType,
+      clientType,
       userRole: record.userRole,
       userId: record.userId,
       qrSessionId: qrSession?.id,
