@@ -223,8 +223,6 @@ export async function POST(req: NextRequest) {
     }
 
     const { emailOrUsername, password, roleHint, securityAnswer, returnTokens, institutionUsername } = parsed.data;
-    // Retire the previously shared credential, including already-created accounts.
-    if (password === '1234567890') return NextResponse.json(INVALID_CREDENTIALS, { status: 401 });
     const loginIdentifier = emailOrUsername.trim().toLowerCase();
     const normalizedInstitutionUsername = institutionUsername?.trim().toLowerCase();
     const ip = getClientIp(req);

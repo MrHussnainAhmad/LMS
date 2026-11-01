@@ -7,9 +7,10 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { eq } from 'drizzle-orm';
-import { NextRequest } from 'next/server';
-import { institutions, institutionAdmins, staff, students, parentAccounts, campuses, subjects, institutionCustomRoles, staffTeachableSubjects, parentStudents, auditLogs } from '../src/db/schema';
+import { NextRequest, NextResponse } from 'next/server';
+import { institutions, institutionAdmins, staff, students, parentAccounts, campuses, subjects, institutionCustomRoles, staffTeachableSubjects, parentStudents, auditLogs, superAdmins, employees, accountLockouts, institutionAgreementAcceptances } from '../src/db/schema';
 import { requiresPasswordChange } from '../src/lib/auth-types';
+import { SERVICE_AGREEMENT_VERSION } from '../src/lib/service-agreement';
 
 async function main() {
   for (const role of ['STUDENT', 'STAFF', 'PARENT', 'INSTITUTION', 'EMPLOYEE']) {
@@ -23,6 +24,7 @@ async function main() {
   let allowedRoles: string[] = [];
   const fixtures: Record<string, Record<string, unknown>> = {
     '@/db': { db: fixtureDb },
+    'next/server': { NextRequest, NextResponse, after: () => {} },
     '@/lib/argon2-pool': { hashPassword: hash, verifyPassword: verify },
     '@/lib/rbac': {
       requireRole: (roles: string[], handler: unknown, options: { allowPasswordChangeRequired?: boolean }) => {
@@ -39,14 +41,20 @@ async function main() {
     },
     '@/lib/user': {
       resolveUserCreatedAt: () => new Date(0),
+      getUserCreatedAt: async () => new Date(0),
     },
+    '@/lib/redis': { redis: { status: 'end', get: async () => null, setex: async () => {} } },
+    '@/lib/rate-limit': { withRateLimit: async () => ({ success: true }), withPlatformLoginRateLimit: async () => ({ success: true }), withDealCodeRateLimit: async () => ({ success: true }) },
+    '@/lib/campus-workspaces': { assertCampusEmailAvailable: async () => {}, resolveCampusSession: async (session: unknown) => session },
+    '@/lib/mobile-app-access': { isMobileRole: (role: string) => ['STUDENT','STAFF','PARENT'].includes(role), mobileAppAccessAllowed: async () => true, MOBILE_APPS_DISABLED: { error: 'Disabled' } },
+    '@/lib/plan-management': { PlanError: class extends Error { status = 400; }, registrationPlan: async () => ({ id: 'BASIC', kind: 'PUBLIC', name: 'Basic', revision: 1, monthly: 'Rs. 1,000', setup: 'Rs. 0', monthlyDetail: 'Monthly', scale: 'School', campusDetail: 'One campus', audience: 'Schools' }), consumeDealtCode: async () => {} },
     '@/lib/notification-events': { notifySecurity: async () => {} },
     '@/lib/audit': { logAudit: async () => { effects.push('audit'); } },
   };
   const globalFixture = globalThis as typeof globalThis & { __settingsPasswordFixtures?: typeof fixtures };
   globalFixture.__settingsPasswordFixtures = fixtures;
   try {
-    for (const table of [institutions, institutionAdmins, staff, students, parentAccounts, campuses, subjects, institutionCustomRoles, staffTeachableSubjects, parentStudents, auditLogs]) {
+    for (const table of [institutions, institutionAdmins, staff, students, parentAccounts, campuses, subjects, institutionCustomRoles, staffTeachableSubjects, parentStudents, auditLogs, superAdmins, employees, accountLockouts, institutionAgreementAcceptances]) {
       const config = getTableConfig(table);
       const columns = config.columns.map(column => `"${column.name}" ${column.columnType === 'PgEnumColumn' ? 'text' : column.getSQLType()}${column.primary ? ' PRIMARY KEY' : ''}`);
       await memory.exec(`CREATE TABLE "${config.name}" (${columns.join(',')})`);
@@ -60,17 +68,17 @@ async function main() {
     }
 
     const built = await build({
-      entryPoints: ['src/app/api/auth/change-password/route.ts', 'src/lib/user.ts', 'src/lib/parent-identity.ts'], outdir: '.', bundle: true, write: false,
+      entryPoints: ['src/app/api/auth/change-password/route.ts', 'src/lib/user.ts', 'src/lib/parent-identity.ts', 'src/app/api/auth/login/route.ts', 'src/app/api/institution/register/route.ts'], outdir: '.', bundle: true, write: false,
       platform: 'node', format: 'cjs', packages: 'external', logLevel: 'silent',
       plugins: [{ name: 'isolated-password-services', setup(builder) {
-        builder.onResolve({ filter: /^@\// }, args => fixtures[args.path] ? { path: args.path, namespace: 'fixture' } : undefined);
+        builder.onResolve({ filter: /^(@\/|next\/server$)/ }, args => fixtures[args.path] ? { path: args.path, namespace: 'fixture' } : undefined);
         builder.onLoad({ filter: /.*/, namespace: 'fixture' }, args => ({
           contents: `export const { ${Object.keys(fixtures[args.path]).join(', ')} } = globalThis.__settingsPasswordFixtures[${JSON.stringify(args.path)}];`, loader: 'js',
         }));
       } }],
     });
     const loaded = { exports: {} as { POST: (req: NextRequest, ctx: { session: { role: string; userId: number; institutionId?: number } }) => Promise<Response> } };
-    new Function('require', 'module', 'exports', built.outputFiles.find(file => file.path.endsWith('/route.js') || file.path.endsWith('\\route.js'))!.text)(createRequire(path.resolve('package.json')), loaded, loaded.exports);
+    new Function('require', 'module', 'exports', built.outputFiles.find(file => file.path.replaceAll('\\', '/').endsWith('/auth/change-password/route.js'))!.text)(createRequire(path.resolve('package.json')), loaded, loaded.exports);
     assert(allowedRoles.includes('INSTITUTION'));
     assert(allowedRoles.includes('INSTITUTION_ADMIN'));
     assert(!allowedRoles.includes('SUPER_ADMIN'));
@@ -166,6 +174,46 @@ async function main() {
     const otherParent = await fixtureDb.transaction(tx => parents.exports.syncStudentGuardian(tx as unknown as Parameters<typeof parents.exports.syncStudentGuardian>[0], { ...guardian, institutionId: 8, studentId: 53, activation: otherActivation }));
     assert.notEqual(otherParent.parentId, firstParent.parentId, 'The same email in a different institution is a separate parent account');
     console.log('PASS: shared parent provisioning uses initial credentials once, preserves changed passwords when linking siblings and isolates institutions.');
+
+    fixtures['@/lib/auth'].createTokens = async () => ({ accessToken: 'fixture-access', refreshToken: 'fixture-refresh' });
+    fixtures['@/lib/auth'].setAuthCookies = async () => {};
+    const registration = { exports: {} as typeof import('../src/app/api/institution/register/route') };
+    const login = { exports: {} as typeof import('../src/app/api/auth/login/route') };
+    for (const [suffix, target] of [['/institution/register/route.js', registration], ['/auth/login/route.js', login]] as const) {
+      new Function('require', 'module', 'exports', built.outputFiles.find(file => file.path.replaceAll('\\', '/').endsWith(suffix))!.text)(createRequire(path.resolve('package.json')), target, target.exports);
+    }
+    await memory.exec('CREATE UNIQUE INDEX fixture_lockout_owner ON account_lockouts(user_role,user_id)');
+    const request = (path: string, body: unknown) => new NextRequest('http://localhost' + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const registrationData = { name: 'Login Fixture School', mainCampusName: 'Main', type: 'SCHOOL', username: 'loginfixture', country: 'Pakistan', city: 'Lahore', address: 'Fixture school address', contactEmail: ' Login@Example.test ', contactPhone: '03000000000', registrationNumber: 'LOGIN-1', pricingPlan: 'BASIC', planRevision: 1, agreementAccepted: true, agreementVersion: SERVICE_AGREEMENT_VERSION, agreementRepresentativeName: 'Fixture Owner', adminPassword: '1234567890', logoKey: 'fixture-logo', proofDocumentKey: 'fixture-proof' };
+    const registered = await registration.exports.POST(request('/api/institution/register', registrationData));
+    assert.equal(registered.status, 201, await registered.clone().text());
+    const [newInstitution] = await fixtureDb.select().from(institutions).where(eq(institutions.username, 'loginfixture'));
+    assert(await verify(newInstitution.adminPasswordHash, '1234567890'));
+    const institutionLogin = { emailOrUsername: 'LOGIN@EXAMPLE.TEST', password: '1234567890', roleHint: 'INSTITUTION' };
+    assert.equal((await login.exports.POST(request('/api/auth/login', institutionLogin))).status, 403, 'Correct credentials still require approval');
+    await fixtureDb.update(institutions).set({ status: 'APPROVED' }).where(eq(institutions.id, newInstitution.id));
+    assert.equal((await login.exports.POST(request('/api/auth/login', { ...institutionLogin, password: 'wrong-password' }))).status, 401);
+    for (const body of [institutionLogin, { emailOrUsername: institutionLogin.emailOrUsername, password: '1234567890' }]) {
+      const response = await login.exports.POST(request('/api/auth/login', body));
+      assert.equal(response.status, 200, await response.clone().text());
+      assert.equal((await response.json()).role, 'INSTITUTION');
+    }
+    assert.equal((await login.exports.POST(request('/api/auth/login', { emailOrUsername: 'missing@example.test', password: '1234567890' }))).status, 401, 'The default is never a password bypass');
+    await fixtureDb.update(institutions).set({ status: 'APPROVED' }).where(eq(institutions.id, 7));
+    await fixtureDb.update(students).set({ passwordHash: savedParent.passwordHash!, mustChangePassword: true, isActive: true, academicStatus: 'ACTIVE', loginRollNumber: 'fixture-student' }).where(eq(students.id, 51));
+    await fixtureDb.update(parentAccounts).set({ passwordHash: savedParent.passwordHash!, mustChangePassword: true }).where(eq(parentAccounts.id, savedParent.id));
+    for (const body of [
+      { roleHint: 'STAFF', emailOrUsername: firstStaff.email, password: '1234567890' },
+      { roleHint: 'STUDENT', emailOrUsername: 'fixture-student', password: '1234567890' },
+      { roleHint: 'PARENT', emailOrUsername: savedParent.email, institutionUsername: 'fixture', password: '1234567890' },
+    ]) {
+      const response = await login.exports.POST(request('/api/auth/login', body));
+      assert.equal(response.status, 200, await response.clone().text());
+      assert.equal((await response.json()).mustChangePassword, true, body.roleHint + ' must change the temporary password');
+    }
+    await fixtureDb.update(institutions).set({ adminPasswordHash: await hash('ChosenPassword!456') }).where(eq(institutions.id, newInstitution.id));
+    assert.equal((await login.exports.POST(request('/api/auth/login', institutionLogin))).status, 401, 'A changed password rejects the old value');
+    console.log('PASS: actual registration accepts and hashes the chosen password; actual login verifies stored hashes for hinted/general institution login, requires approval, rejects wrong/unknown/replaced credentials and preserves portal first-login flags.');
   } finally {
     delete globalFixture.__settingsPasswordFixtures;
     await memory.close();
