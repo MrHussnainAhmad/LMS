@@ -5,7 +5,11 @@ import { db } from "@/db";
 import { institutions, institutionAgreementAcceptances, subscriptionPlans } from "@/db/schema";
 import { desc, count, eq, isNull, sql } from "drizzle-orm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Building2, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Building2, Search, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 
 import { updateInstitutionStatusAction } from "@/app/actions/sa-actions";
 import { deleteInstitutionAction } from '@/app/actions/employee-actions';
@@ -146,19 +150,35 @@ export default async function SAInstitutionsPage({ searchParams }: { searchParam
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
-                        {inst.status === 'APPROVED' && <details className="relative">
-                          <summary className="cursor-pointer rounded border border-red-200 px-3 py-1 text-xs font-medium text-red-700">Remove</summary>
-                          <div className="mt-2 w-72 space-y-3 rounded-md border bg-white p-4 shadow-lg">
-                            <p className="text-sm">Permanently remove {inst.name}, all its campuses and related records. Its username and email can then be reused.</p>
-                            <ActionForm action={remove} className="space-y-3">
+                        {inst.status === 'APPROVED' && <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs text-danger hover:bg-danger/10 hover:text-danger" aria-label={`Remove ${inst.name}`}><Trash2 className="h-3.5 w-3.5" aria-hidden="true" />Remove</Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader className="text-left">
+                              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-md bg-danger/10 text-danger"><Trash2 className="h-5 w-5" aria-hidden="true" /></div>
+                              <DialogTitle>Remove institution</DialogTitle>
+                              <DialogDescription className="leading-6">Permanently remove this institution, all its campuses and related records. This cannot be undone.</DialogDescription>
+                            </DialogHeader>
+                            <div className="min-w-0 rounded-md border border-border bg-stone-50/50 px-4 py-3">
+                              <p className="break-words text-sm font-semibold text-brand-950">{inst.name}</p>
+                              <p className="mt-1 break-all text-xs text-stone-500">{inst.username}</p>
+                            </div>
+                            <ActionForm action={remove} className="space-y-5">
                               <input type="hidden" name="id" value={inst.id} />
-                              <label className="block text-sm">Type REMOVE {inst.username}
-                                <input name="confirmation" required autoComplete="off" className="mt-1 w-full rounded border p-2" />
-                              </label>
-                              <SubmitButton variant="danger" size="sm" loadingText="Removing...">Remove permanently</SubmitButton>
+                              <div className="space-y-2">
+                                <Label htmlFor={`remove-institution-${inst.id}`}>Confirmation</Label>
+                                <p id={`remove-institution-help-${inst.id}`} className="break-words text-sm leading-6 text-stone-600">Type <span className="font-semibold text-brand-950">REMOVE {inst.username}</span> to continue.</p>
+                                <Input id={`remove-institution-${inst.id}`} name="confirmation" required autoComplete="off" spellCheck={false} aria-describedby={`remove-institution-help-${inst.id}`} placeholder="Enter confirmation phrase" />
+                                <p className="text-xs leading-5 text-stone-500">The institution&apos;s username and email will be available for a new registration.</p>
+                              </div>
+                              <DialogFooter className="mt-5 gap-2 border-t border-border pt-4 sm:space-x-0">
+                                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                                <SubmitButton variant="danger" loadingText="Removing..."><Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />Remove permanently</SubmitButton>
+                              </DialogFooter>
                             </ActionForm>
-                          </div>
-                        </details>}
+                          </DialogContent>
+                        </Dialog>}
                         {inst.status !== 'APPROVED' && (
                           <ActionForm action={updateStatus}>
                             <input type="hidden" name="id" value={inst.id} />

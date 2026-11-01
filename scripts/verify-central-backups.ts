@@ -325,7 +325,7 @@ test('platform removal and testing wipe preserve authorization, tenant isolation
       '@/lib/auth': 'export const getSession=async()=>globalThis.__platformDeletion.session;',
       '@/app/actions/sa-actions': 'export const updateInstitutionStatusAction=async()=>{};export const wipeDatabaseForTestingAction=async()=>{};',
       '@/app/actions/employee-actions': 'export const deleteInstitutionAction=async()=>{};',
-      '@/components/ui/action-form': 'import {createElement} from "react";export const ActionForm=({children})=>createElement("form",null,children);',
+      '@/components/ui/action-form': 'import {createElement} from "react";export const useActionFieldError=()=>undefined;export const ActionForm=({children})=>createElement("form",null,children);',
       '@/components/ui/submit-button': 'import {createElement} from "react";export const SubmitButton=({children})=>createElement("button",null,children);',
       'next/navigation': 'export const redirect=path=>{throw Error("REDIRECT:"+path)};export const unstable_rethrow=()=>{};',
       'next/link': 'import {createElement} from "react";export default function Link({children,href}){return createElement("a",{href},children)}',
@@ -336,7 +336,9 @@ test('platform removal and testing wipe preserve authorization, tenant isolation
     assert.match(renderToStaticMarkup(await testingPage.default({ searchParams: Promise.resolve({ testing: '1' }) })), /Testing Time only.*WIPE DATABASE/s);
     state.session = regular;
     await assert.rejects(testingPage.default({ searchParams: Promise.resolve({ testing: '1' }) }), /REDIRECT:\/sa\/apps/);
-    assert.match(renderToStaticMarkup(await schoolPage.default({ searchParams: Promise.resolve({}) })), /Remove permanently/);
+    const schoolHtml = renderToStaticMarkup(await schoolPage.default({ searchParams: Promise.resolve({}) }));
+    assert.match(schoolHtml, /aria-label="Remove Remove School"/);
+    assert.ok(!schoolHtml.includes('<details'), 'Removal uses a dialog without expanding the table row');
     const [campus] = await state.db.insert(schema.institutions).values({ ...institutionValues, name: 'Remove Campus', username: 'remove-campus', contactEmail: 'campus@fixture.test', registrationNumber: 'CAMPUS', parentInstitutionId: school.id, campusName: 'Branch' }).returning();
     await state.db.insert(schema.employees).values({ name: 'Employee', email: 'employee@fixture.test', passwordHash: 'fixture' });
     const [classRow] = await state.db.insert(schema.classes).values({ institutionId: campus.id, name: 'One' }).returning();
