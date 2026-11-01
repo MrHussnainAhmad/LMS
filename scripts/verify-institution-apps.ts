@@ -149,6 +149,39 @@ async function main() {
     const types = await memory.query<{ client_type: string }>("SELECT client_type FROM refresh_tokens WHERE user_role='STAFF' AND revoked_at IS NULL");
     assert.ok(types.rows.some(row => row.client_type === 'MOBILE'));
     pass('campuses inherit a disabled root; individual campuses can be disabled; legacy native refresh upgrades and rotation preserves client type');
+    const webSessions = await Promise.all(cases.map(([role, id]) => auth.createTokens({ role, userId: id, institutionId: 1, clientType: 'WEB' })));
+    await memory.exec('UPDATE institutions SET apps_enabled=true WHERE id=1');
+    await memory.query(`INSERT INTO institution_agreement_acceptances(institution_id,agreement_version,representative_name,contact_email,snapshot)
+      VALUES(1,'fixture','Owner','school@example.test',$1::jsonb)`, [JSON.stringify({ plan: { definition: { platforms: ['Student App'] } } })]);
+    for (const [index, [role, , identifier]] of cases.entries()) {
+      const body = { emailOrUsername: identifier, password, roleHint: role, ...(role === 'PARENT' ? { institutionUsername: 'ncs' } : {}) };
+      const webDenied = await login.POST(req('/api/auth/login', body));
+      assert.equal(webDenied.status, 403, `${role} app-only plan does not grant website access`);
+      assert.equal((await webDenied.json()).code, 'WEB_ACCESS_DISABLED', 'Browser denial must never claim mobile access was revoked');
+      state.cookies.set('refresh_token', webSessions[index].refreshToken);
+      const webRefreshDenied = await refresh.POST(req('/api/auth/refresh', {}));
+      assert.equal(webRefreshDenied.status, 403);
+      assert.equal((await webRefreshDenied.json()).code, 'WEB_ACCESS_DISABLED');
+      const native = await login.POST(req('/api/auth/login', { ...body, returnTokens: true }));
+      assert.equal(native.status, role === 'STUDENT' ? 200 : 403, 'Only the app included in the plan is enabled');
+    }
+    await memory.query('UPDATE institution_agreement_acceptances SET snapshot=$1::jsonb WHERE institution_id=1', [JSON.stringify({ plan: { definition: { platforms: ['Nisaab360 Web'] } } })]);
+    await memory.exec('UPDATE institutions SET apps_enabled=false WHERE id=1');
+    for (const [role, , identifier] of cases) {
+      const body = { emailOrUsername: identifier, password, roleHint: role, ...(role === 'PARENT' ? { institutionUsername: 'ncs' } : {}) };
+      const browser = await login.POST(req('/api/auth/login', body));
+      assert.equal(browser.status, 200, `${role} browser login is independent of the mobile toggle`);
+      assert.equal((await auth.verifyAccessToken(state.cookies.get('access_token')!))?.clientType, 'WEB');
+      assert.equal((await refresh.POST(req('/api/auth/refresh', {}))).status, 200, `${role} browser refresh stays WEB`);
+      const native = await login.POST(req('/api/auth/login', { ...body, returnTokens: true }));
+      assert.equal(native.status, 403); assert.equal((await native.json()).code, 'MOBILE_APPS_DISABLED');
+    }
+    await memory.exec('ALTER TABLE institutions ADD COLUMN contact_email text, ADD COLUMN admin_password_hash text, ADD COLUMN must_change_password boolean DEFAULT false');
+    await memory.query("UPDATE institutions SET contact_email='school@example.test',admin_password_hash=$1 WHERE id=1", [encoded]);
+    const owner = await login.POST(req('/api/auth/login', { emailOrUsername: 'school@example.test', password, roleHint: 'INSTITUTION' }));
+    assert.equal(owner.status, 200, 'Institution-owner website access is not controlled by student/staff/parent mobile access');
+    assert.equal((await owner.json()).role, 'INSTITUTION');
+    pass('actual website login and refresh use WEB sessions, distinguish plan denial from mobile revocation, survive a disabled app toggle, and preserve institution-owner access');
     for (const file of ['src/app/(superadmin)/sa/institutions/[id]/page.tsx','src/app/(employee)/employee/institutions/[id]/page.tsx']) assert.match(readFileSync(file, 'utf8'), /<InstitutionAppsControl/);
     console.log(`Institution Apps: ${groups} SQL/HTTP regression groups passed. No mobile projects changed.`);
   } finally { await memory.close(); delete (globalThis as typeof globalThis & { __apps?: unknown }).__apps; }

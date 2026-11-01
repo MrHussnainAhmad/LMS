@@ -16,7 +16,7 @@ import { getClientIp } from '@/lib/client-ip';
 import { AUTH_MAX_BODY_BYTES, readJsonBody } from '@/lib/http';
 import { redis } from '@/lib/redis';
 import { resolveCampusSession } from '@/lib/campus-workspaces';
-import { isMobileRole, mobileAppAccessAllowed, MOBILE_APPS_DISABLED } from '@/lib/mobile-app-access';
+import { isMobileRole, mobileAppAccessAllowed, MOBILE_APPS_DISABLED, WEB_ACCESS_DISABLED } from '@/lib/mobile-app-access';
 
 /** Single pre-authentication failure response: never distinguishes "no such user" from "wrong password". */
 const INVALID_CREDENTIALS = { error: 'Invalid credentials' };
@@ -583,8 +583,10 @@ export async function POST(req: NextRequest) {
 
     const scopedPayload = await resolveCampusSession(payload);
     if (!scopedPayload) return NextResponse.json({ error: 'Institution account is not APPROVED' }, { status: 403 });
-    if (returnTokens && isMobileRole(role)) scopedPayload.clientType = "MOBILE";
-    if (!await mobileAppAccessAllowed(scopedPayload)) return NextResponse.json(MOBILE_APPS_DISABLED, { status: 403, headers: { "Cache-Control": "no-store" } });
+    scopedPayload.clientType = returnTokens && isMobileRole(role) ? 'MOBILE' : 'WEB';
+    if (!await mobileAppAccessAllowed(scopedPayload)) {
+      return NextResponse.json(scopedPayload.clientType === 'MOBILE' ? MOBILE_APPS_DISABLED : WEB_ACCESS_DISABLED, { status: 403, headers: { 'Cache-Control': 'no-store' } });
+    }
     const { accessToken, refreshToken } = await createTokens(scopedPayload, undefined, req.cookies.get('refresh_token')?.value);
 
     await setAuthCookies(accessToken, refreshToken);

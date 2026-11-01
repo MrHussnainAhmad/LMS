@@ -46,7 +46,7 @@ async function main() {
     '@/lib/redis': { redis: { status: 'end', get: async () => null, setex: async () => {} } },
     '@/lib/rate-limit': { withRateLimit: async () => ({ success: true }), withPlatformLoginRateLimit: async () => ({ success: true }), withDealCodeRateLimit: async () => ({ success: true }) },
     '@/lib/campus-workspaces': { assertCampusEmailAvailable: async () => {}, resolveCampusSession: async (session: unknown) => session },
-    '@/lib/mobile-app-access': { isMobileRole: (role: string) => ['STUDENT','STAFF','PARENT'].includes(role), mobileAppAccessAllowed: async () => true, MOBILE_APPS_DISABLED: { error: 'Disabled' } },
+    '@/lib/mobile-app-access': { isMobileRole: (role: string) => ['STUDENT','STAFF','PARENT'].includes(role), mobileAppAccessAllowed: async () => true, MOBILE_APPS_DISABLED: { error: 'Disabled' }, WEB_ACCESS_DISABLED: { error: 'Website disabled' } },
     '@/lib/plan-management': { PlanError: class extends Error { status = 400; }, registrationPlan: async () => ({ id: 'BASIC', kind: 'PUBLIC', name: 'Basic', revision: 1, monthly: 'Rs. 1,000', setup: 'Rs. 0', monthlyDetail: 'Monthly', scale: 'School', campusDetail: 'One campus', audience: 'Schools' }), consumeDealtCode: async () => {} },
     '@/lib/notification-events': { notifySecurity: async () => {} },
     '@/lib/audit': { logAudit: async () => { effects.push('audit'); } },

@@ -4,14 +4,19 @@ import type { JWTPayload } from './auth-types';
 import { planPlatformAllowed } from './plan-entitlements';
 
 export const MOBILE_APPS_DISABLED = {
-  error: 'Mobile apps are not enabled for your institution. You can still use the website.',
+  error: 'Mobile app access is disabled or is not included in your institution\'s plan. Contact your institution or platform admin.',
   code: 'MOBILE_APPS_DISABLED',
+};
+export const WEB_ACCESS_DISABLED = {
+  error: 'Website access is not included in your institution\'s plan. Contact your institution or platform admin.',
+  code: 'WEB_ACCESS_DISABLED',
 };
 export const isMobileRole = (role: string) => ['STUDENT', 'STAFF', 'PARENT'].includes(role);
 
 /** Fresh primary-key lookup: disabling a product must not wait for a cache TTL.
- * A root institution's restriction also applies to its campuses. Web access is
- * deliberately outside this entitlement. Tenant identity comes from auth, never
+ * A root institution's restriction also applies to its campuses. The mobile
+ * toggle never restricts web access; subscription platform terms apply separately.
+ * Tenant identity comes from auth, never
  * from a client-supplied school name or the email's suffix alone.
  */
 export async function mobileAppAccessAllowed(
