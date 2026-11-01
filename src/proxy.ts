@@ -42,7 +42,8 @@ export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'nonce-" + nonce + "' 'strict-dynamic'" + (process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''),
+    // The homepage's Meshopt-compressed GLB models need WebAssembly compilation.
+    "script-src 'self' 'nonce-" + nonce + "' 'strict-dynamic'" + (request.nextUrl.pathname === '/' ? " 'wasm-unsafe-eval'" : '') + (process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''),
     "style-src 'self' 'unsafe-inline'", "img-src 'self' https: data: blob:", "font-src 'self' data:",
     // Three.js fetches embedded GLB textures as blob URLs before decoding them.
     "connect-src 'self' blob: https://api.cloudinary.com https://res.cloudinary.com" + (process.env.NODE_ENV === 'development' ? ' ws://localhost:*' : ''),
